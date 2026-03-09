@@ -41,5 +41,24 @@ int main()
     std::cout << fmt::format("HV crates initialize DONE, successful on {:d}/{:d} crates", init_cnt, crates.size())
               << std::endl;
 
+
+    // read hv settings
+    for(auto &crate : crates)
+    {
+        for(auto &board : crate->GetBoardList())
+        {
+            for(auto &channel : board->GetChannelList())
+            {
+                auto hvinfo = fmt::format("{:12s} {:8s} {:8s} {:16s}: {:.2f} / {:.2f}",
+                                          crate->GetName(),
+                                          board->GetSlot(),
+                                          channel->GetChannel(),
+                                          channel->GetName(),
+                                          channel->GetVMon(),
+                                          channel->GetVSet());
+                std::cout << hvinfo << std::endl;
+            }
+        }
+    }
     return 0;
 }
