@@ -189,7 +189,7 @@ void write_channels(const std::string &setting_path)
         if(ch != nullptr) {
             ch->SetName(channel_name);
             ch->SetVoltage(VSet);
-            std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} set to {:12s} {:.82f}V",
+            std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} set to {:12s} {:8.2f}V",
                                      crate_name, slot, channel, channel_name, VSet) << std::endl;
         } else {
             std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} not found!",
