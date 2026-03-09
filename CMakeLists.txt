@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.11)
 project(prad2hvmon)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -22,6 +22,15 @@ find_package(Qt5 REQUIRED COMPONENTS
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
+
+# ── fmt ───────────────────────────────────────────────────────────────────────
+include(FetchContent)
+
+FetchContent_Declare(
+  fmt
+  GIT_REPOSITORY https://github.com/fmtlib/fmt
+  GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+FetchContent_MakeAvailable(fmt)
 
 # ── Third-party: CAENHVWrapper ────────────────────────────────────────────────
 set(CAEN_LIB_DIR ${CMAKE_SOURCE_DIR}/caen_lib)
@@ -57,6 +66,7 @@ target_link_libraries(prad2hvmon PRIVATE
     Qt5::Widgets
     Qt5::WebEngineWidgets
     Qt5::WebChannel
+    fmt::fmt
 )
 
 # Qt WebEngine requires a GUI application type on some platforms

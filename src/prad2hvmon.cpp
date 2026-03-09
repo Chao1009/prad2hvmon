@@ -1,4 +1,5 @@
-#include "caen_channel.h"
+#include <caen_channel.h>
+#include <fmt/format.h>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -24,25 +25,21 @@ int main()
     }
 
     // connect to and initialize crates
-    int try_cnt = 0, fail_cnt = 0;
+    int init_cnt = 0;
     for(auto &crate : crates)
     {
-        ++ try_cnt;
         if(crate->Initialize()) {
-            std::cout << "Connected to high voltage system "
-                      << crate->GetName() << "@" << crate->GetIP()
+            std::cout << fmt::format("Connected to high voltage system {:s} @ {:s}", crate->GetName(), crate->GetIP())
                       << std::endl;
+            ++ init_cnt;
         } else {
-            ++ fail_cnt;
-            std::cerr << "Cannot connect to "
-                      << crate->GetName() << "@" << crate->GetIP()
+            std::cerr << fmt::format("Cannot connect to {:s} @ {:s}", crate->GetName(), crate->GetIP())
                       << std::endl;
         }
     }
 
-    std::cout << "HV crates initialize DONE, tried "
-              << try_cnt << " crates,  failed on "
-              << fail_cnt << " crates" << std::endl;
+    std::cout << fmt::format("HV crates initialize DONE, successful on {:d}/{:d} crates", init_cnt, crates.size())
+              << std::endl;
 
     return 0;
 }
