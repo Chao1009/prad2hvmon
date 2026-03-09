@@ -12,6 +12,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <map>
 
 
 // global
@@ -24,6 +25,7 @@ std::vector<std::pair<std::string, std::string>> crate_list = {
     {"PRadHV_5", "129.57.160.71"},
 };
 std::vector<CAEN_Crate*> crates;
+std::map<std::string, CAEN_Crate*> crate_map;
 
 bool init_crates(const std::vector<std::pair<std::string, std::string>> &list);
 void print_channels(const std::string &save_path);
@@ -91,6 +93,7 @@ bool init_crates(const std::vector<std::pair<std::string, std::string>> &list)
         CAEN_Crate *new_crate = new CAEN_Crate(crid, name, ip, CAENHV::SY1527, LINKTYPE_TCPIP, "admin", "admin");
         crid ++;
         crates.push_back(new_crate);
+        crate_map[name] = new_crate;
     }
 
     // connect to and initialize crates
@@ -126,6 +129,9 @@ void print_channels(const std::string &save_path)
 {
     // read hv settings
     std::vector<std::string> hvinfos;
+    hvinfos.push_back(fmt::format("# {:10s} {:4s} {:8s} {:16s} {:8s} {:8s}",
+                "crate", "slot", "channel", "name", "VMon", "VSet"
+                ));
     for(auto &crate : crates)
     {
         crate->ReadVoltage();
@@ -133,7 +139,7 @@ void print_channels(const std::string &save_path)
         {
             for(auto &channel : board->GetChannelList())
             {
-                auto hvinfo = fmt::format("{:8s} {:4d} {:4d}   {:12s}: {:8.2f} / {:8.2f}",
+                auto hvinfo = fmt::format("{:12s} {:4d} {:8d} {:16s} {:8.2f} {:8.2f}",
                                           crate->GetName(),
                                           board->GetSlot(),
                                           channel->GetChannel(),
@@ -158,6 +164,34 @@ void print_channels(const std::string &save_path)
 
 void write_channels(const std::string &setting_path)
 {
-    // place holder
+    ConfigParser c_parser;
+
+    c_parser.ReadFile(setting_path);
+
+    while(c_parser.ParseLine())
+    {
+        std::string crate_name, channel_name;
+        int slot;
+        unsigned short channel;
+        float VMon, VSet;
+        c_parser >> crate_name >> slot >> channel >> channel_name >> VMon >> VSet;
+        // VMon not used
+
+        auto crate = crate_map[crate_name];
+        auto board = crate->GetBoard(slot);
+        auto ch = board->GetChannel(channel);
+
+        if(ch != nullptr) {
+            ch->SetName(channel_name);
+            ch->SetVoltage(VSet);
+        } else {
+            std::cout << "Crate: " << crate_name
+                      << "Slot: " << slot
+                      << "Channel: " << channel
+                      << " is not found!" << std::endl;
+        }
+    }
+
+    std::cout << "Restore the High Voltage Setting from " << setting_path << std::endl;
 }
 
