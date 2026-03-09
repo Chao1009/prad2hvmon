@@ -45,6 +45,7 @@ int main()
     // read hv settings
     for(auto &crate : crates)
     {
+        crate->ReadVoltage();
         for(auto &board : crate->GetBoardList())
         {
             for(auto &channel : board->GetChannelList())
