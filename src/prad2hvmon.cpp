@@ -175,10 +175,12 @@ void write_channels(const std::string &setting_path)
         unsigned short channel;
         float VMon, VSet;
 
-        if ( !c_parser.CheckElements(6) ) { continue; }
-
-        c_parser >> crate_name >> slot >> channel >> channel_name >> VMon >> VSet;
-        // VMon not used
+        // VMon is optional and not used
+        if ( c_parser.NbofElements() == 5) {
+            c_parser >> crate_name >> slot >> channel >> channel_name >> VSet;
+        } else if ( c_parser.NbofElements() == 6) {
+            c_parser >> crate_name >> slot >> channel >> channel_name >> VMon >> VSet;
+        }
 
         auto crate = crate_map[crate_name];
         auto board = crate->GetBoard(slot);
@@ -187,8 +189,10 @@ void write_channels(const std::string &setting_path)
         if(ch != nullptr) {
             ch->SetName(channel_name);
             ch->SetVoltage(VSet);
+            std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} set to {:12s} {:.82f}V",
+                                     crate_name, slot, channel, channel_name, VSet) << std::endl;
         } else {
-            std::cout << fmt::format("crate: {:12s}, slot: {:4d}, channel: {:4d} not found!",
+            std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} not found!",
                                      crate_name, slot, channel) << std::endl;
         }
     }
