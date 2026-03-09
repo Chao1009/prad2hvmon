@@ -174,6 +174,9 @@ void write_channels(const std::string &setting_path)
         int slot;
         unsigned short channel;
         float VMon, VSet;
+
+        if ( !c_parser.CheckElements(6) ) { continue; }
+
         c_parser >> crate_name >> slot >> channel >> channel_name >> VMon >> VSet;
         // VMon not used
 
@@ -185,10 +188,8 @@ void write_channels(const std::string &setting_path)
             ch->SetName(channel_name);
             ch->SetVoltage(VSet);
         } else {
-            std::cout << "Crate: " << crate_name
-                      << "Slot: " << slot
-                      << "Channel: " << channel
-                      << " is not found!" << std::endl;
+            std::cout << fmt::format("crate: {:12s}, slot: {:4d}, channel: {:4d} not found!",
+                                     crate_name, slot, channel) << std::endl;
         }
     }
 
