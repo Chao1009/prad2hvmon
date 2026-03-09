@@ -50,7 +50,7 @@ int main()
         {
             for(auto &channel : board->GetChannelList())
             {
-                auto hvinfo = fmt::format("{:8s} {:4d} {:4d}   {:8s}: {:.2f} / {:.2f}",
+                auto hvinfo = fmt::format("{:8s} {:4d} {:4d}   {:12s}: {:8.2f} / {:8.2f}",
                                           crate->GetName(),
                                           board->GetSlot(),
                                           channel->GetChannel(),
