@@ -8,6 +8,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+# ── Qt5 ───────────────────────────────────────────────────────────────────────
+# If Qt5 is not on the default path, point cmake to it:
+#   cmake .. -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
+find_package(Qt5 REQUIRED COMPONENTS
+    Core
+    Widgets
+    WebEngineWidgets   # QWebEngineView, QWebEnginePage, etc.
+    WebChannel         # optional: C++ <-> JS bridge (QWebChannel)
+)
+
+# Required for Qt's code-generation tools (moc, uic, rcc)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
 # ── Third-party: CAENHVWrapper ────────────────────────────────────────────────
 set(CAEN_LIB_DIR ${CMAKE_SOURCE_DIR}/caen_lib)
 
@@ -38,6 +53,15 @@ target_include_directories(PRadHVSystem PRIVATE
 target_link_libraries(PRadHVSystem PRIVATE
     caen_channel
     caenhvwrapper
+    Qt5::Core
+    Qt5::Widgets
+    Qt5::WebEngineWidgets
+    Qt5::WebChannel
+)
+
+# Qt WebEngine requires a GUI application type on some platforms
+set_target_properties(PRadHVSystem PROPERTIES
+    WIN32_EXECUTABLE OFF   # keep console output on Windows during dev
 )
 
 # ── RPATH: find libcaenhvwrapper.so at runtime ────────────────────────────────
@@ -47,4 +71,3 @@ set_target_properties(PRadHVSystem PROPERTIES
     INSTALL_RPATH ${CAEN_LIB_DIR}
     INSTALL_RPATH_USE_LINK_PATH ON
 )
-
