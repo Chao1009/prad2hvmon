@@ -32,6 +32,9 @@ FetchContent_Declare(
   GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
 FetchContent_MakeAvailable(fmt)
 
+# ── cfparser static library ──────────────────────────────────────────────────
+add_subdirectory(cfparser)
+
 # ── Third-party: CAENHVWrapper ────────────────────────────────────────────────
 set(CAEN_LIB_DIR ${CMAKE_SOURCE_DIR}/caen_lib)
 
@@ -62,6 +65,7 @@ target_include_directories(prad2hvmon PRIVATE
 target_link_libraries(prad2hvmon PRIVATE
     caen_channel
     caenhvwrapper
+    cfparser
     Qt5::Core
     Qt5::Widgets
     Qt5::WebEngineWidgets
