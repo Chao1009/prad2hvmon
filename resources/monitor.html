@@ -590,6 +590,12 @@ let DV = {
     geo_bad:        10.0,
 };
 
+// Color scale ranges (overridden by gui_config.json)
+let CR = {
+    vmon_max: 2100,
+    vset_max: 2100,
+};
+
 // ═════════════════════════════════════════════════════════════════════
 //  QWebChannel bootstrap
 // ═════════════════════════════════════════════════════════════════════
@@ -617,7 +623,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 try {
                     const cfg = JSON.parse(cfgJson);
                     if (cfg.deltaV) Object.assign(DV, cfg.deltaV);
-                    console.log('GUI config loaded:', DV);
+                    if (cfg.colorRange) Object.assign(CR, cfg.colorRange);
+                    console.log('GUI config loaded — DV:', DV, 'CR:', CR);
                 } catch (e) {
                     console.warn('Failed to parse gui_config.json, using defaults', e);
                 }
@@ -955,14 +962,12 @@ function moduleColor(mod) {
 
     if (mode === 'vmon') {
         if (!ch.on) return '#333';      // off: grey out
-        const maxV = 2100;
-        const t = Math.min(1, Math.max(0, Math.abs(ch.vmon) / maxV));
+        const t = Math.min(1, Math.max(0, Math.abs(ch.vmon) / CR.vmon_max));
         return vmonColorScale(t);
     }
 
     if (mode === 'vset') {
-        const maxV = 2100;
-        const t = Math.min(1, Math.max(0, Math.abs(ch.vset) / maxV));
+        const t = Math.min(1, Math.max(0, Math.abs(ch.vset) / CR.vset_max));
         return vmonColorScale(t);
     }
 
@@ -1012,8 +1017,9 @@ function drawGeoLegend() {
             ctx.fillStyle = vmonColorScale(i / w);
             ctx.fillRect(i, 0, 1, h);
         }
+        const rangeMax = mode === 'vmon' ? CR.vmon_max : CR.vset_max;
         document.getElementById('leg-lo').textContent = '0 V';
-        document.getElementById('leg-hi').textContent = '2100 V';
+        document.getElementById('leg-hi').textContent = rangeMax + ' V';
     } else {
         // diff: green -> amber -> red
         const stops = [ [0,'#1a5c44'], [0.15,'#2dd4a0'], [0.4,'#eab308'], [0.7,'#f56565'], [1,'#ff2222'] ];
@@ -1022,7 +1028,7 @@ function drawGeoLegend() {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
         document.getElementById('leg-lo').textContent = '0 V';
-        document.getElementById('leg-hi').textContent = '10+ V';
+        document.getElementById('leg-hi').textContent = DV.geo_bad + '+ V';
     }
 }
 

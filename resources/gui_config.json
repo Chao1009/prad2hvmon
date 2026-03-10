@@ -7,5 +7,9 @@
         "geo_good":       1.0,
         "geo_warn":       3.0,
         "geo_bad":        10.0
+    },
+    "colorRange": {
+        "vmon_max": 2100,
+        "vset_max": 2100
     }
 }
