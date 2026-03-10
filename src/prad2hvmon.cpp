@@ -57,16 +57,16 @@ int main(int argc, char *argv[])
 {
     // ── Parse command-line ───────────────────────────────────────────────
     ConfigOption co;
+    co.AddOpts(ConfigOption::arg_require, 'f', "file");
+    co.AddOpts(ConfigOption::arg_require, 's', "save");
+    co.AddOpts(ConfigOption::arg_require, 'p', "poll");
+    co.AddOpts(ConfigOption::help_message, 'h', "help");
+
     co.SetDesc("usage: %0 <mode> [gui, read, write]");
     co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
     co.SetDesc('s', "path to save channel readings (read mode, optional).");
     co.SetDesc('p', "poll interval in ms for GUI mode (default 3000).");
     co.SetDesc('h', "show help messages.");
-
-    co.AddOpts(ConfigOption::arg_require, 'f', "file");
-    co.AddOpts(ConfigOption::arg_require, 's', "save");
-    co.AddOpts(ConfigOption::arg_require, 'p', "poll");
-    co.AddOpts(ConfigOption::help_message, 'h', "help");
 
     if (!co.ParseArgs(argc, argv)) {
         std::cout << co.GetInstruction() << std::endl;
