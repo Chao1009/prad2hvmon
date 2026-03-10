@@ -183,6 +183,18 @@ td .status-dot.off { background:var(--red); opacity:0.5; }
 .pwr-btn.off{color:var(--red);border-color:var(--red-dim);background:var(--red-dim)}
 .pwr-btn:hover { filter:brightness(1.25); }
 
+/* ─── Bulk power buttons ──────────────────────────────────────────── */
+.bulk-pwr-group { display:flex; gap:4px; margin-left:8px; }
+.bulk-btn {
+    font-family:var(--mono); font-size:10.5px; padding:4px 12px;
+    border-radius:var(--radius); border:1px solid; cursor:pointer;
+    transition:all var(--transition); font-weight:600;
+}
+.bulk-btn.bulk-on  { color:var(--green); border-color:var(--green-dim); background:var(--green-dim); }
+.bulk-btn.bulk-on:hover  { background:var(--green); color:#000; }
+.bulk-btn.bulk-off { color:var(--red); border-color:var(--red-dim); background:var(--red-dim); }
+.bulk-btn.bulk-off:hover { background:var(--red); color:#fff; }
+
 /* ─── Footer ──────────────────────────────────────────────────────── */
 footer {
     grid-row: 4;
@@ -444,6 +456,10 @@ footer #last-update::before {
                 <button class="chip off-chip" data-filter="off">OFF</button>
                 <button class="chip" data-filter="warn">⚠ ΔV</button>
             </div>
+            <div class="bulk-pwr-group">
+                <button class="bulk-btn bulk-on" id="btn-all-on" title="Turn ALL channels ON">⏻ All ON</button>
+                <button class="bulk-btn bulk-off" id="btn-all-off" title="Turn ALL channels OFF">⏻ All OFF</button>
+            </div>
             <div class="chip-group" id="crate-chips"></div>
             <span class="spacer"></span>
             <label id="poll-label">Poll <span id="poll-val">3.0</span>s</label>
@@ -641,6 +657,25 @@ function initTableUI() {
             th.querySelector('.sort-arrow').textContent = sortAsc ? '▲' : '▼';
             renderTable();
         });
+    });
+
+    // ── Bulk ON / OFF buttons ───────────────────────────────────────────
+    document.getElementById('btn-all-on').addEventListener('click', () => {
+        if (!hvMonitor || allChannels.length === 0) return;
+        const n = allChannels.length;
+        if (!confirm(`Turn ON all ${n} channels?\n\nThis will energise every HV channel across all crates.`)) return;
+        hvMonitor.setAllPower(true);
+        allChannels.forEach(ch => { ch.on = true; });
+        renderActiveTab();
+    });
+
+    document.getElementById('btn-all-off').addEventListener('click', () => {
+        if (!hvMonitor || allChannels.length === 0) return;
+        const n = allChannels.length;
+        if (!confirm(`Turn OFF all ${n} channels?\n\nThis will de-energise every HV channel across all crates.`)) return;
+        hvMonitor.setAllPower(false);
+        allChannels.forEach(ch => { ch.on = false; });
+        renderActiveTab();
     });
 }
 

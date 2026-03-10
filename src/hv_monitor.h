@@ -157,6 +157,18 @@ public slots:
         if (ch) ch->SetPower(on);
     }
 
+    // ── JS-callable: turn ALL channels ON or OFF ────────────────────────
+    void setAllPower(bool on)
+    {
+        for (auto *cr : crates_) {
+            for (auto *bd : cr->GetBoardList()) {
+                for (auto *ch : bd->GetChannelList()) {
+                    ch->SetPower(on);
+                }
+            }
+        }
+    }
+
     // ── JS-callable: set voltage on a single channel ────────────────────
     void setChannelVoltage(const QString &crateName, int slot,
                            int channel, float voltage)
