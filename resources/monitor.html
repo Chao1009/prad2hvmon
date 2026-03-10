@@ -937,7 +937,7 @@ function resetGeoView() {
     const rect = geoWrap.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     // Fit all modules: x ∈ [-563, 563], y ∈ [-563, 563]
-    const extent = 600; // half-width in mm, with margin
+    const extent = 660; // half-width in mm, with margin
     const scaleX = rect.width  / (2 * extent);
     const scaleY = rect.height / (2 * extent);
     geoTransform.scale = Math.min(scaleX, scaleY) * 0.92;
@@ -1057,6 +1057,24 @@ function renderGeo() {
 
         ctx.fillStyle = noMatch ? 'rgba(20,28,38,0.6)' : moduleColor(m);
         ctx.fillRect(m.x - hw, m.y - hh, hw * 2, hh * 2);
+
+        // LMS virtual blocks: draw distinctive border + label
+        if (m.t === 'LMS' && !noMatch) {
+            ctx.save();
+            ctx.strokeStyle = '#c084fc';  // purple accent
+            ctx.lineWidth = 1.5 / geoTransform.scale;
+            ctx.setLineDash([4 / geoTransform.scale, 3 / geoTransform.scale]);
+            ctx.strokeRect(m.x - hw, m.y - hh, hw * 2, hh * 2);
+            ctx.setLineDash([]);
+            // Draw label inside block
+            ctx.scale(1, -1); // un-flip Y for text
+            ctx.fillStyle = '#e8edf3';
+            ctx.font = `${10 / geoTransform.scale}px monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(m.n, m.x, -m.y); // negated y because we un-flipped
+            ctx.restore();
+        }
 
         if (isHover || isSearch) {
             ctx.strokeStyle = isHover ? '#fff' : '#3b9eff';
