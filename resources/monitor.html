@@ -596,6 +596,11 @@ let CR = {
     vset_max: 2100,
 };
 
+// Geometry view settings (overridden by gui_config.json)
+let GV = {
+    extent: 680,
+};
+
 // ═════════════════════════════════════════════════════════════════════
 //  QWebChannel bootstrap
 // ═════════════════════════════════════════════════════════════════════
@@ -624,7 +629,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const cfg = JSON.parse(cfgJson);
                     if (cfg.deltaV) Object.assign(DV, cfg.deltaV);
                     if (cfg.colorRange) Object.assign(CR, cfg.colorRange);
-                    console.log('GUI config loaded — DV:', DV, 'CR:', CR);
+                    if (cfg.geoView)    Object.assign(GV, cfg.geoView);
+                    console.log('GUI config loaded — DV:', DV, 'CR:', CR, 'GV:', GV);
                 } catch (e) {
                     console.warn('Failed to parse gui_config.json, using defaults', e);
                 }
@@ -937,7 +943,7 @@ function resetGeoView() {
     const rect = geoWrap.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
     // Fit all modules: x ∈ [-563, 563], y ∈ [-563, 563]
-    const extent = 660; // half-width in mm, with margin
+    const extent = GV.extent; // half-width in mm, with margin
     const scaleX = rect.width  / (2 * extent);
     const scaleY = rect.height / (2 * extent);
     geoTransform.scale = Math.min(scaleX, scaleY) * 0.92;

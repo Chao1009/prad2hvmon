@@ -11,5 +11,8 @@
     "colorRange": {
         "vmon_max": 2100,
         "vset_max": 2100
+    },
+    "geoView": {
+        "extent": 660
     }
 }
