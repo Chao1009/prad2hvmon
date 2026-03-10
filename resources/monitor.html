@@ -44,7 +44,7 @@ html, body {
 /* ─── Layout ──────────────────────────────────────────────────────── */
 #app {
     display: grid;
-    grid-template-rows: auto auto auto 1fr auto;
+    grid-template-rows: auto auto 1fr auto;
     height: 100vh;
 }
 
@@ -101,8 +101,8 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .tab-btn:hover { color: var(--text); background: var(--bg-card-alt); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-card-alt); }
 
-.tab-content { display: none; overflow: hidden; }
-.tab-content.active { display: flex; flex-direction: column; overflow: hidden; }
+.tab-content { display: none; overflow: hidden; min-height: 0; grid-row: 3; grid-column: 1; }
+.tab-content.active { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
 /* ─── Summary Strip ───────────────────────────────────────────────── */
 #summary-strip { display: flex; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
@@ -143,7 +143,7 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 }
 
 /* ─── Channel Table ───────────────────────────────────────────────── */
-#table-wrap { overflow-y:auto; overflow-x:hidden; flex:1; }
+#table-wrap { overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; }
 #table-wrap::-webkit-scrollbar { width:6px; }
 #table-wrap::-webkit-scrollbar-track { background:transparent; }
 #table-wrap::-webkit-scrollbar-thumb { background:var(--border-hi); border-radius:3px; }
@@ -185,6 +185,7 @@ td .status-dot.off { background:var(--red); opacity:0.5; }
 
 /* ─── Footer ──────────────────────────────────────────────────────── */
 footer {
+    grid-row: 4;
     display:flex; align-items:center; justify-content:space-between;
     padding:6px 20px; font-size:10.5px; font-family:var(--mono);
     color:var(--text-dim); background:var(--bg-card); border-top:1px solid var(--border);
@@ -214,6 +215,7 @@ footer #last-update::before {
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    min-height: 0;
 }
 
 #geo-toolbar {
@@ -270,6 +272,7 @@ footer #last-update::before {
     overflow: hidden;
     position: relative;
     cursor: grab;
+    min-height: 0;
     background:
         radial-gradient(circle at 50% 50%, #111820 0%, #0b0e14 100%);
 }
