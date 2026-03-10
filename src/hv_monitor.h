@@ -97,6 +97,8 @@ public slots:
         }
     }
 
+    int getPollInterval() { return poll_interval_ms_; }
+
     // ── JS-callable: one-shot read of all channels ──────────────────────
     //    Returns a JSON string: array of channel objects.
     QString readAll()
