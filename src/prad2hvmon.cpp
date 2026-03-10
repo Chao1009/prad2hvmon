@@ -57,18 +57,19 @@ int main(int argc, char *argv[])
 {
     // ── Parse command-line ───────────────────────────────────────────────
     ConfigOption co;
-    co.SetDesc("usage: %0 <mode> [gui, read, write]");
-    co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
-    co.SetDesc('s', "path to save channel readings (read mode, optional).");
-    co.SetDesc('p', "poll interval in ms for GUI mode (default 3000).");
-    co.SetDesc('m', "path to module geometry JSON file (GUI mode).");
-    co.SetDesc('h', "show help messages.");
-
     co.AddOpts(ConfigOption::arg_require, 'f', "file");
     co.AddOpts(ConfigOption::arg_require, 's', "save");
     co.AddOpts(ConfigOption::arg_require, 'p', "poll");
     co.AddOpts(ConfigOption::arg_require, 'm', "module-geo");
     co.AddOpts(ConfigOption::help_message, 'h', "help");
+
+    // help messages
+    co.SetDesc("usage: %0 <mode> [gui, read, write]");
+    co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
+    co.SetDesc('s', "path to save channel readings (read mode, optional).");
+    co.SetDesc('p', "poll interval in ms for GUI mode (default 2000).");
+    co.SetDesc('m', "path to module geometry JSON file (GUI mode).");
+    co.SetDesc('h', "show help messages.");
 
     if (!co.ParseArgs(argc, argv)) {
         std::cout << co.GetInstruction() << std::endl;
@@ -76,7 +77,7 @@ int main(int argc, char *argv[])
     }
 
     std::string setting_file, save_file, module_geo_file;
-    int poll_ms = 3000;
+    int poll_ms = 2000;
 
     for (auto &opt : co.GetOptions()) {
         switch (opt.mark) {
