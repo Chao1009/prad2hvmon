@@ -116,7 +116,23 @@ int main(int argc, char *argv[])
         if (!moduleGeoPath.isEmpty())
             std::cout << "Module geometry: " << moduleGeoPath.toStdString() << "\n";
 
-        HVMonitor monitor(crate_list, moduleGeoPath, poll_ms);
+        // Locate GUI config JSON
+        QString guiConfigPath;
+        {
+            QStringList candidates = {
+                QCoreApplication::applicationDirPath() + "/../resources/gui_config.json",
+                QCoreApplication::applicationDirPath() + "/../../resources/gui_config.json",
+                QString::fromStdString(std::string(RESOURCE_DIR) + "/gui_config.json"),
+            };
+            for (const auto &p : candidates) {
+                if (QFile::exists(p)) { guiConfigPath = QDir(p).absolutePath(); break; }
+            }
+        }
+        if (!guiConfigPath.isEmpty())
+            std::cout << "GUI config: " << guiConfigPath.toStdString() << "\n";
+
+        // initiate monitor
+        HVMonitor monitor(crate_list, moduleGeoPath, guiConfigPath, poll_ms);
         if (!monitor.initCrates()) {
             std::cerr << "WARNING: not all crates connected – "
                          "dashboard will show partial data.\n";

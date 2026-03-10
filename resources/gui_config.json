@@ -1,0 +1,11 @@
+{
+    "deltaV": {
+        "warn_threshold": 2.0,
+        "table_ok":       0.5,
+        "table_warn":     2.0,
+        "geo_excellent":  0.2,
+        "geo_good":       1.0,
+        "geo_warn":       3.0,
+        "geo_bad":        10.0
+    }
+}

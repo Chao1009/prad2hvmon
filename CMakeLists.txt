@@ -93,5 +93,5 @@ set_target_properties(prad2hvmon PROPERTIES
 )
 
 # ── Install the HTML dashboard alongside the binary ──────────────────────────
-install(FILES resources/monitor.html resources/hycal_modules.json
+install(FILES resources/monitor.html resources/hycal_modules.json resources/gui_config.json
         DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)
