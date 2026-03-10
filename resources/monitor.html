@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRad-II HV Monitor</title>
+
+<!-- QWebChannel JS (bundled with Qt5 WebEngine) -->
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+
+<style>
+/* ─── Reset & Root ────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg:          #0b0e14;
+    --bg-card:     #111820;
+    --bg-card-alt: #151d28;
+    --bg-hover:    #1a2433;
+    --border:      #1e2a3a;
+    --border-hi:   #2a3a4e;
+    --text:        #c8d3df;
+    --text-dim:    #6b7b8f;
+    --text-bright: #e8edf3;
+    --accent:      #3b9eff;
+    --accent-dim:  #1d4d80;
+    --green:       #2dd4a0;
+    --green-dim:   #0f3d30;
+    --red:         #f56565;
+    --red-dim:     #4a1a1a;
+    --amber:       #eab308;
+    --amber-dim:   #3d3008;
+    --mono:        'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    --sans:        'Segoe UI', 'SF Pro Text', system-ui, -apple-system, sans-serif;
+    --radius:      6px;
+    --transition:  150ms ease;
+}
+
+html, body {
+    height: 100%;
+    font-family: var(--sans);
+    font-size: 13px;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+}
+
+/* ─── Layout ──────────────────────────────────────────────────────────── */
+#app {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    height: 100vh;
+}
+
+/* ─── Header ──────────────────────────────────────────────────────────── */
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+}
+
+header .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+header .logo svg { flex-shrink: 0; }
+
+header .logo h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-bright);
+    letter-spacing: 0.02em;
+}
+
+header .logo .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: var(--accent-dim);
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+header .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+header .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+}
+
+header .status-pill .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 2s ease infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+}
+
+header .status-pill.disconnected .dot {
+    background: var(--red);
+    animation: none;
+}
+
+.btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    background: var(--bg-card-alt);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all var(--transition);
+    letter-spacing: 0.02em;
+}
+.btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-hi);
+    color: var(--text-bright);
+}
+.btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ─── Summary Strip ───────────────────────────────────────────────────── */
+#summary-strip {
+    display: flex;
+    gap: 1px;
+    padding: 0;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+}
+
+.summary-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+    background: var(--bg-card);
+}
+
+.summary-item .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 3px;
+}
+
+.summary-item .value {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-bright);
+}
+
+.summary-item .value.green  { color: var(--green); }
+.summary-item .value.red    { color: var(--red); }
+.summary-item .value.amber  { color: var(--amber); }
+.summary-item .value.accent { color: var(--accent); }
+
+/* ─── Filter / Search Bar ─────────────────────────────────────────────── */
+#filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+}
+
+#search {
+    flex: 0 0 260px;
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--bg);
+    color: var(--text-bright);
+    border: 1px solid var(--border);
+    padding: 6px 10px 6px 30px;
+    border-radius: var(--radius);
+    outline: none;
+    transition: border var(--transition);
+}
+#search:focus { border-color: var(--accent); }
+
+#filter-bar .search-wrap {
+    position: relative;
+    flex: 0 0 260px;
+}
+#filter-bar .search-wrap svg {
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--text-dim);
+}
+
+.chip-group {
+    display: flex;
+    gap: 4px;
+    margin-left: 8px;
+}
+
+.chip {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.chip:hover { color: var(--text); border-color: var(--border-hi); }
+.chip.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.chip.active.on-chip  { background: var(--green-dim); border-color: var(--green); color: var(--green); }
+.chip.active.off-chip { background: var(--red-dim); border-color: var(--red); color: var(--red); }
+
+#filter-bar .spacer { flex: 1; }
+
+#poll-label {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+}
+
+#poll-slider {
+    -webkit-appearance: none;
+    width: 80px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+#poll-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+}
+
+/* ─── Channel Table ───────────────────────────────────────────────────── */
+#table-wrap {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#table-wrap::-webkit-scrollbar { width: 6px; }
+#table-wrap::-webkit-scrollbar-track { background: transparent; }
+#table-wrap::-webkit-scrollbar-thumb {
+    background: var(--border-hi);
+    border-radius: 3px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+thead th {
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    background: var(--bg-card-alt);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition: color var(--transition);
+}
+
+thead th:hover { color: var(--text); }
+
+thead th .sort-arrow {
+    display: inline-block;
+    margin-left: 3px;
+    opacity: 0.3;
+    font-size: 9px;
+}
+
+thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+
+/* Column widths */
+th:nth-child(1), td:nth-child(1) { width: 4%; text-align: center; }  /* status dot */
+th:nth-child(2), td:nth-child(2) { width: 14%; }  /* crate */
+th:nth-child(3), td:nth-child(3) { width: 7%;  }  /* slot */
+th:nth-child(4), td:nth-child(4) { width: 7%;  }  /* ch */
+th:nth-child(5), td:nth-child(5) { width: 10%; }  /* model */
+th:nth-child(6), td:nth-child(6) { width: 18%; }  /* name */
+th:nth-child(7), td:nth-child(7) { width: 12%; text-align: right; }  /* VMon */
+th:nth-child(8), td:nth-child(8) { width: 12%; text-align: right; }  /* VSet */
+th:nth-child(9), td:nth-child(9) { width: 10%; text-align: right; }  /* diff */
+th:nth-child(10),td:nth-child(10){ width: 6%;  text-align: center; } /* power */
+
+tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background var(--transition);
+}
+tbody tr:hover { background: var(--bg-hover); }
+
+tbody td {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Status dot column */
+td .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+}
+td .status-dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+td .status-dot.off { background: var(--red); opacity: 0.5; }
+
+/* Diff column colour */
+.diff-ok    { color: var(--green); }
+.diff-warn  { color: var(--amber); }
+.diff-bad   { color: var(--red); }
+
+/* Tiny power toggle button */
+.pwr-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.pwr-btn.on  { color: var(--green); border-color: var(--green-dim); background: var(--green-dim); }
+.pwr-btn.off { color: var(--red);   border-color: var(--red-dim);   background: var(--red-dim); }
+.pwr-btn:hover { filter: brightness(1.25); }
+
+/* ─── Footer ──────────────────────────────────────────────────────────── */
+footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 20px;
+    font-size: 10.5px;
+    font-family: var(--mono);
+    color: var(--text-dim);
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+}
+
+footer #last-update::before {
+    content: '';
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+/* ─── Spinner overlay (shown before first data) ──────────────────────── */
+#loading {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 100;
+    transition: opacity 0.4s ease;
+}
+#loading.hidden { opacity: 0; pointer-events: none; }
+
+.spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#loading p {
+    margin-top: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+}
+</style>
+</head>
+<body>
+
+<div id="loading">
+    <div class="spinner"></div>
+    <p>Connecting to HV crates…</p>
+</div>
+
+<div id="app">
+
+    <!-- Header -->
+    <header>
+        <div class="logo">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3b9eff"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+            <h1>PRad-II HV Monitor</h1>
+            <span class="tag">CAEN SY1527</span>
+        </div>
+        <div class="controls">
+            <div class="status-pill" id="conn-pill">
+                <span class="dot"></span>
+                <span id="conn-text">connecting</span>
+            </div>
+            <button class="btn" id="btn-refresh" title="Force refresh now">↻ Refresh</button>
+        </div>
+    </header>
+
+    <!-- Summary Strip -->
+    <div id="summary-strip">
+        <div class="summary-item">
+            <span class="label">Total Channels</span>
+            <span class="value accent" id="s-total">—</span>
+        </div>
+        <div class="summary-item">
+            <span class="label">ON</span>
+            <span class="value green" id="s-on">—</span>
+        </div>
+        <div class="summary-item">
+            <span class="label">OFF</span>
+            <span class="value red" id="s-off">—</span>
+        </div>
+        <div class="summary-item">
+            <span class="label">Warnings (ΔV&gt;1)</span>
+            <span class="value amber" id="s-warn">—</span>
+        </div>
+        <div class="summary-item">
+            <span class="label">Crates</span>
+            <span class="value" id="s-crates">—</span>
+        </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div id="filter-bar">
+        <div class="search-wrap">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="search" placeholder="Search crate, slot, name…">
+        </div>
+
+        <div class="chip-group" id="status-chips">
+            <button class="chip active" data-filter="all">ALL</button>
+            <button class="chip on-chip" data-filter="on">ON</button>
+            <button class="chip off-chip" data-filter="off">OFF</button>
+            <button class="chip" data-filter="warn">⚠ ΔV</button>
+        </div>
+
+        <div class="chip-group" id="crate-chips">
+            <!-- dynamically populated -->
+        </div>
+
+        <span class="spacer"></span>
+        <label id="poll-label">Poll <span id="poll-val">3.0</span>s</label>
+        <input type="range" id="poll-slider" min="1" max="15" step="0.5" value="3">
+    </div>
+
+    <!-- Table -->
+    <div id="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th data-col="on">⏻</th>
+                    <th data-col="crate">Crate <span class="sort-arrow">▲</span></th>
+                    <th data-col="slot">Slot <span class="sort-arrow">▲</span></th>
+                    <th data-col="channel">Ch <span class="sort-arrow">▲</span></th>
+                    <th data-col="model">Model <span class="sort-arrow">▲</span></th>
+                    <th data-col="name">Name <span class="sort-arrow">▲</span></th>
+                    <th data-col="vmon">VMon (V) <span class="sort-arrow">▲</span></th>
+                    <th data-col="vset">VSet (V) <span class="sort-arrow">▲</span></th>
+                    <th data-col="diff">ΔV <span class="sort-arrow">▲</span></th>
+                    <th>Pwr</th>
+                </tr>
+            </thead>
+            <tbody id="ch-body"></tbody>
+        </table>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <span id="last-update">Waiting for data…</span>
+        <span id="row-count"></span>
+    </footer>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────────────────────────
+let hvMonitor   = null;   // the C++ QObject proxy
+let allChannels = [];     // latest snapshot
+let sortCol     = 'crate';
+let sortAsc     = true;
+let filterStatus = 'all';
+let filterCrate  = null;
+let searchText   = '';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  QWebChannel bootstrap
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    new QWebChannel(qt.webChannelTransport, channel => {
+        hvMonitor = channel.objects.hvMonitor;
+
+        // listen for periodic updates
+        hvMonitor.channelsUpdated.connect(jsonStr => {
+            allChannels = JSON.parse(jsonStr);
+            render();
+        });
+
+        // initial one-shot
+        hvMonitor.readAll(jsonStr => {
+            allChannels = JSON.parse(jsonStr);
+            populateCrateChips();
+            render();
+            document.getElementById('loading').classList.add('hidden');
+            setPillConnected(true);
+        });
+    });
+
+    // ── UI wiring ────────────────────────────────────────────────────────
+    document.getElementById('btn-refresh').addEventListener('click', () => {
+        if (!hvMonitor) return;
+        hvMonitor.readAll(jsonStr => {
+            allChannels = JSON.parse(jsonStr);
+            render();
+        });
+    });
+
+    document.getElementById('search').addEventListener('input', e => {
+        searchText = e.target.value.trim().toLowerCase();
+        render();
+    });
+
+    document.getElementById('poll-slider').addEventListener('input', e => {
+        const sec = parseFloat(e.target.value);
+        document.getElementById('poll-val').textContent = sec.toFixed(1);
+        if (hvMonitor) hvMonitor.setPollInterval(Math.round(sec * 1000));
+    });
+
+    // status chips
+    document.querySelectorAll('#status-chips .chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('#status-chips .chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            filterStatus = chip.dataset.filter;
+            render();
+        });
+    });
+
+    // sortable headers
+    document.querySelectorAll('thead th[data-col]').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.col;
+            if (sortCol === col) sortAsc = !sortAsc;
+            else { sortCol = col; sortAsc = true; }
+            document.querySelectorAll('thead th').forEach(h => h.classList.remove('sorted'));
+            th.classList.add('sorted');
+            th.querySelector('.sort-arrow').textContent = sortAsc ? '▲' : '▼';
+            render();
+        });
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Crate chips (dynamic)
+// ─────────────────────────────────────────────────────────────────────────────
+function populateCrateChips() {
+    const crates = [...new Set(allChannels.map(c => c.crate))].sort();
+    const wrap = document.getElementById('crate-chips');
+    wrap.innerHTML = '';
+
+    const allChip = document.createElement('button');
+    allChip.className = 'chip active';
+    allChip.dataset.crate = '';
+    allChip.textContent = 'All Crates';
+    allChip.addEventListener('click', () => selectCrateChip(allChip, null));
+    wrap.appendChild(allChip);
+
+    crates.forEach(name => {
+        const chip = document.createElement('button');
+        chip.className = 'chip';
+        chip.dataset.crate = name;
+        chip.textContent = name.replace('PRadHV_', 'HV');
+        chip.addEventListener('click', () => selectCrateChip(chip, name));
+        wrap.appendChild(chip);
+    });
+}
+
+function selectCrateChip(chip, name) {
+    document.querySelectorAll('#crate-chips .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    filterCrate = name;
+    render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Render table
+// ─────────────────────────────────────────────────────────────────────────────
+function render() {
+    let data = allChannels.slice();
+
+    // Filter
+    if (filterStatus === 'on')   data = data.filter(c => c.on);
+    if (filterStatus === 'off')  data = data.filter(c => !c.on);
+    if (filterStatus === 'warn') data = data.filter(c => Math.abs(c.vmon - c.vset) > 1);
+    if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
+    if (searchText)              data = data.filter(c =>
+        (c.crate + ' ' + c.slot + ' ' + c.channel + ' ' + c.name + ' ' + c.model)
+            .toLowerCase().includes(searchText));
+
+    // Sort
+    data.sort((a, b) => {
+        let va = a[sortCol], vb = b[sortCol];
+        if (sortCol === 'diff') { va = Math.abs(a.vmon - a.vset); vb = Math.abs(b.vmon - b.vset); }
+        if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+        if (typeof va === 'boolean') { va = va ? 1 : 0; vb = vb ? 1 : 0; }
+        return sortAsc ? va - vb : vb - va;
+    });
+
+    // Build HTML
+    const tbody = document.getElementById('ch-body');
+    tbody.innerHTML = data.map(ch => {
+        const diff  = Math.abs(ch.vmon - ch.vset);
+        const dcls  = diff < 0.5 ? 'diff-ok' : diff < 2 ? 'diff-warn' : 'diff-bad';
+        const onCls = ch.on ? 'on' : 'off';
+        return `<tr>
+            <td><span class="status-dot ${onCls}"></span></td>
+            <td title="${ch.ip}">${ch.crate}</td>
+            <td>${ch.slot}</td>
+            <td>${ch.channel}</td>
+            <td>${ch.model || '—'}</td>
+            <td>${ch.name || '—'}</td>
+            <td style="text-align:right">${ch.vmon.toFixed(2)}</td>
+            <td style="text-align:right">${ch.vset.toFixed(2)}</td>
+            <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
+            <td style="text-align:center">
+                <button class="pwr-btn ${onCls}"
+                        onclick="togglePower('${ch.crate}',${ch.slot},${ch.channel},${ch.on ? 'false' : 'true'})"
+                >${ch.on ? 'ON' : 'OFF'}</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // Summary
+    const total = allChannels.length;
+    const onCnt = allChannels.filter(c => c.on).length;
+    const warns = allChannels.filter(c => Math.abs(c.vmon - c.vset) > 1).length;
+    const nCr   = new Set(allChannels.map(c => c.crate)).size;
+    document.getElementById('s-total').textContent = total;
+    document.getElementById('s-on').textContent    = onCnt;
+    document.getElementById('s-off').textContent   = total - onCnt;
+    document.getElementById('s-warn').textContent  = warns;
+    document.getElementById('s-crates').textContent = nCr;
+
+    // Footer
+    const now = new Date().toLocaleTimeString();
+    document.getElementById('last-update').textContent = `Updated ${now}`;
+    document.getElementById('row-count').textContent   = `${data.length} / ${total} channels`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Actions
+// ─────────────────────────────────────────────────────────────────────────────
+function togglePower(crate, slot, channel, on) {
+    if (!hvMonitor) return;
+    hvMonitor.setChannelPower(crate, slot, channel, on);
+    // optimistic update
+    const ch = allChannels.find(c =>
+        c.crate === crate && c.slot === slot && c.channel === channel);
+    if (ch) ch.on = on;
+    render();
+}
+
+function setPillConnected(ok) {
+    const pill = document.getElementById('conn-pill');
+    const text = document.getElementById('conn-text');
+    if (ok) {
+        pill.classList.remove('disconnected');
+        text.textContent = 'live';
+    } else {
+        pill.classList.add('disconnected');
+        text.textContent = 'disconnected';
+    }
+}
+</script>
+</body>
+</html>

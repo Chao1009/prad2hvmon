@@ -1,220 +1,272 @@
-// A simple program to read/write the CAEN high voltage crates
+// ─────────────────────────────────────────────────────────────────────────────
+// prad2hvmon – PRad-II High-Voltage Monitor
+//
+// Modes:
+//   gui              – launch the Qt WebEngine dashboard  (default)
+//   read  [-s file]  – one-shot console read
+//   write -f file    – restore voltages from a settings file
 //
 // Author: Chao Peng (Argonne National Laboratory)
-// Date: 03/09/2026
+// Date:   03/09/2026
+// ─────────────────────────────────────────────────────────────────────────────
 
+#include <QApplication>
+#include <QWebEngineView>
+#include <QWebChannel>
+#include <QWebEnginePage>
+#include <QUrl>
+#include <QFile>
+#include <QDir>
 
 #include <ConfigParser.h>
 #include <ConfigOption.h>
 #include <caen_channel.h>
 #include <fmt/format.h>
+
+#include "hv_monitor.h"
+
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <map>
 
-
-// global
-// crate list
-std::vector<std::pair<std::string, std::string>> crate_list = {
+// ── Crate list (shared by every mode) ────────────────────────────────────────
+static std::vector<std::pair<std::string, std::string>> crate_list = {
     {"PRadHV_1", "129.57.160.67"},
     {"PRadHV_2", "129.57.160.68"},
     {"PRadHV_3", "129.57.160.69"},
     {"PRadHV_4", "129.57.160.70"},
     {"PRadHV_5", "129.57.160.71"},
 };
-std::vector<CAEN_Crate*> crates;
-std::map<std::string, CAEN_Crate*> crate_map;
 
-bool init_crates(const std::vector<std::pair<std::string, std::string>> &list);
-void print_channels(const std::string &save_path);
-void write_channels(const std::string &setting_path);
+// ── Forward declarations (console helpers, unchanged) ────────────────────────
+static bool init_crates_console(std::vector<CAEN_Crate*> &crates,
+                                std::map<std::string, CAEN_Crate*> &crate_map);
+static void print_channels(std::vector<CAEN_Crate*> &crates,
+                           const std::string &save_path);
+static void write_channels(std::map<std::string, CAEN_Crate*> &crate_map,
+                           const std::string &setting_path);
+inline void write_lines(std::ostream &out,
+                        const std::vector<std::string> &lines);
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+//  main
+// ─────────────────────────────────────────────────────────────────────────────
 int main(int argc, char *argv[])
 {
+    // ── Parse command-line ───────────────────────────────────────────────
     ConfigOption co;
-    co.SetDesc("usage: %0 <mode> [read, write]");
-    co.SetDesc('f', "path to the list of channel's voltage setting, needed by write mode.");
-    co.SetDesc('s', "path to save the list of channel's voltage setting, optional by read mode.");
+    co.SetDesc("usage: %0 <mode> [gui, read, write]");
+    co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
+    co.SetDesc('s', "path to save channel readings (read mode, optional).");
+    co.SetDesc('p', "poll interval in ms for GUI mode (default 3000).");
     co.SetDesc('h', "show help messages.");
 
     co.AddOpts(ConfigOption::arg_require, 'f', "file");
     co.AddOpts(ConfigOption::arg_require, 's', "save");
+    co.AddOpts(ConfigOption::arg_require, 'p', "poll");
     co.AddOpts(ConfigOption::help_message, 'h', "help");
 
-    // one positional argument required (mode)
-    if(!co.ParseArgs(argc, argv) || co.NbofArgs() != 1) {
+    if (!co.ParseArgs(argc, argv)) {
         std::cout << co.GetInstruction() << std::endl;
         return -1;
     }
 
-    std::string setting_file = "", save_file = "";
-    // parse optional arguments
-    for(auto &opt : co.GetOptions())
-    {
-        switch(opt.mark)
-        {
-            case 'f':
-                setting_file = opt.var.String();
-                break;
-            case 's':
-                save_file = opt.var.String();
-                break;
+    std::string setting_file, save_file;
+    int poll_ms = 3000;
+
+    for (auto &opt : co.GetOptions()) {
+        switch (opt.mark) {
+        case 'f': setting_file = opt.var.String(); break;
+        case 's': save_file    = opt.var.String(); break;
+        case 'p': poll_ms      = opt.var.Int();    break;
         }
     }
 
-    // try to connect to the crates
-    if ( !init_crates(crate_list) ) {
-        std::cerr << "Aborted! Crates initialization failed!" << std::endl;
+    // Default mode is "gui" when no positional argument is given
+    std::string mode = (co.NbofArgs() >= 1) ? co.GetArgument(0).String()
+                                            : "gui";
+
+    // ── GUI mode ────────────────────────────────────────────────────────
+    if (mode == "gui") {
+        QApplication app(argc, argv);
+        app.setApplicationName("PRad-II HV Monitor");
+
+        // Back-end object
+        HVMonitor monitor(crate_list, poll_ms);
+        if (!monitor.initCrates()) {
+            std::cerr << "WARNING: not all crates connected – "
+                         "dashboard will show partial data.\n";
+        }
+
+        // Web channel (C++ <-> JS bridge)
+        QWebChannel channel;
+        channel.registerObject(QStringLiteral("hvMonitor"), &monitor);
+
+        // Web view
+        QWebEngineView view;
+        view.setWindowTitle("PRad-II HV Monitor");
+        view.resize(1400, 900);
+        view.page()->setWebChannel(&channel);
+
+        // Load the dashboard HTML from the resources directory next to the
+        // binary, or fall back to the source tree location.
+        QString htmlPath;
+        QStringList candidates = {
+            QCoreApplication::applicationDirPath() + "/../resources/monitor.html",
+            QCoreApplication::applicationDirPath() + "/../../resources/monitor.html",
+            QString::fromStdString(std::string(RESOURCE_DIR) + "/monitor.html"),
+        };
+        for (const auto &p : candidates) {
+            if (QFile::exists(p)) { htmlPath = p; break; }
+        }
+        if (htmlPath.isEmpty()) {
+            std::cerr << "ERROR: cannot find monitor.html\n";
+            return -1;
+        }
+        view.setUrl(QUrl::fromLocalFile(QDir(htmlPath).absolutePath()));
+        view.show();
+
+        // Start periodic polling
+        monitor.startPolling();
+
+        return app.exec();
+    }
+
+    // ── Console modes (read / write) ────────────────────────────────────
+    std::vector<CAEN_Crate*> crates;
+    std::map<std::string, CAEN_Crate*> crate_map;
+
+    if (!init_crates_console(crates, crate_map)) {
+        std::cerr << "Aborted! Crates initialisation failed!\n";
         return -1;
     }
 
-    // get mode
-    auto mode = co.GetArgument(0).String();
-    if ( mode == "read" ) {
-        print_channels(save_file);
-    } else if ( mode == "write" ) {
-        write_channels(setting_file);
+    if (mode == "read") {
+        print_channels(crates, save_file);
+    } else if (mode == "write") {
+        write_channels(crate_map, setting_file);
     } else {
-        std::cerr << "Aborted! Unknown mode: " << mode << std::endl;
+        std::cerr << "Unknown mode: " << mode << "\n";
         return -1;
     }
 
+    for (auto *c : crates) delete c;
     return 0;
 }
 
 
-bool init_crates(const std::vector<std::pair<std::string, std::string>> &list)
+// ─────────────────────────────────────────────────────────────────────────────
+//  Console-mode helpers (kept from the original programme)
+// ─────────────────────────────────────────────────────────────────────────────
+
+static bool init_crates_console(std::vector<CAEN_Crate*> &crates,
+                                std::map<std::string, CAEN_Crate*> &crate_map)
 {
     int crid = 0;
-    for (const auto& [name, ip] : list) {
-        CAEN_Crate *new_crate = new CAEN_Crate(crid, name, ip, CAENHV::SY1527, LINKTYPE_TCPIP, "admin", "admin");
-        crid ++;
-        crates.push_back(new_crate);
-        crate_map[name] = new_crate;
+    for (const auto &[name, ip] : crate_list) {
+        auto *cr = new CAEN_Crate(crid++, name, ip,
+                                  CAENHV::SY1527, LINKTYPE_TCPIP,
+                                  "admin", "admin");
+        crates.push_back(cr);
+        crate_map[name] = cr;
     }
 
-    // connect to and initialize crates
-    int init_cnt = 0;
-    for(auto &crate : crates)
-    {
-        if(crate->Initialize()) {
-            std::cout << fmt::format("Connected to high voltage system {:s} @ {:s}", crate->GetName(), crate->GetIP())
-                      << std::endl;
-            ++ init_cnt;
-            crate->PrintCrateMap();
+    int ok = 0;
+    for (auto *cr : crates) {
+        if (cr->Initialize()) {
+            std::cout << fmt::format("Connected to {:s} @ {:s}\n",
+                                     cr->GetName(), cr->GetIP());
+            cr->PrintCrateMap();
+            ++ok;
         } else {
-            std::cerr << fmt::format("Cannot connect to {:s} @ {:s}", crate->GetName(), crate->GetIP())
-                      << std::endl;
+            std::cerr << fmt::format("Cannot connect to {:s} @ {:s}\n",
+                                     cr->GetName(), cr->GetIP());
         }
     }
-
-    std::cout << fmt::format("HV crates initialize DONE, successful on {:d}/{:d} crates", init_cnt, crates.size())
-              << std::endl;
-
-    return ( init_cnt == crates.size() );
+    std::cout << fmt::format("Init DONE – {}/{} crates OK\n",
+                             ok, crates.size());
+    return (ok == static_cast<int>(crates.size()));
 }
 
-
-// helper function to write info to iostream
-inline void write_lines(std::ostream& output, const std::vector<std::string>& lines) {
-    for (const auto& line : lines) {
-        output << line << std::endl;
-    }
-}
-
-
-void print_channels(const std::string &save_path)
+inline void write_lines(std::ostream &out,
+                        const std::vector<std::string> &lines)
 {
-    // read hv settings
-    std::vector<std::string> hvinfos;
-    hvinfos.push_back(fmt::format("# {:10s} {:4s} {:8s} {:16s} {:8s} {:8s}",
-                "crate", "slot", "channel", "name", "VMon", "VSet"
-                ));
-    for(auto &crate : crates)
-    {
-        crate->ReadVoltage();
-        for(auto &board : crate->GetBoardList())
-        {
-            for(auto &channel : board->GetChannelList())
-            {
-                auto hvinfo = fmt::format("{:12s} {:4d} {:8d} {:16s} {:8.2f} {:8.2f}",
-                                          crate->GetName(),
-                                          board->GetSlot(),
-                                          channel->GetChannel(),
-                                          channel->GetName(),
-                                          channel->GetVMon(),
-                                          channel->GetVSet());
-                hvinfos.push_back(hvinfo);
+    for (const auto &l : lines) out << l << '\n';
+}
+
+static void print_channels(std::vector<CAEN_Crate*> &crates,
+                           const std::string &save_path)
+{
+    std::vector<std::string> lines;
+    lines.push_back(fmt::format("# {:10s} {:4s} {:8s} {:16s} {:8s} {:8s}",
+                                "crate", "slot", "channel",
+                                "name", "VMon", "VSet"));
+    for (auto *cr : crates) {
+        cr->ReadVoltage();
+        for (auto *bd : cr->GetBoardList()) {
+            for (auto *ch : bd->GetChannelList()) {
+                lines.push_back(
+                    fmt::format("{:12s} {:4d} {:8d} {:16s} {:8.2f} {:8.2f}",
+                                cr->GetName(), bd->GetSlot(),
+                                ch->GetChannel(), ch->GetName(),
+                                ch->GetVMon(), ch->GetVSet()));
             }
         }
     }
-
-    // print out
-    write_lines(std::cout, hvinfos);
-
-    // save to file
+    write_lines(std::cout, lines);
     if (!save_path.empty()) {
-        std::ofstream output_file(save_path);
-        write_lines(output_file, hvinfos);
-        output_file.close();
+        std::ofstream f(save_path);
+        write_lines(f, lines);
     }
 }
 
-void write_channels(const std::string &setting_path)
+static void write_channels(std::map<std::string, CAEN_Crate*> &crate_map,
+                           const std::string &setting_path)
 {
-    ConfigParser c_parser;
+    ConfigParser parser;
+    parser.ReadFile(setting_path);
 
-    c_parser.ReadFile(setting_path);
-    std::string missing_crate = "";
-    int missing_slot = -1;
+    std::string miss_crate;
+    int miss_slot = -1;
+    std::vector<std::string> missing;
 
-    std::vector<std::string> missing_boards;
-    while(c_parser.ParseLine())
-    {
-        std::string crate_name, channel_name;
+    while (parser.ParseLine()) {
+        std::string crate_name, ch_name;
         int slot;
         unsigned short channel;
         float VMon, VSet;
 
-        // VMon is optional and not used
-        if ( c_parser.NbofElements() == 5) {
-            c_parser >> crate_name >> slot >> channel >> channel_name >> VSet;
-        } else if ( c_parser.NbofElements() == 6) {
-            c_parser >> crate_name >> slot >> channel >> channel_name >> VMon >> VSet;
-        }
+        if (parser.NbofElements() == 5)
+            parser >> crate_name >> slot >> channel >> ch_name >> VSet;
+        else if (parser.NbofElements() == 6)
+            parser >> crate_name >> slot >> channel >> ch_name >> VMon >> VSet;
 
-        auto crate = crate_map[crate_name];
-        auto board = crate->GetBoard(slot);
-
-        if (board == nullptr) {
-            if ( ( crate_name == missing_crate ) && ( slot == missing_slot ) ) { continue; }
-            missing_boards.push_back(
-                fmt::format("skipped crate: {:8s} slot: {:4d}, board not found!", crate_name, slot)
-            );
-            missing_crate = crate_name;
-            missing_slot = slot;
+        auto *crate = crate_map[crate_name];
+        auto *board = crate->GetBoard(slot);
+        if (!board) {
+            if (crate_name == miss_crate && slot == miss_slot) continue;
+            missing.push_back(
+                fmt::format("skipped crate: {:8s} slot: {:4d}, board not found!",
+                            crate_name, slot));
+            miss_crate = crate_name;
+            miss_slot  = slot;
             continue;
         }
-        auto ch = board->GetChannel(channel);
-
-        if(ch != nullptr) {
-            ch->SetName(channel_name);
+        auto *ch = board->GetChannel(channel);
+        if (ch) {
+            ch->SetName(ch_name);
             ch->SetVoltage(VSet);
-            std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} set to {:12s} {:8.2f}V",
-                                     crate_name, slot, channel, channel_name, VSet) << std::endl;
+            std::cout << fmt::format(
+                "crate: {:8s} slot: {:4d} ch: {:4d} → {:12s} {:8.2f} V\n",
+                crate_name, slot, channel, ch_name, VSet);
         } else {
-            std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} not found!",
-                                     crate_name, slot, channel) << std::endl;
+            std::cout << fmt::format(
+                "crate: {:8s} slot: {:4d} ch: {:4d} not found!\n",
+                crate_name, slot, channel);
         }
     }
-
-    for (const auto &mb : missing_boards) {
-        std::cout << mb << std::endl;
-    }
-
-    std::cout << "Restore the High Voltage Setting from " << setting_path << std::endl;
+    for (const auto &m : missing) std::cout << m << '\n';
+    std::cout << "Restored HV settings from " << setting_path << '\n';
 }
-

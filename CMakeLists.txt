@@ -15,7 +15,7 @@ find_package(Qt5 REQUIRED COMPONENTS
     Core
     Widgets
     WebEngineWidgets   # QWebEngineView, QWebEnginePage, etc.
-    WebChannel         # optional: C++ <-> JS bridge (QWebChannel)
+    WebChannel         # C++ <-> JS bridge (QWebChannel)
 )
 
 # Required for Qt's code-generation tools (moc, uic, rcc)
@@ -62,6 +62,12 @@ target_include_directories(prad2hvmon PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CAEN_LIB_DIR}
 )
+
+# Pass the resource directory so the binary can locate monitor.html at runtime
+target_compile_definitions(prad2hvmon PRIVATE
+    RESOURCE_DIR="${CMAKE_SOURCE_DIR}/resources"
+)
+
 target_link_libraries(prad2hvmon PRIVATE
     caen_channel
     caenhvwrapper
@@ -79,9 +85,11 @@ set_target_properties(prad2hvmon PROPERTIES
 )
 
 # ── RPATH: find libcaenhvwrapper.so at runtime ────────────────────────────────
-# Embed the library's location so the binary runs without LD_LIBRARY_PATH
 set_target_properties(prad2hvmon PROPERTIES
     BUILD_RPATH   ${CAEN_LIB_DIR}
     INSTALL_RPATH ${CAEN_LIB_DIR}
     INSTALL_RPATH_USE_LINK_PATH ON
 )
+
+# ── Install the HTML dashboard alongside the binary ──────────────────────────
+install(FILES resources/monitor.html DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)
