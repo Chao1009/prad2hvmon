@@ -167,6 +167,7 @@ private:
     {
         QJsonArray arr;
         for (auto *cr : crates_) {
+            cr->CheckStatus();
             cr->ReadVoltage();
             for (auto *bd : cr->GetBoardList()) {
                 for (auto *ch : bd->GetChannelList()) {
