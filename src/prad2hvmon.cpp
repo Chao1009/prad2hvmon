@@ -171,6 +171,7 @@ void write_channels(const std::string &setting_path)
     std::string missing_crate = "";
     int missing_slot = -1;
 
+    std::vector<std::string> missing_boards;
     while(c_parser.ParseLine())
     {
         std::string crate_name, channel_name;
@@ -189,8 +190,10 @@ void write_channels(const std::string &setting_path)
         auto board = crate->GetBoard(slot);
 
         if (board == nullptr) {
-            if ( ( crate_name == missing_crate ) || ( slot == missing_slot ) ) { continue; }
-            std::cout << fmt::format("skip crate: {:8s} slot: {:4d}, board not found!", crate_name, slot) << std::endl;
+            if ( ( crate_name == missing_crate ) && ( slot == missing_slot ) ) { continue; }
+            missing_boards.push_back(
+                fmt::format("skipped crate: {:8s} slot: {:4d}, board not found!", crate_name, slot)
+            );
             missing_crate = crate_name;
             missing_slot = slot;
             continue;
@@ -206,6 +209,10 @@ void write_channels(const std::string &setting_path)
             std::cout << fmt::format("crate: {:8s} slot: {:4d} channel: {:4d} not found!",
                                      crate_name, slot, channel) << std::endl;
         }
+    }
+
+    for (const auto &mb : missing_boards) {
+        std::cout << mb << std::endl;
     }
 
     std::cout << "Restore the High Voltage Setting from " << setting_path << std::endl;
