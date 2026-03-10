@@ -183,6 +183,38 @@ td .status-dot.off { background:var(--red); opacity:0.5; }
 .pwr-btn.off{color:var(--red);border-color:var(--red-dim);background:var(--red-dim)}
 .pwr-btn:hover { filter:brightness(1.25); }
 
+/* ─── PRIMARY channel highlighting ────────────────────────────────── */
+tr.primary-row {
+    background: var(--amber-dim);
+    border-left: 3px solid var(--amber);
+}
+tr.primary-row:hover {
+    background: #3d3008cc;
+}
+tr.primary-row td {
+    color: var(--text-bright);
+}
+.primary-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--amber);
+    background: var(--amber-dim);
+    border: 1px solid var(--amber);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.chip.primary-chip.active {
+    background: var(--amber-dim);
+    border-color: var(--amber);
+    color: var(--amber);
+}
+
 /* ─── Bulk power buttons ──────────────────────────────────────────── */
 .bulk-pwr-group { display:flex; gap:4px; margin-left:8px; }
 .bulk-btn {
@@ -441,6 +473,7 @@ footer #last-update::before {
             <div class="summary-item"><span class="label">ON</span><span class="value green" id="s-on">—</span></div>
             <div class="summary-item"><span class="label">OFF</span><span class="value red" id="s-off">—</span></div>
             <div class="summary-item"><span class="label">Warnings (ΔV&gt;1)</span><span class="value amber" id="s-warn">—</span></div>
+            <div class="summary-item"><span class="label">Primary</span><span class="value amber" id="s-primary">—</span></div>
             <div class="summary-item"><span class="label">Crates</span><span class="value" id="s-crates">—</span></div>
         </div>
         <div id="filter-bar">
@@ -455,6 +488,7 @@ footer #last-update::before {
                 <button class="chip on-chip" data-filter="on">ON</button>
                 <button class="chip off-chip" data-filter="off">OFF</button>
                 <button class="chip" data-filter="warn">⚠ ΔV</button>
+                <button class="chip primary-chip" data-filter="primary">⚡ PRIMARY</button>
             </div>
             <div class="bulk-pwr-group">
                 <button class="bulk-btn bulk-on" id="btn-all-on" title="Turn ALL channels ON">⏻ All ON</button>
@@ -703,11 +737,16 @@ function selectCrateChip(chip, name) {
     renderTable();
 }
 
+function isPrimary(ch) {
+    return ch.channel === 0 && ch.name && ch.name.toUpperCase().includes('PRIMARY');
+}
+
 function renderTable() {
     let data = allChannels.slice();
     if (filterStatus === 'on')   data = data.filter(c => c.on);
     if (filterStatus === 'off')  data = data.filter(c => !c.on);
     if (filterStatus === 'warn') data = data.filter(c => Math.abs(c.vmon - c.vset) > 1);
+    if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
     if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
     if (searchText)              data = data.filter(c =>
         (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
@@ -723,10 +762,12 @@ function renderTable() {
         const diff = Math.abs(ch.vmon - ch.vset);
         const dcls = diff < 0.5 ? 'diff-ok' : diff < 2 ? 'diff-warn' : 'diff-bad';
         const onCls = ch.on ? 'on' : 'off';
-        return `<tr>
+        const prim = isPrimary(ch);
+        return `<tr class="${prim ? 'primary-row' : ''}">
             <td><span class="status-dot ${onCls}"></span></td>
             <td title="${ch.ip}">${ch.crate}</td><td>${ch.slot}</td><td>${ch.channel}</td>
-            <td>${ch.model||'—'}</td><td>${ch.name||'—'}</td>
+            <td>${ch.model||'—'}</td>
+            <td>${ch.name||'—'}${prim ? '<span class="primary-badge">Primary</span>' : ''}</td>
             <td style="text-align:right">${ch.vmon.toFixed(2)}</td>
             <td style="text-align:right">${ch.vset.toFixed(2)}</td>
             <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
@@ -741,11 +782,13 @@ function renderTable() {
     const total = allChannels.length;
     const onCnt = allChannels.filter(c => c.on).length;
     const warns = allChannels.filter(c => Math.abs(c.vmon - c.vset) > 1).length;
+    const primCnt = allChannels.filter(c => isPrimary(c)).length;
     const nCr   = new Set(allChannels.map(c => c.crate)).size;
     document.getElementById('s-total').textContent  = total;
     document.getElementById('s-on').textContent     = onCnt;
     document.getElementById('s-off').textContent    = total - onCnt;
     document.getElementById('s-warn').textContent   = warns;
+    document.getElementById('s-primary').textContent = primCnt;
     document.getElementById('s-crates').textContent = nCr;
 }
 
