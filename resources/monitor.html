@@ -745,7 +745,7 @@ function renderTable() {
     let data = allChannels.slice();
     if (filterStatus === 'on')   data = data.filter(c => c.on);
     if (filterStatus === 'off')  data = data.filter(c => !c.on);
-    if (filterStatus === 'warn') data = data.filter(c => Math.abs(c.vmon - c.vset) > 1);
+    if (filterStatus === 'warn') data = data.filter(c => c.on && Math.abs(c.vmon - c.vset) > 1);
     if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
     if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
     if (searchText)              data = data.filter(c =>
@@ -760,7 +760,7 @@ function renderTable() {
     const tbody = document.getElementById('ch-body');
     tbody.innerHTML = data.map(ch => {
         const diff = Math.abs(ch.vmon - ch.vset);
-        const dcls = diff < 0.5 ? 'diff-ok' : diff < 2 ? 'diff-warn' : 'diff-bad';
+        const dcls = !ch.on ? 'diff-ok' : diff < 0.5 ? 'diff-ok' : diff < 2 ? 'diff-warn' : 'diff-bad';
         const onCls = ch.on ? 'on' : 'off';
         const prim = isPrimary(ch);
         return `<tr class="${prim ? 'primary-row' : ''}">
@@ -781,7 +781,7 @@ function renderTable() {
     // Summary
     const total = allChannels.length;
     const onCnt = allChannels.filter(c => c.on).length;
-    const warns = allChannels.filter(c => Math.abs(c.vmon - c.vset) > 1).length;
+    const warns = allChannels.filter(c => c.on && Math.abs(c.vmon - c.vset) > 1).length;
     const primCnt = allChannels.filter(c => isPrimary(c)).length;
     const nCr   = new Set(allChannels.map(c => c.crate)).size;
     document.getElementById('s-total').textContent  = total;
@@ -932,6 +932,7 @@ function moduleColor(mod) {
     if (!ch) return '#222';
 
     if (mode === 'vmon') {
+        if (!ch.on) return '#333';      // off: grey out
         const maxV = 2100;
         const t = Math.min(1, Math.max(0, Math.abs(ch.vmon) / maxV));
         return vmonColorScale(t);
@@ -944,6 +945,7 @@ function moduleColor(mod) {
     }
 
     // mode === 'diff'
+    if (!ch.on) return '#333';          // off: grey out
     const diff = Math.abs(ch.vmon - ch.vset);
     if (diff < 0.2)  return '#1a5c44';  // excellent: dark green
     if (diff < 1)    return '#2dd4a0';  // good: green
