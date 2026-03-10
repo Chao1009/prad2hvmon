@@ -64,11 +64,12 @@ load_crate_list(const QString &path)
 }
 
 // ── Forward declarations (console helpers, unchanged) ────────────────────────
-static bool init_crates_console(std::vector<CAEN_Crate*> &crates,
+static bool init_crates_console(const std::vector<std::pair<std::string, std::string>> &crate_list,
+                                std::vector<CAEN_Crate*> &crates,
                                 std::map<std::string, CAEN_Crate*> &crate_map);
-static void print_channels(std::vector<CAEN_Crate*> &crates,
+static void print_channels(const std::vector<CAEN_Crate*> &crates,
                            const std::string &save_path);
-static void write_channels(std::map<std::string, CAEN_Crate*> &crate_map,
+static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
                            const std::string &setting_path);
 inline void write_lines(std::ostream &out,
                         const std::vector<std::string> &lines);
@@ -223,7 +224,7 @@ int main(int argc, char *argv[])
     std::vector<CAEN_Crate*> crates;
     std::map<std::string, CAEN_Crate*> crate_map;
 
-    if (!init_crates_console(crates, crate_map)) {
+    if (!init_crates_console(crate_list, crates, crate_map)) {
         std::cerr << "Aborted! Crates initialisation failed!\n";
         return -1;
     }
@@ -246,7 +247,8 @@ int main(int argc, char *argv[])
 //  Console-mode helpers (kept from the original programme)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static bool init_crates_console(std::vector<CAEN_Crate*> &crates,
+static bool init_crates_console(const std::vector<std::pair<std::string, std::string>> &crate_list,
+                                std::vector<CAEN_Crate*> &crates,
                                 std::map<std::string, CAEN_Crate*> &crate_map)
 {
     int crid = 0;
@@ -281,7 +283,7 @@ inline void write_lines(std::ostream &out,
     for (const auto &l : lines) out << l << '\n';
 }
 
-static void print_channels(std::vector<CAEN_Crate*> &crates,
+static void print_channels(const std::vector<CAEN_Crate*> &crates,
                            const std::string &save_path)
 {
     std::vector<std::string> lines;
@@ -307,7 +309,7 @@ static void print_channels(std::vector<CAEN_Crate*> &crates,
     }
 }
 
-static void write_channels(std::map<std::string, CAEN_Crate*> &crate_map,
+static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
                            const std::string &setting_path)
 {
     ConfigParser parser;
@@ -328,7 +330,7 @@ static void write_channels(std::map<std::string, CAEN_Crate*> &crate_map,
         else if (parser.NbofElements() == 6)
             parser >> crate_name >> slot >> channel >> ch_name >> VMon >> VSet;
 
-        auto *crate = crate_map[crate_name];
+        auto *crate = crate_map.at(crate_name);
         auto *board = crate->GetBoard(slot);
         if (!board) {
             if (crate_name == miss_crate && slot == miss_slot) continue;
