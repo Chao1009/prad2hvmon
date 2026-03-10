@@ -104,6 +104,7 @@ bool init_crates(const std::vector<std::pair<std::string, std::string>> &list)
             std::cout << fmt::format("Connected to high voltage system {:s} @ {:s}", crate->GetName(), crate->GetIP())
                       << std::endl;
             ++ init_cnt;
+            crate->PrintCrateMap();
         } else {
             std::cerr << fmt::format("Cannot connect to {:s} @ {:s}", crate->GetName(), crate->GetIP())
                       << std::endl;
@@ -167,6 +168,8 @@ void write_channels(const std::string &setting_path)
     ConfigParser c_parser;
 
     c_parser.ReadFile(setting_path);
+    std::string missing_crate = "";
+    int missing_slot = -1;
 
     while(c_parser.ParseLine())
     {
@@ -184,6 +187,14 @@ void write_channels(const std::string &setting_path)
 
         auto crate = crate_map[crate_name];
         auto board = crate->GetBoard(slot);
+
+        if (board == nullptr) {
+            if ( ( crate_name == missing_crate ) || ( slot == missing_slot ) ) { continue; }
+            std::cout << fmt::format("skip crate: {:8s} slot: {:4d}, board not found!", crate_name, slot) << std::endl;
+            missing_crate = crate_name;
+            missing_slot = slot;
+            continue;
+        }
         auto ch = board->GetChannel(channel);
 
         if(ch != nullptr) {

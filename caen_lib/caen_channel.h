@@ -120,7 +120,7 @@ private:
     std::string password;
     int handle;
     bool mapped;
-    unsigned short slot_map[50];
+    short slot_map[MAX_SLOTS];
     std::vector<CAEN_Board*> boardList;
 
 public:
@@ -141,6 +141,7 @@ public:
     bool Initialize();
     bool DeInitialize();
     void ReadCrateMap();
+    void PrintCrateMap();
     void HeartBeat();
     void Clear();
     void ReadVoltage();

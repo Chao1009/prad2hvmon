@@ -394,7 +394,7 @@ void CAEN_Crate::ReadCrateMap()
     boardList.clear();
     for(auto &i : slot_map)
     {
-        i = 0;
+        i = -1;
     }
 
     unsigned short NbofSlot;
@@ -439,9 +439,19 @@ void CAEN_Crate::ReadCrateMap()
     free(fmwMaxList);
 }
 
+void CAEN_Crate::PrintCrateMap()
+{
+    cout << "Slot map is:" << endl;
+    for (int i = 0; i < MAX_SLOTS; ++i) {
+        if ( slot_map[i] >= 0 ) {
+            cout << slot_map[i] << ": " << i << endl;
+        }
+    }
+}
+
 CAEN_Board *CAEN_Crate::GetBoard(const unsigned short &slot)
 {
-    if(slot >= 50) {
+    if(slot >= MAX_SLOTS) {
         cerr << "Crate does not have slot "  << slot << endl;
         return nullptr;
     }
