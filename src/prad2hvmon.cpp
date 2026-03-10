@@ -17,6 +17,9 @@
 #include <QUrl>
 #include <QFile>
 #include <QDir>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 
 #include <ConfigParser.h>
 #include <ConfigOption.h>
@@ -31,14 +34,34 @@
 #include <vector>
 #include <map>
 
-// ── Crate list (shared by every mode) ────────────────────────────────────────
-static std::vector<std::pair<std::string, std::string>> crate_list = {
-    {"PRadHV_1", "129.57.160.67"},
-    {"PRadHV_2", "129.57.160.68"},
-    {"PRadHV_3", "129.57.160.69"},
-    {"PRadHV_4", "129.57.160.70"},
-    {"PRadHV_5", "129.57.160.71"},
-};
+
+// ── Load crate list from JSON ────────────────────────────────────────────────
+static std::vector<std::pair<std::string, std::string>>
+load_crate_list(const QString &path)
+{
+    std::vector<std::pair<std::string, std::string>> list;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        std::cerr << "ERROR: cannot open crate config: "
+                  << path.toStdString() << "\n";
+        return list;
+    }
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (doc.isNull()) {
+        std::cerr << "ERROR: invalid JSON in crate config: "
+                  << err.errorString().toStdString() << "\n";
+        return list;
+    }
+    for (const auto &val : doc.array()) {
+        QJsonObject obj = val.toObject();
+        list.emplace_back(obj["name"].toString().toStdString(),
+                          obj["ip"].toString().toStdString());
+    }
+    std::cout << fmt::format("Loaded {} crate(s) from {}\n",
+                             list.size(), path.toStdString());
+    return list;
+}
 
 // ── Forward declarations (console helpers, unchanged) ────────────────────────
 static bool init_crates_console(std::vector<CAEN_Crate*> &crates,
@@ -57,6 +80,7 @@ int main(int argc, char *argv[])
 {
     // ── Parse command-line ───────────────────────────────────────────────
     ConfigOption co;
+    co.AddOpts(ConfigOption::arg_require, 'c', "crates");
     co.AddOpts(ConfigOption::arg_require, 'f', "file");
     co.AddOpts(ConfigOption::arg_require, 's', "save");
     co.AddOpts(ConfigOption::arg_require, 'p', "poll");
@@ -65,6 +89,7 @@ int main(int argc, char *argv[])
 
     // help messages
     co.SetDesc("usage: %0 <mode> [gui, read, write]");
+    co.SetDesc('c', "path to crates JSON file (default: auto-discover).");
     co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
     co.SetDesc('s', "path to save channel readings (read mode, optional).");
     co.SetDesc('p', "poll interval in ms for GUI mode (default 2000).");
@@ -76,21 +101,43 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    std::string setting_file, save_file, module_geo_file;
+    std::string setting_file, save_file, module_geo_file, crate_config_file;
     int poll_ms = 2000;
 
     for (auto &opt : co.GetOptions()) {
         switch (opt.mark) {
-        case 'f': setting_file    = opt.var.String(); break;
-        case 's': save_file       = opt.var.String(); break;
-        case 'p': poll_ms         = opt.var.Int();    break;
-        case 'm': module_geo_file = opt.var.String(); break;
+        case 'c': crate_config_file = opt.var.String(); break;
+        case 'f': setting_file      = opt.var.String(); break;
+        case 's': save_file         = opt.var.String(); break;
+        case 'p': poll_ms           = opt.var.Int();    break;
+        case 'm': module_geo_file   = opt.var.String(); break;
         }
     }
 
     // Default mode is "gui" when no positional argument is given
     std::string mode = (co.NbofArgs() >= 1) ? co.GetArgument(0).String()
                                             : "gui";
+
+    // ── Locate and load crate config ────────────────────────────────────
+    QString crateConfigPath;
+    if (!crate_config_file.empty()) {
+        crateConfigPath = QString::fromStdString(crate_config_file);
+    } else {
+        crateConfigPath = QString::fromStdString(
+            std::string(RESOURCE_DIR) + "/crates.json");
+    }
+    if (!QFile::exists(crateConfigPath)) {
+        std::cerr << "ERROR: cannot find crates.json at "
+                  << crateConfigPath.toStdString() << "\n"
+                  << "Use -c <path> to specify the crate config file.\n";
+        return -1;
+    }
+    auto crate_list = load_crate_list(crateConfigPath);
+    if (crate_list.empty()) {
+        std::cerr << "ERROR: no crates defined in "
+                  << crateConfigPath.toStdString() << "\n";
+        return -1;
+    }
 
     // ── GUI mode ────────────────────────────────────────────────────────
     if (mode == "gui") {
