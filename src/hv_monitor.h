@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QString>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -27,9 +28,11 @@ class HVMonitor : public QObject
 public:
     explicit HVMonitor(
         const std::vector<std::pair<std::string, std::string>> &crate_list,
+        const QString &module_json_path = "",
         int poll_ms = 3000,
         QObject *parent = nullptr)
-        : QObject(parent), poll_interval_ms_(poll_ms), crate_defs_(crate_list)
+        : QObject(parent), poll_interval_ms_(poll_ms),
+          crate_defs_(crate_list), module_json_path_(module_json_path)
     {
         connect(&timer_, &QTimer::timeout, this, &HVMonitor::pollCrates);
     }
@@ -127,6 +130,19 @@ public slots:
         return QString(QJsonDocument(arr).toJson(QJsonDocument::Compact));
     }
 
+    // ── JS-callable: read the module geometry JSON file ──────────────────
+    QString getModuleGeometry()
+    {
+        if (module_json_path_.isEmpty()) return QStringLiteral("[]");
+        QFile f(module_json_path_);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            std::cerr << "Cannot open module geometry file: "
+                      << module_json_path_.toStdString() << "\n";
+            return QStringLiteral("[]");
+        }
+        return QString::fromUtf8(f.readAll());
+    }
+
     // ── JS-callable: turn a single channel ON / OFF ─────────────────────
     void setChannelPower(const QString &crateName, int slot,
                          int channel, bool on)
@@ -192,6 +208,7 @@ private:
     int poll_interval_ms_;
     bool initialized_ = false;
     std::vector<std::pair<std::string, std::string>> crate_defs_;
+    QString module_json_path_;
     std::vector<CAEN_Crate*> crates_;
     std::map<std::string, CAEN_Crate*> crate_map_;
 };

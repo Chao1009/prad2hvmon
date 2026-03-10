@@ -57,6 +57,7 @@ target_link_libraries(caen_channel PUBLIC caenhvwrapper)
 # ── Main executable ───────────────────────────────────────────────────────────
 add_executable(prad2hvmon
     src/prad2hvmon.cpp
+    src/hv_monitor.h      # listed so AUTOMOC processes the Q_OBJECT macro
 )
 target_include_directories(prad2hvmon PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -92,4 +93,5 @@ set_target_properties(prad2hvmon PROPERTIES
 )
 
 # ── Install the HTML dashboard alongside the binary ──────────────────────────
-install(FILES resources/monitor.html DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)
+install(FILES resources/monitor.html resources/hycal_modules.json
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)

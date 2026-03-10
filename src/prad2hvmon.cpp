@@ -57,30 +57,33 @@ int main(int argc, char *argv[])
 {
     // ── Parse command-line ───────────────────────────────────────────────
     ConfigOption co;
-    co.AddOpts(ConfigOption::arg_require, 'f', "file");
-    co.AddOpts(ConfigOption::arg_require, 's', "save");
-    co.AddOpts(ConfigOption::arg_require, 'p', "poll");
-    co.AddOpts(ConfigOption::help_message, 'h', "help");
-
     co.SetDesc("usage: %0 <mode> [gui, read, write]");
     co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
     co.SetDesc('s', "path to save channel readings (read mode, optional).");
     co.SetDesc('p', "poll interval in ms for GUI mode (default 3000).");
+    co.SetDesc('m', "path to module geometry JSON file (GUI mode).");
     co.SetDesc('h', "show help messages.");
+
+    co.AddOpts(ConfigOption::arg_require, 'f', "file");
+    co.AddOpts(ConfigOption::arg_require, 's', "save");
+    co.AddOpts(ConfigOption::arg_require, 'p', "poll");
+    co.AddOpts(ConfigOption::arg_require, 'm', "module-geo");
+    co.AddOpts(ConfigOption::help_message, 'h', "help");
 
     if (!co.ParseArgs(argc, argv)) {
         std::cout << co.GetInstruction() << std::endl;
         return -1;
     }
 
-    std::string setting_file, save_file;
+    std::string setting_file, save_file, module_geo_file;
     int poll_ms = 3000;
 
     for (auto &opt : co.GetOptions()) {
         switch (opt.mark) {
-        case 'f': setting_file = opt.var.String(); break;
-        case 's': save_file    = opt.var.String(); break;
-        case 'p': poll_ms      = opt.var.Int();    break;
+        case 'f': setting_file    = opt.var.String(); break;
+        case 's': save_file       = opt.var.String(); break;
+        case 'p': poll_ms         = opt.var.Int();    break;
+        case 'm': module_geo_file = opt.var.String(); break;
         }
     }
 
@@ -94,7 +97,25 @@ int main(int argc, char *argv[])
         app.setApplicationName("PRad-II HV Monitor");
 
         // Back-end object
-        HVMonitor monitor(crate_list, poll_ms);
+        // Locate module geometry JSON
+        QString moduleGeoPath;
+        if (!module_geo_file.empty()) {
+            moduleGeoPath = QString::fromStdString(module_geo_file);
+        } else {
+            // Auto-discover next to monitor.html
+            QStringList geoCandidates = {
+                QCoreApplication::applicationDirPath() + "/../resources/hycal_modules.json",
+                QCoreApplication::applicationDirPath() + "/../../resources/hycal_modules.json",
+                QString::fromStdString(std::string(RESOURCE_DIR) + "/hycal_modules.json"),
+            };
+            for (const auto &p : geoCandidates) {
+                if (QFile::exists(p)) { moduleGeoPath = QDir(p).absolutePath(); break; }
+            }
+        }
+        if (!moduleGeoPath.isEmpty())
+            std::cout << "Module geometry: " << moduleGeoPath.toStdString() << "\n";
+
+        HVMonitor monitor(crate_list, moduleGeoPath, poll_ms);
         if (!monitor.initCrates()) {
             std::cerr << "WARNING: not all crates connected – "
                          "dashboard will show partial data.\n";
@@ -273,4 +294,3 @@ static void write_channels(std::map<std::string, CAEN_Crate*> &crate_map,
 
 // ── Pull in MOC-generated code for the header-only QObject ──────────────────
 #include "moc_hv_monitor.cpp"
-
