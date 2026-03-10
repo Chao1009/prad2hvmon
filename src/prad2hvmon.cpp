@@ -270,3 +270,7 @@ static void write_channels(std::map<std::string, CAEN_Crate*> &crate_map,
     for (const auto &m : missing) std::cout << m << '\n';
     std::cout << "Restored HV settings from " << setting_path << '\n';
 }
+
+// ── Pull in MOC-generated code for the header-only QObject ──────────────────
+#include "moc_hv_monitor.cpp"
+
