@@ -474,6 +474,7 @@ footer #last-update::before {
             <label>Color by:</label>
             <select id="geo-color-mode">
                 <option value="vmon">VMon</option>
+                <option value="vset">VSet</option>
                 <option value="diff" selected>|VMon − VSet|</option>
                 <option value="status">ON / OFF</option>
             </select>
@@ -840,9 +841,14 @@ function moduleColor(mod) {
     if (!ch) return '#222';
 
     if (mode === 'vmon') {
-        // color by VMon: 0 -> dark blue, max -> bright yellow
         const maxV = 2100;
         const t = Math.min(1, Math.max(0, Math.abs(ch.vmon) / maxV));
+        return vmonColorScale(t);
+    }
+
+    if (mode === 'vset') {
+        const maxV = 2100;
+        const t = Math.min(1, Math.max(0, Math.abs(ch.vset) / maxV));
         return vmonColorScale(t);
     }
 
@@ -886,7 +892,7 @@ function drawGeoLegend() {
         ctx.fillStyle = '#2dd4a0'; ctx.fillRect(w/2, 0, w/2, h);
         document.getElementById('leg-lo').textContent = 'OFF';
         document.getElementById('leg-hi').textContent = 'ON';
-    } else if (mode === 'vmon') {
+    } else if (mode === 'vmon' || mode === 'vset') {
         for (let i = 0; i < w; i++) {
             ctx.fillStyle = vmonColorScale(i / w);
             ctx.fillRect(i, 0, 1, h);
