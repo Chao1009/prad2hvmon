@@ -334,12 +334,12 @@ function renderTable() {
             <td style="text-align:right">${ch.iSupported===false
                 ? `<span style="color:var(--text-dim)">N/A</span>`
                 : expertMode
-                    ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${fmt(ch.iset, 3)}"
+                    ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${fmt(ch.iset, 1)}"
                          onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                        ><button class="vset-apply"
                          onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                        >✓</button>`
-                    : `<span style="color:var(--text-dim)">${fmt(ch.iset, 3)}</span>`
+                    : `<span style="color:var(--text-dim)">${fmt(ch.iset, 2)}</span>`
             }</td>
             <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
