@@ -95,7 +95,7 @@ std::string CAEN_Channel::GetStatusString() const
     if (status == 0) return "OFF|channel is off";
 
     static const struct { int bit; const char *abbr; const char *full; } flags[] = {
-	{  0, "ON",   "channel is on"          },
+        {  0, "ON",   "channel is on"          },
         {  1, "RUP",  "ramping up"             },
         {  2, "RDN",  "ramping down"           },
         {  3, "OC",   "overcurrent"            },
