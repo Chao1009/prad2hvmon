@@ -64,7 +64,9 @@ prad2hvmon/
 │       ├── ConfigOption.cpp
 │       └── ConfigValue.cpp
 ├── resources/
-│   ├── monitor.html                # Web dashboard (HTML/CSS/JS single file)
+│   ├── monitor.html                # Web dashboard (HTML skeleton file)
+│   ├── monitor.css                 # Web dashboard (css style sheet)
+│   ├── monitor.js                  # Web dashboard (JavaScript file)
 │   ├── crates.json                 # Crate names and IP addresses
 │   ├── hycal_modules.json          # Module geometry (positions, sizes, types)
 │   └── gui_config.json             # Configurable thresholds and color ranges

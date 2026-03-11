@@ -95,6 +95,8 @@ set_target_properties(prad2hvmon PROPERTIES
 # ── Install the HTML dashboard alongside the binary ──────────────────────────
 install(FILES
     resources/monitor.html
+    resources/monitor.css
+    resources/monitor.js
     resources/hycal_modules.json
     resources/gui_config.json
     resources/crates.json
