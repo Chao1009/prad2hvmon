@@ -279,6 +279,9 @@ function renderTable() {
                    >✓</button>`
                 : ch.vset.toFixed(2)}</td>
             <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
+            <td class="${ch.status ? 'status-err' : 'status-ok'}"
+                title="${ch.status ? ch.status.split('|')[1] : ''}"
+            >${ch.status ? ch.status.split('|')[0] : '—'}</td>
             <td style="text-align:center">
                 <button class="pwr-btn ${onCls}"
                     onclick="togglePower('${ch.crate}',${ch.slot},${ch.channel},${ch.on?'false':'true'})"

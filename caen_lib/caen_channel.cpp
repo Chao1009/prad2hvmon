@@ -81,10 +81,44 @@ void CAEN_Channel::CheckStatus()
 {
     int handle = mother->GetHandle();
     unsigned short slot = mother->GetSlot();
-    unsigned int status;
-    int err = CAENHV_GetChParam(handle, slot, "Status", 1, &channel, &status);
+    unsigned int status_;
+    int err = CAENHV_GetChParam(handle, slot, "Status", 1, &channel, &status_);
     CAEN_ShowError("HV Channel Read Status", err);
-    CAEN_ShowChError(name, status);
+    if (err == CAENHV_OK) {
+    	status = status_;
+        CAEN_ShowChError(name, status_);
+    }
+}
+
+std::string CAEN_Channel::GetStatusString() const
+{
+    if (status_ == 0) return "";
+
+    static const struct { int bit; const char *abbr; const char *full; } flags[] = {
+        {  3, "OC",   "overcurrent"            },
+        {  4, "OV",   "overvoltage"            },
+        {  5, "UV",   "undervoltage"           },
+        {  6, "EXT",  "external trip"          },
+        {  7, "MAXV", "max voltage"            },
+        {  8, "DIS",  "external disable"       },
+        {  9, "ITRP", "internal trip"          },
+        { 10, "CAL",  "calibration error"      },
+        { 11, "UNPLG","unplugged"              },
+        { 13, "OVP",  "overvoltage protection" },
+        { 14, "PWRF", "power fail"             },
+        { 15, "TEMP", "temperature error"      },
+    };
+
+    std::string abbrs, detail;
+    for (const auto &f : flags) {
+        if (status_ & (1u << f.bit)) {
+            if (!abbrs.empty())  abbrs  += ' ';
+            if (!detail.empty()) detail += ", ";
+            abbrs  += f.abbr;
+            detail += f.full;
+        }
+    }
+    return abbrs + '|' + detail;
 }
 
 void CAEN_Channel::ReadVoltage()
@@ -243,7 +277,10 @@ void CAEN_Board::CheckStatus()
 
     for(int k = 0; k < nChan; ++k)
     {
-        CAEN_ShowChError(channelList.at(k)->GetName(), status[k]);
+        if (err == CAENHV_OK) {
+            channelList.at(k)->SetStatus(status[k]);
+            CAEN_ShowChError(channelList.at(k)->GetName(), status[k]);
+        }
     }
 }
 

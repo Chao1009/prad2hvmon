@@ -24,21 +24,22 @@ private:
     float Vmon;
     float Vset;
     float limit;
+    unsigned int status;
 
 public:
     // constructor
     CAEN_Channel(CAEN_Board *m)
     : mother(m), channel(-1), name(""), on_off(false), Vmon(0), Vset(0),
-      limit(CAEN_VoltageLimit(name))
+      limit(CAEN_VoltageLimit(name)), status(0)
     {}
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n)
     : mother(m), channel(c), name(n), on_off(false), Vmon(0), Vset(0),
-      limit(CAEN_VoltageLimit(name))
+      limit(CAEN_VoltageLimit(name)), status(0)
     {}
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n,
                  const bool &o, const float &vm, const float vs)
     : mother(m), channel(c), name(n), on_off(o), Vmon(vm), Vset(vs),
-      limit(CAEN_VoltageLimit(name))
+      limit(CAEN_VoltageLimit(name)), status(0)
     {}
 
     virtual ~CAEN_Channel();
@@ -47,6 +48,8 @@ public:
     void SetVoltage(const float &v);
     void SetName(const std::string &n);
     void SetLimit(const float &l);
+    void SetStatus(unsigned int s) { status = s; }
+
     void ReadVoltage();
     void CheckStatus();
     void UpdateVoltage(const bool &pw, const float &vm, const float &vs);
@@ -55,7 +58,9 @@ public:
     const float &GetVMon() {return Vmon;}
     const bool &IsTurnedOn() {return on_off;}
     const unsigned short &GetChannel() {return channel;}
-    CAEN_Board *GetMOther() {return mother;}
+    CAEN_Board *GetMother() {return mother;}
+    unsigned int GetStatus() const { return status; }
+    std::string GetStatusString() const;
 };
 
 class CAEN_Board

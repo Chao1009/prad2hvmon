@@ -226,6 +226,7 @@ private:
                     o["vmon"]    = ch->GetVMon();
                     o["vset"]    = ch->GetVSet();
                     o["on"]      = ch->IsTurnedOn();
+		    o["status"]  = QString::fromStdString(ch->GetStatusString());
                     arr.append(o);
                 }
             }
