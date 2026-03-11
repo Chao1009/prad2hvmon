@@ -305,6 +305,14 @@ function renderTable() {
                      onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                    >✓</button>`
                 : ch.vset.toFixed(2)}</td>
+            <td style="text-align:right">${ch.imon !== undefined ? ch.imon.toFixed(3) : '—'}</td>
+            <td style="text-align:right">${expertMode
+                ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${(ch.iset||0).toFixed(3)}"
+                     onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                   ><button class="vset-apply"
+                     onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                   >✓</button>`
+                : (ch.iset !== undefined ? ch.iset.toFixed(3) : '—')}</td>
             <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
             <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
@@ -385,6 +393,15 @@ function inlineSetVoltage(crate, slot, channel, value) {
     hvMonitor.setChannelVoltage(crate, slot, channel, v);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) ch.vset = v;
+}
+
+function inlineSetCurrent(crate, slot, channel, value) {
+    if (!hvMonitor || !expertMode) return;
+    const v = parseFloat(value);
+    if (isNaN(v) || v < 0) return;
+    hvMonitor.setChannelCurrent(crate, slot, channel, v);
+    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+    if (ch) ch.iset = v;
 }
 
 function inlineSetName(crate, slot, channel, value) {
@@ -749,6 +766,8 @@ function updateGeoHover(e) {
             html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${ch.vset.toFixed(2)} V</span></div>`;
             const diff = Math.abs(ch.vmon - ch.vset);
             html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val">${diff.toFixed(2)} V</span></div>`;
+            if (ch.imon !== undefined)
+                html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val">${ch.imon.toFixed(3)} µA</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ch.on?'tt-on':'tt-off'}">${ch.on?'ON':'OFF'}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
@@ -834,6 +853,8 @@ function openModPopup(mod) {
             html += `<span class="plbl">VMon</span><span class="pval">${c.vmon.toFixed(2)} V</span>`;
             html += `<span class="plbl">VSet</span><span class="pval">${c.vset.toFixed(2)} V</span>`;
             html += `<span class="plbl">ΔV</span><span class="pval">${Math.abs(c.vmon - c.vset).toFixed(2)} V</span>`;
+            html += `<span class="plbl">IMon</span><span class="pval">${c.imon !== undefined ? c.imon.toFixed(3)+' µA' : '—'}</span>`;
+            html += `<span class="plbl">ISet</span><span class="pval">${c.iset !== undefined ? c.iset.toFixed(3)+' µA' : '—'}</span>`;
             const stAbbr   = c.status ? c.status.split('|')[0] : '';
             const stDetail = c.status ? c.status.split('|')[1] : '';
             html += `<span class="plbl">Status</span><span class="pval ${statusClass(c.status)}" title="${stDetail}">${stAbbr}</span>`;

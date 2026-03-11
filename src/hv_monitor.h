@@ -209,6 +209,19 @@ public slots:
         if (ch) ch->SetName(newName.toStdString());
     }
 
+    // ── JS-callable: set current limit on a single channel ───────────────
+    Q_INVOKABLE
+    void setChannelCurrent(const QString &crateName, int slot,
+                           int channel, float current)
+    {
+        auto it = crate_map_.find(crateName.toStdString());
+        if (it == crate_map_.end()) return;
+        auto *bd = it->second->GetBoard(static_cast<unsigned short>(slot));
+        if (!bd) return;
+        auto *ch = bd->GetChannel(channel);
+        if (ch) ch->SetCurrent(current);
+    }
+
 signals:
     // Emitted every poll cycle – JS listens via qt.webChannelTransport
     void channelsUpdated(const QString &jsonData);
@@ -238,6 +251,8 @@ private:
                     o["name"]    = QString::fromStdString(ch->GetName());
                     o["vmon"]    = ch->GetVMon();
                     o["vset"]    = ch->GetVSet();
+                    o["imon"]    = ch->GetIMon();
+                    o["iset"]    = ch->GetISet();
                     o["on"]      = ch->IsTurnedOn();
 		    o["status"]  = QString::fromStdString(ch->GetStatusString());
                     arr.append(o);

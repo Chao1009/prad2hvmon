@@ -72,6 +72,25 @@ void CAEN_Channel::SetName(const string &n)
         name = n;
 }
 
+void CAEN_Channel::SetCurrent(const float &i)
+{
+    float val = i;
+    int handle = mother->GetHandle();
+    unsigned short slot = mother->GetSlot();
+    int err = CAENHV_SetChParam(handle, slot, "I0Set", 1, &channel, &val);
+
+    CAEN_ShowError("HV Channel Set Current", err);
+
+    if(err == CAENHV_OK)
+        Iset = val;
+}
+
+void CAEN_Channel::UpdateCurrent(const float &im, const float &is)
+{
+    Imon = im;
+    Iset = is;
+}
+
 void CAEN_Channel::SetLimit(const float &l)
 {
     limit = l;
@@ -147,6 +166,12 @@ void CAEN_Channel::ReadVoltage()
              << " V, which exceeds the limit " << limit << " V"
              << endl;
     }
+
+    err = CAENHV_GetChParam(handle, slot, "IMon", 1, &channel, &Imon);
+    CAEN_ShowError("HV Channel Read Current Mon", err);
+
+    err = CAENHV_GetChParam(handle, slot, "I0Set", 1, &channel, &Iset);
+    CAEN_ShowError("HV Channel Read Current Set", err);
 }
 
 void CAEN_Channel::UpdateVoltage(const bool &pw, const float &vm, const float &vs)
@@ -218,10 +243,20 @@ void CAEN_Board::ReadBoardMap()
     err = CAENHV_GetChParam(mother->GetHandle(), slot, "V0Set", nChan, list, setVals);
     CAEN_ShowError("HV Board Read Voltage Set", err);
 
+    float imonVals[nChan], isetVals[nChan];
+
+    err = CAENHV_GetChParam(mother->GetHandle(), slot, "IMon", nChan, list, imonVals);
+    CAEN_ShowError("HV Board Read Current Mon", err);
+
+    err = CAENHV_GetChParam(mother->GetHandle(), slot, "I0Set", nChan, list, isetVals);
+    CAEN_ShowError("HV Board Read Current Set", err);
+
     for(int k = 0; k < nChan; ++k)
     {
         string ch_name = nameList[k];
-        channelList.push_back(new CAEN_Channel(this, k, ch_name, pwON[k], monVals[k], setVals[k]));
+        auto *ch = new CAEN_Channel(this, k, ch_name, pwON[k], monVals[k], setVals[k]);
+        ch->UpdateCurrent(imonVals[k], isetVals[k]);
+        channelList.push_back(ch);
     }
 
     if(model.find("1932") != string::npos)
@@ -252,6 +287,14 @@ void CAEN_Board::ReadVoltage()
     err = CAENHV_GetChParam(handle, slot, "V0Set", nChan, list, setVals);
     CAEN_ShowError("HV Board Read Voltage Set", err);
 
+    float imonVals[nChan], isetVals[nChan];
+
+    err = CAENHV_GetChParam(handle, slot, "IMon", nChan, list, imonVals);
+    CAEN_ShowError("HV Board Read Current Mon", err);
+
+    err = CAENHV_GetChParam(handle, slot, "I0Set", nChan, list, isetVals);
+    CAEN_ShowError("HV Board Read Current Set", err);
+
     for(int k = 0; k < nChan; ++k)
     {
         if(channelList.at(k)->GetName() != nameList[k]) {
@@ -262,6 +305,7 @@ void CAEN_Board::ReadVoltage()
             continue;
         }
         channelList.at(k)->UpdateVoltage(pw[k], monVals[k], setVals[k]);
+        channelList.at(k)->UpdateCurrent(imonVals[k], isetVals[k]);
     }
 }
 
