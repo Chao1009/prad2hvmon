@@ -31,9 +31,8 @@ public:
         const std::vector<std::pair<std::string, std::string>> &crate_list,
         const QString &module_json_path = "",
         const QString &gui_config_path = "",
-        int poll_ms = 3000,
         QObject *parent = nullptr)
-        : QObject(parent), poll_interval_ms_(poll_ms),
+        : QObject(parent), poll_interval_ms_(3000),  // overridden by gui_config.json at runtime
           crate_defs_(crate_list), module_json_path_(module_json_path),
           gui_config_path_(gui_config_path)
     {

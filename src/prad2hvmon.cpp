@@ -84,7 +84,6 @@ int main(int argc, char *argv[])
     co.AddOpts(ConfigOption::arg_require, 'c', "crates");
     co.AddOpts(ConfigOption::arg_require, 'f', "file");
     co.AddOpts(ConfigOption::arg_require, 's', "save");
-    co.AddOpts(ConfigOption::arg_require, 'p', "poll");
     co.AddOpts(ConfigOption::arg_require, 'm', "module-geo");
     co.AddOpts(ConfigOption::help_message, 'h', "help");
 
@@ -93,7 +92,6 @@ int main(int argc, char *argv[])
     co.SetDesc('c', "path to crates JSON file (default: auto-discover).");
     co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
     co.SetDesc('s', "path to save channel readings (read mode, optional).");
-    co.SetDesc('p', "poll interval in ms for GUI mode (default 2000).");
     co.SetDesc('m', "path to module geometry JSON file (GUI mode).");
     co.SetDesc('h', "show help messages.");
 
@@ -103,14 +101,12 @@ int main(int argc, char *argv[])
     }
 
     std::string setting_file, save_file, module_geo_file, crate_config_file;
-    int poll_ms = 2000;
 
     for (auto &opt : co.GetOptions()) {
         switch (opt.mark) {
         case 'c': crate_config_file = opt.var.String(); break;
         case 'f': setting_file      = opt.var.String(); break;
         case 's': save_file         = opt.var.String(); break;
-        case 'p': poll_ms           = opt.var.Int();    break;
         case 'm': module_geo_file   = opt.var.String(); break;
         }
     }
@@ -180,7 +176,7 @@ int main(int argc, char *argv[])
             std::cout << "GUI config: " << guiConfigPath.toStdString() << "\n";
 
         // initiate monitor
-        HVMonitor monitor(crate_list, moduleGeoPath, guiConfigPath, poll_ms);
+        HVMonitor monitor(crate_list, moduleGeoPath, guiConfigPath);
         if (!monitor.initCrates()) {
             std::cerr << "WARNING: not all crates connected – "
                          "dashboard will show partial data.\n";

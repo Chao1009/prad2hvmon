@@ -18,5 +18,9 @@
     },
     "geoView": {
         "extent": 600
+    },
+    "intervals": {
+        "pollMs":   3000,
+        "renderMs": 200
     }
 }

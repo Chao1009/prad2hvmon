@@ -12,6 +12,8 @@ let hvMonitor    = null;
 let allChannels  = [];
 let sortCol      = 'crate';
 let sortAsc      = true;
+let renderIntervalMs = 200;
+let renderTimerId    = null;
 let filterStatus = 'all';
 let filterCrate  = null;
 let searchText   = '';
@@ -72,25 +74,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 MODULES.forEach(m => { MOD_MAP[m.n] = m; });
                 console.log('Loaded ' + MODULES.length + ' modules');
             });
-            // Load GUI config (ΔV thresholds, etc.)
+            // Load GUI config (ΔV thresholds, intervals, etc.)
             hvMonitor.getGuiConfig(cfgJson => {
                 try {
                     const cfg = JSON.parse(cfgJson);
-                    if (cfg.deltaV) Object.assign(DV, cfg.deltaV);
+                    if (cfg.deltaV)     Object.assign(DV, cfg.deltaV);
                     if (cfg.colorRange) Object.assign(CR, cfg.colorRange);
                     if (cfg.geoView)    Object.assign(GV, cfg.geoView);
+                    if (cfg.intervals) {
+                        // Apply render interval
+                        if (cfg.intervals.renderMs) {
+                            renderIntervalMs = cfg.intervals.renderMs;
+                            const rs = document.getElementById('render-slider');
+                            if (renderIntervalMs > parseInt(rs.max)) rs.max = renderIntervalMs;
+                            rs.value = renderIntervalMs;
+                            document.getElementById('render-val').textContent = renderIntervalMs;
+                        }
+                        // Apply poll interval
+                        if (cfg.intervals.pollMs) {
+                            const sec = cfg.intervals.pollMs / 1000;
+                            const ps = document.getElementById('poll-slider');
+                            if (sec > parseFloat(ps.max)) ps.max = Math.ceil(sec);
+                            ps.value = sec;
+                            document.getElementById('poll-val').textContent = sec.toFixed(1);
+                            if (hvMonitor) hvMonitor.setPollInterval(cfg.intervals.pollMs);
+                        }
+                    }
                     console.log('GUI config loaded — DV:', DV, 'CR:', CR, 'GV:', GV);
                 } catch (e) {
                     console.warn('Failed to parse gui_config.json, using defaults', e);
                 }
-            });
-            // Sync poll interval slider with backend setting
-            hvMonitor.getPollInterval(ms => {
-                const sec = ms / 1000;
-                const slider = document.getElementById('poll-slider');
-                if (sec > parseFloat(slider.max)) slider.max = Math.ceil(sec);
-                slider.value = sec;
-                document.getElementById('poll-val').textContent = sec.toFixed(1);
             });
             document.getElementById('loading').classList.add('hidden');
             setPillConnected(true);
@@ -101,11 +114,21 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initGeoMap();
 
-    // Fast render loop — redraws from cached allChannels at ~200 ms,
-    // independent of the slow CAEN poll interval.
-    setInterval(() => {
-        if (allChannels.length > 0) renderActiveTab();
-    }, 200);
+    // Fast render loop — redraws from cached allChannels at configurable
+    // interval, independent of the slow CAEN poll interval.
+    function startRenderLoop() {
+        if (renderTimerId !== null) clearInterval(renderTimerId);
+        renderTimerId = setInterval(() => {
+            if (allChannels.length > 0) renderActiveTab();
+        }, renderIntervalMs);
+    }
+    startRenderLoop();
+
+    document.getElementById('render-slider').addEventListener('input', e => {
+        renderIntervalMs = parseInt(e.target.value);
+        document.getElementById('render-val').textContent = renderIntervalMs;
+        startRenderLoop();
+    });
 });
 
 function rebuildChMap() {
