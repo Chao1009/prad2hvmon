@@ -183,12 +183,17 @@ void CAEN_Channel::ReadVoltage()
              << endl;
     }
 
+    if (!supportsCurrentIO) return;
+
     err = CAENHV_GetChParam(handle, slot, "IMon", 1, &channel, &Imon);
-    if (isUnsupportedParam(err)) { supportsCurrentIO = false; Imon = NAN; Iset = NAN; return; }
+    if (isUnsupportedParam(err)) {
+        supportsCurrentIO = false; Imon = NAN; Iset = NAN;
+        return;
+    }
     CAEN_ShowError("HV Channel Read Current Mon", err);
 
+    // IMon and I0Set are a pair — if IMon is supported, I0Set must be too
     err = CAENHV_GetChParam(handle, slot, "I0Set", 1, &channel, &Iset);
-    if (isUnsupportedParam(err)) { supportsCurrentIO = false; Iset = NAN; return; }
     CAEN_ShowError("HV Channel Read Current Set", err);
 }
 
@@ -270,13 +275,9 @@ void CAEN_Board::ReadBoardMap()
         for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
     } else {
         CAEN_ShowError("HV Board Read Current Mon", err);
+        // IMon and I0Set are a pair — no separate unsupported check needed
         err = CAENHV_GetChParam(mother->GetHandle(), slot, "I0Set", nChan, list, isetVals);
-        if (isUnsupportedParam(err)) {
-            boardSupportsCurrentIO = false;
-            for (int k = 0; k < nChan; ++k) isetVals[k] = NAN;
-        } else {
-            CAEN_ShowError("HV Board Read Current Set", err);
-        }
+        CAEN_ShowError("HV Board Read Current Set", err);
     }
 
     for(int k = 0; k < nChan; ++k)
@@ -317,21 +318,25 @@ void CAEN_Board::ReadVoltage()
     CAEN_ShowError("HV Board Read Voltage Set", err);
 
     float imonVals[nChan], isetVals[nChan];
-    bool boardSupportsCurrentIO = true;
+    // Check the first channel's flag — all channels on the same board share support
+    const bool boardSupportsCurrentIO = channelList.empty() || channelList.at(0)->SupportsCurrentIO();
 
-    err = CAENHV_GetChParam(handle, slot, "IMon", nChan, list, imonVals);
-    if (isUnsupportedParam(err)) {
-        boardSupportsCurrentIO = false;
-        for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
-    } else {
-        CAEN_ShowError("HV Board Read Current Mon", err);
-        err = CAENHV_GetChParam(handle, slot, "I0Set", nChan, list, isetVals);
+    if (boardSupportsCurrentIO) {
+        err = CAENHV_GetChParam(handle, slot, "IMon", nChan, list, imonVals);
         if (isUnsupportedParam(err)) {
-            boardSupportsCurrentIO = false;
-            for (int k = 0; k < nChan; ++k) isetVals[k] = NAN;
+            // Mark all channels on this board as unsupported
+            for (int k = 0; k < nChan; ++k) {
+                imonVals[k] = NAN; isetVals[k] = NAN;
+                channelList.at(k)->SetSupportsCurrentIO(false);
+            }
         } else {
+            CAEN_ShowError("HV Board Read Current Mon", err);
+            // IMon and I0Set are a pair — no separate unsupported check needed
+            err = CAENHV_GetChParam(handle, slot, "I0Set", nChan, list, isetVals);
             CAEN_ShowError("HV Board Read Current Set", err);
         }
+    } else {
+        for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
     }
 
     for(int k = 0; k < nChan; ++k)
@@ -345,7 +350,6 @@ void CAEN_Board::ReadVoltage()
         }
         channelList.at(k)->UpdateVoltage(pw[k], monVals[k], setVals[k]);
         channelList.at(k)->UpdateCurrent(imonVals[k], isetVals[k]);
-        if (!boardSupportsCurrentIO) channelList.at(k)->SetSupportsCurrentIO(false);
     }
 }
 
