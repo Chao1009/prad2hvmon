@@ -18,6 +18,8 @@
     --red-dim:     #4a1a1a;
     --amber:       #eab308;
     --amber-dim:   #3d3008;
+    --teal:        #22d3ee;
+    --teal-dim:    #0a3040;
     --mono:        'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
     --sans:        'Segoe UI', 'SF Pro Text', system-ui, -apple-system, sans-serif;
     --radius:      6px;
@@ -101,8 +103,11 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .summary-item { flex:1; display:flex; flex-direction:column; align-items:center; padding:10px 0; background:var(--bg-card); }
 .summary-item .label { font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim); margin-bottom:3px; }
 .summary-item .value { font-family:var(--mono); font-size:20px; font-weight:600; color:var(--text-bright); }
-.summary-item .value.green {color:var(--green)} .summary-item .value.red{color:var(--red)}
-.summary-item .value.amber {color:var(--amber)} .summary-item .value.accent{color:var(--accent)}
+.summary-item .value.green {color:var(--green)}
+.summary-item .value.red{color:var(--red)}
+.summary-item .value.amber {color:var(--amber)}
+.summary-item .value.accent{color:var(--accent)}
+.summary-item .value.teal{color:var(--teal)}
 .summary-item .value.dim { color: var(--text-dim) }
 
 /* ─── Filter / Search Bar ─────────────────────────────────────────── */
@@ -125,7 +130,7 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .chip:hover { color:var(--text); border-color:var(--border-hi); }
 .chip.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
 .chip.active.on-chip { background:var(--green-dim); border-color:var(--green); color:var(--green); }
-.chip.active.off-chip { background: var(--bg-card);   border-color: var(--text-dim); color: var(--text-dim); }
+.chip.active.off-chip { background: var(--bg-card);   border-color: var(--border-hi); color: var(--text-dim); }
 .chip[data-filter="warn"].active { background: var(--amber-dim); border-color: var(--amber); color: var(--amber); }
 .chip.active.fault-chip { background: var(--red-dim); border-color: var(--red); color: var(--red); }
 #poll-label { font-size:10.5px; color:var(--text-dim); font-family:var(--mono); }
@@ -184,11 +189,11 @@ td .status-dot.off { background:var(--red); opacity:0.5; }
 
 /* ─── PRIMARY channel highlighting ────────────────────────────────── */
 tr.primary-row {
-    background: var(--amber-dim);
-    border-left: 3px solid var(--amber);
+    background: var(--teal-dim);
+    border-left: 3px solid var(--teal);
 }
 tr.primary-row:hover {
-    background: #3d3008cc;
+    background: ##0a3040cc;
 }
 tr.primary-row td {
     color: var(--text-bright);
@@ -200,18 +205,18 @@ tr.primary-row td {
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--amber);
-    background: var(--amber-dim);
-    border: 1px solid var(--amber);
+    color: var(--teal);
+    background: var(--teal-dim);
+    border: 1px solid var(--teal);
     border-radius: 3px;
     padding: 1px 5px;
     margin-left: 6px;
     vertical-align: middle;
 }
 .chip.primary-chip.active {
-    background: var(--amber-dim);
-    border-color: var(--amber);
-    color: var(--amber);
+    background: var(--teal-dim);
+    border-color: var(--teal);
+    color: var(--teal);
 }
 
 /* ─── Bulk power buttons ──────────────────────────────────────────── */

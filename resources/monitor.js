@@ -249,7 +249,7 @@ function renderTable() {
     if (filterStatus === 'on')   data = data.filter(c => c.on);
     if (filterStatus === 'off')  data = data.filter(c => !c.on);
     if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
-    if (filterStatus === 'warn') data = data.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
+    if (filterStatus === 'warn') data = data.filter(c => isSettled(c) && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
     if (filterStatus === 'fault') data = data.filter(c => statusClass(c.status) === 'status-err');
     if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
     if (searchText)              data = data.filter(c =>
@@ -296,7 +296,7 @@ function renderTable() {
     const nCr     = new Set(allChannels.map(c => c.crate)).size;
     const primCnt = allChannels.filter(c => isPrimary(c)).length;
     const onCnt   = allChannels.filter(c => c.on).length;
-    const warns   = allChannels.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
+    const warns   = allChannels.filter(c => isSettled(c) && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
     const faults  = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
     document.getElementById('s-total').textContent   = total;
     document.getElementById('s-crates').textContent  = nCr;
@@ -329,7 +329,7 @@ function updateFooter() {
         let filtered = allChannels.slice();
         if (filterStatus === 'on')      filtered = filtered.filter(c => c.on);
         if (filterStatus === 'off')     filtered = filtered.filter(c => !c.on);
-        if (filterStatus === 'warn')    filtered = filtered.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
+        if (filterStatus === 'warn')    filtered = filtered.filter(c => isSettled(c) && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
         if (filterStatus === 'primary') filtered = filtered.filter(c => isPrimary(c));
         if (filterCrate)                filtered = filtered.filter(c => c.crate === filterCrate);
         if (searchText)                 filtered = filtered.filter(c =>
@@ -858,4 +858,12 @@ function statusClass(s) {
     if (hasFault)   return 'status-err';
     if (isOffOnly)  return 'status-ok';
     return 'status-work';   // ON, RUP, RDN
+}
+
+// A channel is "settled" (eligible for ΔV warning) only when fully ON —
+// not while ramping up (RUP), ramping down (RDN), or off (OFF).
+function isSettled(ch) {
+    if (!ch.status) return false;
+    const tokens = ch.status.split('|')[0].trim().split(/\s+/);
+    return tokens.length > 0 && tokens.every(t => t === 'ON');
 }
