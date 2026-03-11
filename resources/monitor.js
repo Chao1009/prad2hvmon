@@ -327,7 +327,7 @@ function renderTable() {
             }</td>
             <td style="text-align:right">${fmt(ch.vmon, 2)}</td>
             <td style="text-align:right">${expertMode
-                ? `<input class="vset-inline" type="number" step="0.1" value="${fmt(ch.vset, 1)}"
+                ? `<input class="vset-inline" type="text" value="${fmt(ch.vset, 2)}"
                      onchange="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                    ><button class="vset-apply"
                      onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
@@ -338,7 +338,7 @@ function renderTable() {
             <td style="text-align:right">${ch.iSupported===false
                 ? `<span style="color:var(--text-dim)">N/A</span>`
                 : expertMode
-                    ? `<input class="vset-inline" type="number" step="0.1" min="0" value="${fmt(ch.iset, 1)}"
+                    ? `<input class="vset-inline" type="text" value="${fmt(ch.iset, 1)}"
                          onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                        ><button class="vset-apply"
                          onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
@@ -865,7 +865,7 @@ function openModPopup(mod) {
     const rowV = document.createElement('div');
     rowV.className = 'popup-action-row';
     const vsetInput = document.createElement('input');
-    vsetInput.type = 'number'; vsetInput.step = '0.1'; vsetInput.placeholder = 'VSet (V)';
+    vsetInput.type = 'text'; vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
     rowV.append(vsetInput, btnSetV);
@@ -873,7 +873,7 @@ function openModPopup(mod) {
     const rowI = document.createElement('div');
     rowI.className = 'popup-action-row';
     const isetInput = document.createElement('input');
-    isetInput.type = 'number'; isetInput.step = '0.1'; isetInput.min = '0'; isetInput.placeholder = 'ISet (µA)';
+    isetInput.type = 'text'; isetInput.placeholder = 'ISet (µA)';
     const btnSetI = document.createElement('button');
     btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
     rowI.append(isetInput, btnSetI);
