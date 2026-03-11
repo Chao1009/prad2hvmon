@@ -79,7 +79,7 @@ void CAEN_Channel::SetName(const string &n)
 // should NOT be treated as unsupported — they are real hardware errors.
 static inline bool isUnsupportedParam(int err)
 {
-    return (err == 0xe || err == 0x1b);
+    return (err == 0xe || err == 0x1b || err == -5);
 }
 
 void CAEN_Channel::SetCurrent(const float &i)
