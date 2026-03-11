@@ -227,6 +227,49 @@ tr.primary-row td {
 .bulk-btn.bulk-off { color:var(--red); border-color:var(--red-dim); background:var(--red-dim); }
 .bulk-btn.bulk-off:hover { background:var(--red); color:#fff; }
 
+/* ─── Expert mode toggle ──────────────────────────────────────────── */
+.expert-toggle {
+    display: flex; align-items: center; gap: 6px; margin-left: auto;
+    font-family: var(--mono); font-size: 10.5px; color: var(--text-dim);
+}
+.expert-toggle .switch {
+    position: relative; width: 34px; height: 18px; cursor: pointer;
+}
+.expert-toggle .switch input { opacity: 0; width: 0; height: 0; }
+.expert-toggle .slider {
+    position: absolute; inset: 0; background: var(--border);
+    border-radius: 9px; transition: all var(--transition);
+}
+.expert-toggle .slider::before {
+    content: ''; position: absolute; left: 2px; top: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: var(--text-dim); transition: all var(--transition);
+}
+.expert-toggle .switch input:checked + .slider {
+    background: var(--red-dim); border: 1px solid var(--red);
+}
+.expert-toggle .switch input:checked + .slider::before {
+    transform: translateX(16px); background: var(--red);
+}
+.expert-label { user-select: none; }
+.expert-label.active { color: var(--red); font-weight: 600; }
+
+/* ─── Inline VSet editor in table ─────────────────────────────────── */
+.vset-inline {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--bg); color: var(--text-bright);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 1px 4px; width: 70px; text-align: right; outline: none;
+}
+.vset-inline:focus { border-color: var(--accent); }
+.vset-apply {
+    font-family: var(--mono); font-size: 9px; padding: 1px 5px;
+    border-radius: 3px; border: 1px solid var(--accent-dim);
+    background: var(--accent-dim); color: var(--accent);
+    cursor: pointer; margin-left: 2px; transition: all var(--transition);
+}
+.vset-apply:hover { background: var(--accent); color: #fff; }
+
 /* ─── Footer ──────────────────────────────────────────────────────── */
 footer {
     grid-row: 4;
@@ -452,6 +495,13 @@ footer #last-update::before {
             <span class="tag">CAEN SY1527</span>
         </div>
         <div class="controls">
+            <div class="expert-toggle">
+                <span class="expert-label" id="expert-label">Expert</span>
+                <label class="switch">
+                    <input type="checkbox" id="expert-switch">
+                    <span class="slider"></span>
+                </label>
+            </div>
             <div class="status-pill" id="conn-pill">
                 <span class="dot"></span>
                 <span id="conn-text">connecting</span>
@@ -561,6 +611,7 @@ const MOD_MAP = {};
 // ═════════════════════════════════════════════════════════════════════
 //  Global state
 // ═════════════════════════════════════════════════════════════════════
+let expertMode   = false;
 let hvMonitor    = null;
 let allChannels  = [];
 let sortCol      = 'crate';
@@ -746,6 +797,23 @@ function initTableUI() {
         allChannels.forEach(ch => { ch.on = false; });
         renderActiveTab();
     });
+
+    // ── Expert mode toggle ──────────────────────────────────────────────
+    document.getElementById('expert-switch').addEventListener('change', e => {
+        if (e.target.checked) {
+            const ok = confirm(
+                '⚠ EXPERT MODE ⚠\n\n' +
+                'This enables direct VSet editing on all channels.\n' +
+                'Incorrect voltage settings can damage detector modules.\n\n' +
+                'You must know what you are doing before enabling this.\n\n' +
+                'Continue?'
+            );
+            if (!ok) { e.target.checked = false; return; }
+        }
+        expertMode = e.target.checked;
+        document.getElementById('expert-label').classList.toggle('active', expertMode);
+        renderActiveTab();
+    });
 }
 
 function populateCrateChips() {
@@ -804,7 +872,13 @@ function renderTable() {
             <td>${ch.model||'—'}</td>
             <td>${ch.name||'—'}${prim ? '<span class="primary-badge">Primary</span>' : ''}</td>
             <td style="text-align:right">${ch.vmon.toFixed(2)}</td>
-            <td style="text-align:right">${ch.vset.toFixed(2)}</td>
+            <td style="text-align:right">${expertMode
+                ? `<input class="vset-inline" type="number" step="0.1" value="${ch.vset.toFixed(1)}"
+                     onchange="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                   ><button class="vset-apply"
+                     onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                   >✓</button>`
+                : ch.vset.toFixed(2)}</td>
             <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
             <td style="text-align:center">
                 <button class="pwr-btn ${onCls}"
@@ -839,6 +913,15 @@ function togglePower(crate, slot, channel, on) {
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) ch.on = on;
     renderActiveTab();
+}
+
+function inlineSetVoltage(crate, slot, channel, value) {
+    if (!hvMonitor || !expertMode) return;
+    const v = parseFloat(value);
+    if (isNaN(v) || v < 0) return;
+    hvMonitor.setChannelVoltage(crate, slot, channel, v);
+    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+    if (ch) ch.vset = v;
 }
 
 function setPillConnected(ok) {
@@ -1206,8 +1289,8 @@ function openModPopup(mod) {
     grid.innerHTML = html;
 
     const hasChannel = !!ch;
-    document.getElementById('popup-vset').disabled    = !hasChannel;
-    document.getElementById('popup-set-v').disabled    = !hasChannel;
+    document.getElementById('popup-vset').disabled      = !hasChannel || !expertMode;
+    document.getElementById('popup-set-v').disabled     = !hasChannel || !expertMode;
     document.getElementById('popup-turn-on').disabled   = !hasChannel;
     document.getElementById('popup-turn-off').disabled  = !hasChannel;
 
@@ -1220,7 +1303,7 @@ function closeModPopup() {
 }
 
 function popupSetVoltage() {
-    if (!popupMod || !hvMonitor) return;
+    if (!popupMod || !hvMonitor || !expertMode) return;
     const ch = chByName[popupMod.n];
     if (!ch) return;
     const v = parseFloat(document.getElementById('popup-vset').value);
