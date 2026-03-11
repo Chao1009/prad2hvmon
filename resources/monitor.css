@@ -167,10 +167,10 @@ th:nth-child(6),td:nth-child(6){width:12%}
 th:nth-child(7),td:nth-child(7){width:6%;text-align:right}
 th:nth-child(8),td:nth-child(8){width:6%;text-align:right}
 th:nth-child(9),td:nth-child(9){width:6%;text-align:right}
-th:nth-child(8),td:nth-child(8){width:6%;text-align:right}
-th:nth-child(9),td:nth-child(9){width:8%;text-align:right}
-th:nth-child(10),td:nth-child(10){width:12%}
-th:nth-child(11),td:nth-child(11){width:8%;text-align:center}
+th:nth-child(10),td:nth-child(10){width:6%;text-align:right}
+th:nth-child(11),td:nth-child(11){width:8%;text-align:right}
+th:nth-child(12),td:nth-child(12){width:12%}
+th:nth-child(13),td:nth-child(13){width:8%;text-align:center}
 tbody tr { border-bottom:1px solid var(--border); transition:background var(--transition); }
 tbody tr:hover { background:var(--bg-hover); }
 tbody td { font-family:var(--mono); font-size:12px; padding:6px 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -458,14 +458,18 @@ footer #last-update::before {
 }
 .mod-popup .popup-grid .plbl { color: var(--text-dim); font-size: 11px; }
 .mod-popup .popup-grid .pval { color: var(--text-bright); font-size: 12px; }
+
 .mod-popup .popup-actions {
-    display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center;
+    display: flex; flex-direction: column; gap: 7px;
+}
+.mod-popup .popup-action-row {
+    display: flex; gap: 8px; align-items: center;
 }
 .mod-popup .popup-actions input[type=number] {
     font-family: var(--mono); font-size: 12px;
     background: var(--bg); color: var(--text-bright);
     border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 5px 7px; width: 100px; outline: none;
+    padding: 5px 7px; width: 100px; outline: none; flex: 1;
 }
 .mod-popup .popup-actions input[type=number]:focus { border-color: var(--accent); }
 

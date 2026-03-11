@@ -837,20 +837,31 @@ function openModPopup(mod) {
 
     const actions = document.createElement('div');
     actions.className = 'popup-actions';
+    const rowV = document.createElement('div');
+    rowV.className = 'popup-action-row';
     const vsetInput = document.createElement('input');
     vsetInput.type = 'number'; vsetInput.step = '0.1'; vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
+    rowV.append(vsetInput, btnSetV);
+
+    const rowI = document.createElement('div');
+    rowI.className = 'popup-action-row';
     const isetInput = document.createElement('input');
     isetInput.type = 'number'; isetInput.step = '0.001'; isetInput.min = '0'; isetInput.placeholder = 'ISet (µA)';
     const btnSetI = document.createElement('button');
     btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
+    rowI.append(isetInput, btnSetI);
+
+    const rowPwr = document.createElement('div');
+    rowPwr.className = 'popup-action-row';
     const btnOn = document.createElement('button');
     btnOn.className = 'btn-sm btn-on'; btnOn.textContent = 'ON';
     const btnOff = document.createElement('button');
     btnOff.className = 'btn-sm btn-off'; btnOff.textContent = 'OFF';
-    actions.append(vsetInput, btnSetV, isetInput, btnSetI, btnOn, btnOff);
-    body.appendChild(actions);
+    rowPwr.append(btnOn, btnOff);
+
+    actions.append(rowV, rowI, rowPwr);body.appendChild(actions);
     el.appendChild(body);
 
     // Populate grid + wire actions
@@ -892,8 +903,9 @@ function openModPopup(mod) {
         btnSetV.disabled   = !hasChannel || !expertMode;
         isetInput.disabled = !iOK || !expertMode;
         btnSetI.disabled   = !iOK || !expertMode;
-        isetInput.style.opacity = (!iOK || !expertMode) ? '0.35' : '1';
-        btnSetI.style.opacity   = (!iOK || !expertMode) ? '0.35' : '1';
+        rowI.style.display = (hasChannel && c.iSupported === false) ? 'none' : '';
+        isetInput.style.opacity = (iOK && !expertMode) ? '0.35' : '1';
+        btnSetI.style.opacity   = (iOK && !expertMode) ? '0.35' : '1';
         btnOn.disabled     = !hasChannel;
         btnOff.disabled    = !hasChannel;
     }
