@@ -1006,3 +1006,11 @@ function isSettled(ch) {
     const tokens = ch.status.split('|')[0].trim().split(/\s+/);
     return tokens.length > 0 && tokens.every(t => t === 'ON');
 }
+
+function dotClass(ch) {
+    if (statusClass(ch.status) === 'status-err') return 'fault';
+    if (isSettled(ch) && ch.vmon != null && ch.vset != null &&
+        Math.abs(ch.vmon - ch.vset) > DV.warn_threshold) return 'warn';
+    return ch.on ? 'on' : 'off';
+}
+

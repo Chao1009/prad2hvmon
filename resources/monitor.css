@@ -130,7 +130,7 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .chip:hover { color:var(--text); border-color:var(--border-hi); }
 .chip.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
 .chip.active.on-chip { background:var(--green-dim); border-color:var(--green); color:var(--green); }
-.chip.active.off-chip { background: var(--bg-card);   border-color: var(--border-hi); color: var(--text-dim); }
+.chip.active.off-chip { background: var(--bg-card); border-color: var(--green); color: var(--text-dim); }
 .chip[data-filter="warn"].active { background: var(--amber-dim); border-color: var(--amber); color: var(--amber); }
 .chip.active.fault-chip { background: var(--red-dim); border-color: var(--red); color: var(--red); }
 #poll-label { font-size:10.5px; color:var(--text-dim); font-family:var(--mono); }
@@ -175,8 +175,10 @@ tbody tr { border-bottom:1px solid var(--border); transition:background var(--tr
 tbody tr:hover { background:var(--bg-hover); }
 tbody td { font-family:var(--mono); font-size:12px; padding:6px 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 td .status-dot { display:inline-block; width:8px; height:8px; border-radius:50%; }
-td .status-dot.on { background:var(--green); box-shadow:0 0 6px var(--green); }
-td .status-dot.off { background:var(--red); opacity:0.5; }
+td .status-dot.on    { background:var(--green); box-shadow:0 0 6px var(--green); }
+td .status-dot.off   { background:var(--text-dim); opacity:0.6; }
+td .status-dot.warn  { background:var(--amber); box-shadow:0 0 6px var(--amber); }
+td .status-dot.fault { background:var(--red);   box-shadow:0 0 6px var(--red);   }
 .diff-ok{color:var(--green)} .diff-warn{color:var(--amber)} .diff-bad{color:var(--red)}
 .status-err { color: var(--red); font-size: 10px; letter-spacing: 0.05em; }
 .status-ok  { color: var(--text-dim); }
