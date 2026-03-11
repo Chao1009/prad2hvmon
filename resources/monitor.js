@@ -57,6 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
+            refreshAllPopups();
             renderActiveTab();
         });
         hvMonitor.readAll(jsonStr => {
@@ -314,10 +315,10 @@ function updateFooter() {
         if (geoHighlight) {
             const matched = MODULES.filter(m => m.n.toUpperCase().includes(geoHighlight)).length;
             document.getElementById('row-count').textContent =
-                `${matched} / ${total} modules shown`;
+                `${matched} / ${total} modules shown | ${allChannels.length} channels`;
         } else {
             document.getElementById('row-count').textContent =
-                `${total} modules total`;
+                `${total} modules | ${allChannels.length} channels`;
         }
     } else {
         // Table tab: count visible (filtered) rows vs total channels
@@ -333,10 +334,10 @@ function updateFooter() {
         const shown = filtered.length;
         if (shown === total) {
             document.getElementById('row-count').textContent =
-                `${total} channels total`;
+                `${total} channels | ${MODULES.length} modules`;
         } else {
             document.getElementById('row-count').textContent =
-                `${shown} / ${total} channels shown`;
+                `${shown} / ${total} channels shown | ${MODULES.length} modules`;
         }
     }
 }
@@ -432,15 +433,6 @@ function initGeoMap() {
 
     // Reset
     document.getElementById('geo-reset').addEventListener('click', () => { resetGeoView(); });
-
-    // Popup
-    document.getElementById('popup-close').addEventListener('click', closeModPopup);
-    document.getElementById('mod-popup-overlay').addEventListener('click', e => {
-        if (e.target === e.currentTarget) closeModPopup();
-    });
-    document.getElementById('popup-set-v').addEventListener('click', popupSetVoltage);
-    document.getElementById('popup-turn-on').addEventListener('click', () => popupSetPower(true));
-    document.getElementById('popup-turn-off').addEventListener('click', () => popupSetPower(false));
 
     // Resize observer
     new ResizeObserver(() => { resizeGeoCanvas(); renderGeo(); }).observe(geoWrap);
@@ -695,68 +687,157 @@ function updateGeoHover(e) {
     }
 }
 
-// ── Module popup (click) ─────────────────────────────────────────────
-let popupMod = null;
+// ── Floating multi-window popup system ──────────────────────────────
+const popups = new Map();   // modName → { el, ch ref }
+let popupZTop = 210;        // z-index counter
+
+function bringToFront(el) {
+    popupZTop++;
+    el.style.zIndex = popupZTop;
+    document.querySelectorAll('.mod-popup').forEach(p => p.classList.remove('focused'));
+    el.classList.add('focused');
+}
 
 function openModPopup(mod) {
-    popupMod = mod;
-    const ch = chByName[mod.n];
-    document.getElementById('popup-title').textContent = mod.n;
-
-    const grid = document.getElementById('popup-grid');
-    let html = '';
-    html += `<span class="plbl">Type</span><span class="pval">${mod.t}</span>`;
-    html += `<span class="plbl">Position</span><span class="pval">(${mod.x.toFixed(1)}, ${mod.y.toFixed(1)}) mm</span>`;
-    html += `<span class="plbl">Size</span><span class="pval">${mod.sx} × ${mod.sy} mm</span>`;
-    if (ch) {
-        html += `<span class="plbl">Crate</span><span class="pval">${ch.crate}</span>`;
-        html += `<span class="plbl">Slot / Ch</span><span class="pval">${ch.slot} / ${ch.channel}</span>`;
-        html += `<span class="plbl">Model</span><span class="pval">${ch.model || '—'}</span>`;
-        html += `<span class="plbl">VMon</span><span class="pval">${ch.vmon.toFixed(2)} V</span>`;
-        html += `<span class="plbl">VSet</span><span class="pval">${ch.vset.toFixed(2)} V</span>`;
-        html += `<span class="plbl">ΔV</span><span class="pval">${Math.abs(ch.vmon-ch.vset).toFixed(2)} V</span>`;
-        const stAbbr  = ch.status ? ch.status.split('|')[0] : '';
-        const stDetail = ch.status ? ch.status.split('|')[1] : '';
-        html += `<span class="plbl">Status</span><span class="pval ${statusClass(ch.status)}" title="${stDetail}">${stAbbr}</span>`;
-	document.getElementById('popup-vset').value = ch.vset.toFixed(1);
-    } else {
-        html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
-        document.getElementById('popup-vset').value = '';
+    // If already open, just bring to front
+    if (popups.has(mod.n)) {
+        bringToFront(popups.get(mod.n).el);
+        return;
     }
-    grid.innerHTML = html;
 
-    const hasChannel = !!ch;
-    document.getElementById('popup-vset').disabled      = !hasChannel || !expertMode;
-    document.getElementById('popup-set-v').disabled     = !hasChannel || !expertMode;
-    document.getElementById('popup-turn-on').disabled   = !hasChannel;
-    document.getElementById('popup-turn-off').disabled  = !hasChannel;
+    const ch = chByName[mod.n];
 
-    document.getElementById('mod-popup-overlay').classList.add('visible');
+    // Build element
+    const el = document.createElement('div');
+    el.className = 'mod-popup';
+
+    // Stagger new windows
+    const offset = (popups.size % 8) * 26;
+    el.style.left = (80 + offset) + 'px';
+    el.style.top  = (80 + offset) + 'px';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'popup-header';
+    header.innerHTML = `<h2>${mod.n}</h2><button class="popup-close" title="Close">✕</button>`;
+    el.appendChild(header);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'popup-body';
+
+    const grid = document.createElement('div');
+    grid.className = 'popup-grid';
+    body.appendChild(grid);
+
+    const actions = document.createElement('div');
+    actions.className = 'popup-actions';
+    const vsetInput = document.createElement('input');
+    vsetInput.type = 'number'; vsetInput.step = '0.1'; vsetInput.placeholder = 'VSet (V)';
+    const btnSetV = document.createElement('button');
+    btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
+    const btnOn = document.createElement('button');
+    btnOn.className = 'btn-sm btn-on'; btnOn.textContent = 'ON';
+    const btnOff = document.createElement('button');
+    btnOff.className = 'btn-sm btn-off'; btnOff.textContent = 'OFF';
+    actions.append(vsetInput, btnSetV, btnOn, btnOff);
+    body.appendChild(actions);
+    el.appendChild(body);
+
+    // Populate grid + wire actions
+    function refresh() {
+        const c = chByName[mod.n];
+        let html = '';
+        html += `<span class="plbl">Type</span><span class="pval">${mod.t}</span>`;
+        html += `<span class="plbl">Position</span><span class="pval">(${mod.x.toFixed(1)}, ${mod.y.toFixed(1)}) mm</span>`;
+        html += `<span class="plbl">Size</span><span class="pval">${mod.sx} × ${mod.sy} mm</span>`;
+        if (c) {
+            html += `<span class="plbl">Crate</span><span class="pval">${c.crate}</span>`;
+            html += `<span class="plbl">Slot / Ch</span><span class="pval">${c.slot} / ${c.channel}</span>`;
+            html += `<span class="plbl">Model</span><span class="pval">${c.model || '—'}</span>`;
+            html += `<span class="plbl">VMon</span><span class="pval">${c.vmon.toFixed(2)} V</span>`;
+            html += `<span class="plbl">VSet</span><span class="pval">${c.vset.toFixed(2)} V</span>`;
+            html += `<span class="plbl">ΔV</span><span class="pval">${Math.abs(c.vmon - c.vset).toFixed(2)} V</span>`;
+            const stAbbr   = c.status ? c.status.split('|')[0] : '';
+            const stDetail = c.status ? c.status.split('|')[1] : '';
+            html += `<span class="plbl">Status</span><span class="pval ${statusClass(c.status)}" title="${stDetail}">${stAbbr}</span>`;
+            vsetInput.value = c.vset.toFixed(1);
+        } else {
+            html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
+            vsetInput.value = '';
+        }
+        grid.innerHTML = html;
+        const hasChannel = !!c;
+        vsetInput.disabled = !hasChannel || !expertMode;
+        btnSetV.disabled   = !hasChannel || !expertMode;
+        btnOn.disabled     = !hasChannel;
+        btnOff.disabled    = !hasChannel;
+    }
+    refresh();
+    popups.set(mod.n, { el, refresh });
+
+    // Close button
+    header.querySelector('.popup-close').addEventListener('click', () => closeModPopup(mod.n));
+
+    // Action buttons
+    btnSetV.addEventListener('click', () => {
+        if (!hvMonitor || !expertMode) return;
+        const c = chByName[mod.n]; if (!c) return;
+        const v = parseFloat(vsetInput.value); if (isNaN(v)) return;
+        hvMonitor.setChannelVoltage(c.crate, c.slot, c.channel, v);
+        c.vset = v; refresh();
+    });
+    btnOn.addEventListener('click', () => {
+        if (!hvMonitor) return;
+        const c = chByName[mod.n]; if (!c) return;
+        hvMonitor.setChannelPower(c.crate, c.slot, c.channel, true);
+        c.on = true; refresh();
+    });
+    btnOff.addEventListener('click', () => {
+        if (!hvMonitor) return;
+        const c = chByName[mod.n]; if (!c) return;
+        hvMonitor.setChannelPower(c.crate, c.slot, c.channel, false);
+        c.on = false; refresh();
+    });
+
+    // Drag via header
+    let drag = null;
+    header.addEventListener('mousedown', e => {
+        if (e.target.classList.contains('popup-close')) return;
+        bringToFront(el);
+        drag = { sx: e.clientX, sy: e.clientY,
+                 ox: el.offsetLeft, oy: el.offsetTop };
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+        if (!drag) return;
+        let nx = drag.ox + (e.clientX - drag.sx);
+        let ny = drag.oy + (e.clientY - drag.sy);
+        // Keep within viewport
+        nx = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  nx));
+        ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
+        el.style.left = nx + 'px';
+        el.style.top  = ny + 'px';
+    });
+    window.addEventListener('mouseup', () => { drag = null; });
+
+    // Focus on click anywhere in popup
+    el.addEventListener('mousedown', () => bringToFront(el));
+
+    document.body.appendChild(el);
+    bringToFront(el);
 }
 
-function closeModPopup() {
-    document.getElementById('mod-popup-overlay').classList.remove('visible');
-    popupMod = null;
+function closeModPopup(name) {
+    const entry = popups.get(name);
+    if (!entry) return;
+    entry.el.remove();
+    popups.delete(name);
 }
 
-function popupSetVoltage() {
-    if (!popupMod || !hvMonitor || !expertMode) return;
-    const ch = chByName[popupMod.n];
-    if (!ch) return;
-    const v = parseFloat(document.getElementById('popup-vset').value);
-    if (isNaN(v)) return;
-    hvMonitor.setChannelVoltage(ch.crate, ch.slot, ch.channel, v);
-    ch.vset = v;
-    openModPopup(popupMod); // refresh display
-}
-
-function popupSetPower(on) {
-    if (!popupMod || !hvMonitor) return;
-    const ch = chByName[popupMod.n];
-    if (!ch) return;
-    hvMonitor.setChannelPower(ch.crate, ch.slot, ch.channel, on);
-    ch.on = on;
-    openModPopup(popupMod); // refresh display
+// Refresh all open popups when channel data updates
+function refreshAllPopups() {
+    popups.forEach(({ refresh }) => refresh());
 }
 
 function statusClass(s) {
