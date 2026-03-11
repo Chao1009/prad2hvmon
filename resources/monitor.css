@@ -101,8 +101,9 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .summary-item { flex:1; display:flex; flex-direction:column; align-items:center; padding:10px 0; background:var(--bg-card); }
 .summary-item .label { font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim); margin-bottom:3px; }
 .summary-item .value { font-family:var(--mono); font-size:20px; font-weight:600; color:var(--text-bright); }
-.summary-item .value.green{color:var(--green)} .summary-item .value.red{color:var(--red)}
-.summary-item .value.amber{color:var(--amber)} .summary-item .value.accent{color:var(--accent)}
+.summary-item .value.green {color:var(--green)} .summary-item .value.red{color:var(--red)}
+.summary-item .value.amber {color:var(--amber)} .summary-item .value.accent{color:var(--accent)}
+.summary-item .value.dim { color: var(--text-dim) }
 
 /* ─── Filter / Search Bar ─────────────────────────────────────────── */
 #filter-bar { display:flex; align-items:center; gap:8px; padding:8px 20px; background:var(--bg-card); border-bottom:1px solid var(--border); }
