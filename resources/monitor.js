@@ -253,8 +253,25 @@ function renderTable() {
     if (filterStatus === 'warn') data = data.filter(c => isSettled(c) && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
     if (filterStatus === 'fault') data = data.filter(c => statusClass(c.status) === 'status-err');
     if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
-    if (searchText)              data = data.filter(c =>
-        (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+    if (searchText) {
+        const colonIdx = searchText.indexOf(':');
+        if (colonIdx > 0) {
+            const col = searchText.slice(0, colonIdx).trim();
+            const val = searchText.slice(colonIdx + 1).trim();
+            const colMap = { crate: 'crate', slot: 'slot', ch: 'channel', channel: 'channel',
+                             name: 'name', model: 'model', vmon: 'vmon', vset: 'vset' };
+            const field = colMap[col];
+            if (field) {
+                data = data.filter(c => String(c[field]).toLowerCase().includes(val));
+            } else {
+                data = data.filter(c =>
+                    (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+            }
+        } else {
+            data = data.filter(c =>
+                (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+        }
+    }
     data.sort((a, b) => {
         let va = a[sortCol], vb = b[sortCol];
         if (sortCol === 'diff') { va = Math.abs(a.vmon - a.vset); vb = Math.abs(b.vmon - b.vset); }
@@ -582,6 +599,22 @@ function drawGeoLegend() {
     }
 }
 
+function geoModuleMatches(mod, query) {
+    const colonIdx = query.indexOf(':');
+    if (colonIdx > 0) {
+        const col = query.slice(0, colonIdx).trim();
+        const val = query.slice(colonIdx + 1).trim();
+        switch (col) {
+            case 'type': case 't':    return mod.t.toUpperCase().includes(val);
+            case 'name': case 'n':    return mod.n.toUpperCase().includes(val);
+            case 'x':                 return String(mod.x).includes(val);
+            case 'y':                 return String(mod.y).includes(val);
+            default:                  return mod.n.toUpperCase().includes(query);
+        }
+    }
+    return mod.n.toUpperCase().includes(query);
+}
+
 // ── Rendering ────────────────────────────────────────────────────────
 function renderGeo() {
     if (!geoCanvas.width) return;
@@ -602,7 +635,7 @@ function renderGeo() {
         const hh = m.sy / 2 - gap;
 
         const isHover = (geoHover === m.n);
-        const isSearch = geoHighlight && m.n.toUpperCase().includes(geoHighlight);
+        const isSearch = geoHighlight && geoModuleMatches(m, geoHighlight);
         const noMatch = geoHighlight && !isSearch;
 
         ctx.fillStyle = noMatch ? 'rgba(20,28,38,0.6)' : moduleColor(m);
