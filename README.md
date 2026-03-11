@@ -61,7 +61,27 @@ The HyCal calorimeter consists of ~1200 detector modules (PbWO4 crystals and PbG
 - Initial window size is read from `resources/gui_config.json` at startup (`window.width` / `window.height`).
 - Module geometry is defined in `resources/hycal_modules.json`, including virtual blocks for auxiliary channels (LMS).
 
-## Usage
+## Get Started
+
+### Dependencies
+
+- **C++17** compiler (GCC 7+ or Clang 5+)
+- **CMake** 3.11+
+- **Qt 5** with modules: Core, Widgets, WebEngineWidgets, WebChannel
+- **CAENHVWrapper** shared library (`libcaenhvwrapper.so`, included in `caen_lib/`)
+- **fmt** (fetched automatically via CMake FetchContent)
+
+### Building
+
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
+make -j$(nproc)
+```
+
+If Qt5 is installed system-wide, the `-DCMAKE_PREFIX_PATH` flag can be omitted.
+
+The binary is placed in `build/bin/prad2hvmon`. Resource files are located automatically relative to the binary, or from the `RESOURCE_DIR` compile-time path.
 
 ### GUI Mode (default)
 
@@ -230,65 +250,6 @@ The `HVMonitor` QObject polls all crates on a configurable timer and emits `chan
 | `H*` | Veto | 2000 V | PrimEx veto counter channels |
 
 Voltage limits are enforced by `CAEN_VoltageLimit()` in `caen_lib/caen_channel.cpp`. Channels with unrecognised name prefixes default to 1500 V.
-
-## Project Structure
-
-```
-prad2hvmon/
-├── CMakeLists.txt                  # Top-level build configuration
-├── src/
-│   ├── prad2hvmon.cpp              # Main entry point (GUI, read, write modes)
-│   └── hv_monitor.h                # HVMonitor QObject (C++ ↔ JS bridge)
-├── caen_lib/
-│   ├── caen_channel.h              # CAEN_Channel, CAEN_Board, CAEN_Crate classes
-│   ├── caen_channel.cpp            # CAEN HV wrapper implementation
-│   ├── caenhvwrapper.h             # CAEN vendor header (CAENHVWrapper API)
-│   └── libcaenhvwrapper.so         # Pre-built CAEN shared library
-├── cfparser/                       # Configuration file parser library
-│   ├── CMakeLists.txt
-│   ├── include/
-│   │   ├── ConfigParser.h
-│   │   ├── ConfigObject.h
-│   │   ├── ConfigOption.h
-│   │   └── ConfigValue.h
-│   └── src/
-│       ├── ConfigParser.cpp
-│       ├── ConfigObject.cpp
-│       ├── ConfigOption.cpp
-│       └── ConfigValue.cpp
-├── resources/
-│   ├── monitor.html                # Web dashboard (HTML skeleton)
-│   ├── monitor.css                 # Web dashboard (stylesheet)
-│   ├── monitor.js                  # Web dashboard (JavaScript)
-│   ├── crates.json                 # Crate names and IP addresses
-│   ├── hycal_modules.json          # Module geometry (positions, sizes, types)
-│   └── gui_config.json             # Window size, thresholds, and color ranges
-└── database/
-    └── prad1/                      # Historical voltage settings and snapshots
-        ├── low_volt_2p2.txt
-        ├── uniform_1100_1500.txt
-        └── history/                # Timestamped voltage snapshots
-```
-
-## Dependencies
-
-- **C++17** compiler (GCC 7+ or Clang 5+)
-- **CMake** 3.11+
-- **Qt 5** with modules: Core, Widgets, WebEngineWidgets, WebChannel
-- **CAENHVWrapper** shared library (`libcaenhvwrapper.so`, included in `caen_lib/`)
-- **fmt** (fetched automatically via CMake FetchContent)
-
-## Building
-
-```bash
-mkdir build && cd build
-cmake .. -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
-make -j$(nproc)
-```
-
-If Qt5 is installed system-wide, the `-DCMAKE_PREFIX_PATH` flag can be omitted.
-
-The binary is placed in `build/bin/prad2hvmon`. Resource files are located automatically relative to the binary, or from the `RESOURCE_DIR` compile-time path.
 
 ## Author
 
