@@ -479,7 +479,11 @@ function moduleColor(mod) {
 
     if (mode === 'status') {
         if (!ch) return '#222';
-        return ch.on ? '#2dd4a0' : '#993333';
+        if (statusClass(ch.status) === 'status-err')  return '#f56565'; // fault: red
+        if (!ch.on)                                    return '#4a5568'; // off: dim
+        if (isSettled(ch) && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold)
+                                                       return '#eab308'; // warn: amber
+        return '#2dd4a0'; // work: green    
     }
 
     if (!ch) return '#222';
@@ -531,11 +535,14 @@ function drawGeoLegend() {
     const mode = geoColorMode();
 
     if (mode === 'status') {
-        // simple two-color
-        ctx.fillStyle = '#993333'; ctx.fillRect(0, 0, w/2, h);
-        ctx.fillStyle = '#2dd4a0'; ctx.fillRect(w/2, 0, w/2, h);
+        // status: four-segment (OFF / Good / Warn / Fault)
+        const seg = w / 4;
+        ctx.fillStyle = '#4a5568'; ctx.fillRect(0,     0, seg, h);
+        ctx.fillStyle = '#2dd4a0'; ctx.fillRect(seg,   0, seg, h);
+        ctx.fillStyle = '#eab308'; ctx.fillRect(seg*2, 0, seg, h);
+        ctx.fillStyle = '#f56565'; ctx.fillRect(seg*3, 0, seg, h);
         document.getElementById('leg-lo').textContent = 'OFF';
-        document.getElementById('leg-hi').textContent = 'ON';
+        document.getElementById('leg-hi').textContent = 'FAULT';
     } else if (mode === 'vmon' || mode === 'vset') {
         for (let i = 0; i < w; i++) {
             ctx.fillStyle = vmonColorScale(i / w);
