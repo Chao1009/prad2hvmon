@@ -273,7 +273,20 @@ tr.primary-row td {
     cursor: pointer; margin-left: 2px; transition: all var(--transition);
 }
 .vset-apply:hover { background: var(--accent); color: #fff; }
-
+.name-inline {
+    font-family: var(--mono);
+    font-size: 11px;
+    width: 90px;
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid var(--red-dim);
+    border-radius: 3px;
+    padding: 1px 4px;
+}
+.name-inline:focus {
+    outline: none;
+    border-color: var(--red);
+}
 /* ─── Footer ──────────────────────────────────────────────────────── */
 footer {
     grid-row: 4;

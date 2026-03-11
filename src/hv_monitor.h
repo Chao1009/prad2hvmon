@@ -196,6 +196,19 @@ public slots:
         if (ch) ch->SetVoltage(voltage);
     }
 
+    // ── JS-callable: rename a single channel ────────────────────────────
+    Q_INVOKABLE
+    void setChannelName(const QString &crateName, int slot,
+                        int channel, const QString &newName)
+    {
+        auto it = crate_map_.find(crateName.toStdString());
+        if (it == crate_map_.end()) return;
+        auto *bd = it->second->GetBoard(static_cast<unsigned short>(slot));
+        if (!bd) return;
+        auto *ch = bd->GetChannel(channel);
+        if (ch) ch->SetName(newName.toStdString());
+    }
+
 signals:
     // Emitted every poll cycle – JS listens via qt.webChannelTransport
     void channelsUpdated(const QString &jsonData);

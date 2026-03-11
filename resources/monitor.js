@@ -242,9 +242,10 @@ function isPrimary(ch) {
 }
 
 function renderTable() {
-    // Don't clobber an in-progress VSet edit
-    if (document.activeElement && document.activeElement.classList.contains('vset-inline')) return;
-
+    // Don't clobber an in-progress edit
+    if (document.activeElement && (
+            document.activeElement.classList.contains('vset-inline') ||
+            document.activeElement.classList.contains('name-inline'))) return;
     let data = allChannels.slice();
     if (filterStatus === 'on')   data = data.filter(c => c.on);
     if (filterStatus === 'off')  data = data.filter(c => !c.on);
@@ -271,7 +272,14 @@ function renderTable() {
             <td><span class="status-dot ${onCls}"></span></td>
             <td title="${ch.ip}">${ch.crate}</td><td>${ch.slot}</td><td>${ch.channel}</td>
             <td>${ch.model||'—'}</td>
-            <td>${ch.name||'—'}${prim ? '<span class="primary-badge">Primary</span>' : ''}</td>
+            <td>${expertMode
+                ? `<input class="name-inline" type="text" maxlength="12" value="${ch.name||''}"
+                     onchange="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                   ><button class="vset-apply"
+                     onclick="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                   >✓</button>${prim ? '<span class="primary-badge">Primary</span>' : ''}`
+                : `${ch.name||'—'}${prim ? '<span class="primary-badge">Primary</span>' : ''}`
+            }</td>
             <td style="text-align:right">${ch.vmon.toFixed(2)}</td>
             <td style="text-align:right">${expertMode
                 ? `<input class="vset-inline" type="number" step="0.1" value="${ch.vset.toFixed(1)}"
@@ -281,7 +289,7 @@ function renderTable() {
                    >✓</button>`
                 : ch.vset.toFixed(2)}</td>
             <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
-	    <td class="${statusClass(ch.status)}"
+            <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
             >${ch.status ? ch.status.split('|')[0] : ''}</td>
             <td style="text-align:center">
@@ -360,6 +368,17 @@ function inlineSetVoltage(crate, slot, channel, value) {
     hvMonitor.setChannelVoltage(crate, slot, channel, v);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) ch.vset = v;
+}
+
+function inlineSetName(crate, slot, channel, value) {
+    if (!hvMonitor || !expertMode) return;
+    const n = value.trim();
+    if (!n) return;
+    hvMonitor.setChannelName(crate, slot, channel, n);
+    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+    if (ch) ch.name = n;
+    rebuildChMap();   // chByName keyed by name — must rebuild after rename
+    renderActiveTab();
 }
 
 function setPillConnected(ok) {
