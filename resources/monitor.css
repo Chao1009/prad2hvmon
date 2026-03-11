@@ -125,7 +125,8 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .chip:hover { color:var(--text); border-color:var(--border-hi); }
 .chip.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
 .chip.active.on-chip { background:var(--green-dim); border-color:var(--green); color:var(--green); }
-.chip.active.off-chip { background:var(--red-dim); border-color:var(--red); color:var(--red); }
+.chip.active.off-chip { background: var(--bg-card);   border-color: var(--text-dim); color: var(--text-dim); }
+.chip[data-filter="warn"].active { background: var(--amber-dim); border-color: var(--amber); color: var(--amber); }
 .chip.active.fault-chip { background: var(--red-dim); border-color: var(--red); color: var(--red); }
 #poll-label { font-size:10.5px; color:var(--text-dim); font-family:var(--mono); }
 #poll-slider {
