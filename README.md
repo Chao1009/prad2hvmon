@@ -14,52 +14,12 @@ The HyCal calorimeter consists of ~1200 detector modules (PbWO4 crystals and PbG
 
 ### Channel Table
 - Live-updating table of all HV channels across all crates with sortable columns (crate, slot, channel, model, name, VMon, VSet, ΔV, status).
-- Per-channel ON/OFF power toggle buttons.
-- Bulk "All ON" / "All OFF" buttons with confirmation dialogs.
-- Filter chips for status: ALL, ON, OFF, ⚡ PRIMARY, ⚠ ΔV, ⚡ FAULT, and per-crate filtering.
-- Search by crate, slot, channel number, or name.
-- Adjustable poll interval via a slider (synced with the backend on startup).
-- ΔV warnings only trigger on fully settled (ON) channels — ramping or off channels are excluded to avoid false alarms.
-- Summary strip showing total channels, crate count, primary channels, ON/OFF counts, ΔV warnings, and fault count.
-
-### PRIMARY Channel Highlighting
-- Board-level primary channels (channel 0 on CAEN A1932 boards, name containing `PRIMARY`) are visually distinguished with teal-highlighted rows and a "Primary" badge.
-- Dedicated filter chip and summary counter for primary channels.
-
-### Expert Mode
-- A guarded toggle (requires confirmation) that unlocks direct hardware editing from the table.
-- In expert mode, the **VSet** column becomes an inline number input with an apply button, allowing per-channel voltage changes without leaving the table.
-- In expert mode, the **Name** column becomes an inline text input (max 12 characters, matching the CAEN hardware limit), allowing channel names to be renamed directly on the hardware. After a rename the geometry map's name-to-channel lookup is rebuilt immediately so the 2D view stays in sync.
+![Channel table view](docs/screenshot-table-view.png)
 
 ### HyCal Geometry Map
 - Interactive 2D canvas view of all detector modules in their physical positions (mm coordinates).
-- Pan (drag), zoom (scroll wheel), and click-to-inspect any module.
-- Module labels are drawn at high zoom levels (scale > 2.2×).
-- Color modes selectable from a toolbar dropdown: **VMon**, **VSet**, **|VMon − VSet|** (default), and **Status**.
-- Off channels are greyed out in VMon and ΔV views to avoid misleading colors.
-- Status color mode: green = ON/good, amber = ΔV warning, red = fault, grey = off.
-- Continuous color gradient legends rendered in a canvas bar for VMon/VSet/ΔV modes.
-- Virtual LMS (Light Monitoring System) blocks rendered with a distinctive purple dashed border.
-- Module search field highlights matching modules on the canvas.
-- Reset View button and Close All Popups button in the toolbar.
-- Geometry canvas is DPI-aware (uses `devicePixelRatio`) and resizes responsively.
-
-### Module Popups
 - Clicking a module on the geometry map opens a draggable floating popup.
-- Popup displays: module type, physical position and size, linked crate/slot/channel, board model, VMon, VSet, ΔV, and channel status with full status description on hover.
-- Inline VSet input and Set V / ON / OFF buttons in the popup (VSet and Set V are disabled outside expert mode).
-- Multiple popups can be open simultaneously; each is independently draggable and brought to front on click.
-- Popups refresh automatically on every poll cycle.
-
-### Status Monitoring
-- Per-channel CAEN status register is decoded into human-readable abbreviations (OFF, ON, RUP, RDN, OC, OV, UV, EXT, MXV, DIS, ILK, CALE, UNPL, OVP, PWF, TEMP) with a full description available on hover.
-- Fault filter chip and summary counter highlight channels in any non-working error state.
-
-### Configuration
-- Crate addresses are loaded from `resources/crates.json` — no recompilation needed to add, remove, or re-address crates.
-- All ΔV warning thresholds and color scale ranges are externalised to `resources/gui_config.json`.
-- Initial window size is read from `resources/gui_config.json` at startup (`window.width` / `window.height`).
-- Module geometry is defined in `resources/hycal_modules.json`, including virtual blocks for auxiliary channels (LMS).
+![Channel geo view](docs/screenshot-geometry-view.png)
 
 ## Get Started
 
