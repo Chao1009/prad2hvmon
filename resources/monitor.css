@@ -170,6 +170,7 @@ td .status-dot.off { background:var(--red); opacity:0.5; }
 .diff-ok{color:var(--green)} .diff-warn{color:var(--amber)} .diff-bad{color:var(--red)}
 .status-err { color: var(--red); font-size: 10px; letter-spacing: 0.05em; }
 .status-ok  { color: var(--text-dim); }
+.status-work { color: var(--green); font-size: 10px; }
 .pwr-btn {
     font-family:var(--mono); font-size:10px; padding:2px 8px;
     border-radius:3px; border:1px solid; cursor:pointer; transition:all var(--transition);

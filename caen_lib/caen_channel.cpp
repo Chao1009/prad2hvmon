@@ -92,9 +92,12 @@ void CAEN_Channel::CheckStatus()
 
 std::string CAEN_Channel::GetStatusString() const
 {
-    if (status_ == 0) return "";
+    if (status == 0) return "OFF|channel is off";
 
     static const struct { int bit; const char *abbr; const char *full; } flags[] = {
+	{  0, "ON",   "channel is on"          },
+        {  1, "RUP",  "ramping up"             },
+        {  2, "RDN",  "ramping down"           },
         {  3, "OC",   "overcurrent"            },
         {  4, "OV",   "overvoltage"            },
         {  5, "UV",   "undervoltage"           },
@@ -111,7 +114,7 @@ std::string CAEN_Channel::GetStatusString() const
 
     std::string abbrs, detail;
     for (const auto &f : flags) {
-        if (status_ & (1u << f.bit)) {
+        if (status & (1u << f.bit)) {
             if (!abbrs.empty())  abbrs  += ' ';
             if (!detail.empty()) detail += ", ";
             abbrs  += f.abbr;

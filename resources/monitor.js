@@ -279,9 +279,9 @@ function renderTable() {
                    >✓</button>`
                 : ch.vset.toFixed(2)}</td>
             <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
-            <td class="${ch.status ? 'status-err' : 'status-ok'}"
+	    <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
-            >${ch.status ? ch.status.split('|')[0] : '—'}</td>
+            >${ch.status ? ch.status.split('|')[0] : ''}</td>
             <td style="text-align:center">
                 <button class="pwr-btn ${onCls}"
                     onclick="togglePower('${ch.crate}',${ch.slot},${ch.channel},${ch.on?'false':'true'})"
@@ -724,3 +724,14 @@ function popupSetPower(on) {
     openModPopup(popupMod); // refresh display
 }
 
+function statusClass(s) {
+    if (!s) return 'status-ok';
+    const abbrs = s.split('|')[0];
+    // fault if any token is not one of the working-state abbreviations
+    const working = new Set(['OFF', 'ON', 'RUP', 'RDN']);
+    const isOffOnly = abbrs === 'OFF';
+    const hasFault = abbrs.split(' ').some(t => !working.has(t));
+    if (hasFault)   return 'status-err';
+    if (isOffOnly)  return 'status-ok';
+    return 'status-work';   // ON, RUP, RDN
+}
