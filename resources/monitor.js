@@ -328,7 +328,7 @@ function renderTable() {
                    ><button class="vset-apply"
                      onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                    >✓</button>`
-                : fmt(ch.vset, 2)}</td>
+                : `<span style="color:var(--text-dim)">${fmt(ch.vset, 2)}</span>`}</td>
             <td style="text-align:right;color:${ch.iSupported===false?'var(--text-dim)':'inherit'}">${ch.iSupported===false ? 'N/A' : fmt(ch.imon, 3)}</td>
             <td style="text-align:right">${ch.iSupported===false
                 ? `<span style="color:var(--text-dim)">N/A</span>`
@@ -338,7 +338,7 @@ function renderTable() {
                        ><button class="vset-apply"
                          onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                        >✓</button>`
-                    : fmt(ch.iset, 3)
+                    : `<span style="color:var(--text-dim)">${fmt(ch.iset, 3)}</span>`
             }</td>
             <td class="${dcls}" style="text-align:right">${fmt(diff, 2)}</td>
             <td class="${statusClass(ch.status)}"
