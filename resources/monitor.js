@@ -291,17 +291,19 @@ function renderTable() {
     }).join('');
 
     // Summary
-    const total = allChannels.length;
-    const onCnt = allChannels.filter(c => c.on).length;
-    const warns = allChannels.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
+    const total   = allChannels.length;
+    const nCr     = new Set(allChannels.map(c => c.crate)).size;
     const primCnt = allChannels.filter(c => isPrimary(c)).length;
-    const nCr   = new Set(allChannels.map(c => c.crate)).size;
-    document.getElementById('s-total').textContent  = total;
-    document.getElementById('s-on').textContent     = onCnt;
-    document.getElementById('s-off').textContent    = total - onCnt;
-    document.getElementById('s-warn').textContent   = warns;
+    const onCnt   = allChannels.filter(c => c.on).length;
+    const warns   = allChannels.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
+    const faults  = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
+    document.getElementById('s-total').textContent   = total;
+    document.getElementById('s-crates').textContent  = nCr;
     document.getElementById('s-primary').textContent = primCnt;
-    document.getElementById('s-crates').textContent = nCr;
+    document.getElementById('s-on').textContent      = onCnt;
+    document.getElementById('s-off').textContent     = total - onCnt;
+    document.getElementById('s-warn').textContent    = warns;
+    document.getElementById('s-fault').textContent   = faults;
     updateFooter();
 }
 
