@@ -241,6 +241,9 @@ function isPrimary(ch) {
 }
 
 function renderTable() {
+    // Don't clobber an in-progress VSet edit
+    if (document.activeElement && document.activeElement.classList.contains('vset-inline')) return;
+
     let data = allChannels.slice();
     if (filterStatus === 'on')   data = data.filter(c => c.on);
     if (filterStatus === 'off')  data = data.filter(c => !c.on);
