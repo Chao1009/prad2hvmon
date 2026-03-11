@@ -682,8 +682,10 @@ function openModPopup(mod) {
         html += `<span class="plbl">VMon</span><span class="pval">${ch.vmon.toFixed(2)} V</span>`;
         html += `<span class="plbl">VSet</span><span class="pval">${ch.vset.toFixed(2)} V</span>`;
         html += `<span class="plbl">ΔV</span><span class="pval">${Math.abs(ch.vmon-ch.vset).toFixed(2)} V</span>`;
-        html += `<span class="plbl">Status</span><span class="pval" style="color:${ch.on?'var(--green)':'var(--red)'}">${ch.on?'ON':'OFF'}</span>`;
-        document.getElementById('popup-vset').value = ch.vset.toFixed(1);
+        const stAbbr  = ch.status ? ch.status.split('|')[0] : '';
+        const stDetail = ch.status ? ch.status.split('|')[1] : '';
+        html += `<span class="plbl">Status</span><span class="pval ${statusClass(ch.status)}" title="${stDetail}">${stAbbr}</span>`;
+	document.getElementById('popup-vset').value = ch.vset.toFixed(1);
     } else {
         html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
         document.getElementById('popup-vset').value = '';
