@@ -310,14 +310,17 @@ function renderTable() {
                      onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                    >✓</button>`
                 : fmt(ch.vset, 2)}</td>
-            <td style="text-align:right">${fmt(ch.imon, 3)}</td>
-            <td style="text-align:right">${expertMode
-                ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${fmt(ch.iset, 3)}"
-                     onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                   ><button class="vset-apply"
-                     onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                   >✓</button>`
-                : fmt(ch.iset, 3)}</td>
+            <td style="text-align:right;color:${ch.iSupported===false?'var(--text-dim)':'inherit'}">${ch.iSupported===false ? 'N/A' : fmt(ch.imon, 3)}</td>
+            <td style="text-align:right">${ch.iSupported===false
+                ? `<span style="color:var(--text-dim)">N/A</span>`
+                : expertMode
+                    ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${fmt(ch.iset, 3)}"
+                         onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                       ><button class="vset-apply"
+                         onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                       >✓</button>`
+                    : fmt(ch.iset, 3)
+            }</td>
             <td class="${dcls}" style="text-align:right">${fmt(diff, 2)}</td>
             <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
@@ -402,11 +405,12 @@ function inlineSetVoltage(crate, slot, channel, value) {
 
 function inlineSetCurrent(crate, slot, channel, value) {
     if (!hvMonitor || !expertMode) return;
+    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+    if (!ch || ch.iSupported === false) return;
     const v = parseFloat(value);
     if (isNaN(v) || v < 0) return;
     hvMonitor.setChannelCurrent(crate, slot, channel, v);
-    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
-    if (ch) ch.iset = v;
+    ch.iset = v;
 }
 
 function inlineSetName(crate, slot, channel, value) {
@@ -772,7 +776,7 @@ function updateGeoHover(e) {
             html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${fmt(ch.vset, 2)} V</span></div>`;
             const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
             html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val">${fmt(diff, 2)} V</span></div>`;
-            if (ch.imon != null)
+            if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val">${fmt(ch.imon, 3)} µA</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ch.on?'tt-on':'tt-off'}">${ch.on?'ON':'OFF'}</span></div>`;
         } else {
@@ -860,8 +864,8 @@ function openModPopup(mod) {
             html += `<span class="plbl">VSet</span><span class="pval">${fmt(c.vset, 2)} V</span>`;
             const popupDiff = (c.vmon != null && c.vset != null) ? Math.abs(c.vmon - c.vset) : null;
             html += `<span class="plbl">ΔV</span><span class="pval">${fmt(popupDiff, 2)} V</span>`;
-            html += `<span class="plbl">IMon</span><span class="pval">${fmt(c.imon, 3)} µA</span>`;
-            html += `<span class="plbl">ISet</span><span class="pval">${fmt(c.iset, 3)} µA</span>`;
+            html += `<span class="plbl">IMon</span><span class="pval">${c.iSupported===false ? '<span style="color:var(--text-dim)">N/A</span>' : fmt(c.imon, 3)+' µA'}</span>`;
+            html += `<span class="plbl">ISet</span><span class="pval">${c.iSupported===false ? '<span style="color:var(--text-dim)">N/A</span>' : fmt(c.iset, 3)+' µA'}</span>`;
             const stAbbr   = c.status ? c.status.split('|')[0] : '';
             const stDetail = c.status ? c.status.split('|')[1] : '';
             html += `<span class="plbl">Status</span><span class="pval ${statusClass(c.status)}" title="${stDetail}">${stAbbr}</span>`;

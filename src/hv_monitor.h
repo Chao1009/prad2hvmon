@@ -19,6 +19,7 @@
 #include <map>
 #include <string>
 #include <iostream>
+#include <cmath>
 
 
 class HVMonitor : public QObject
@@ -251,8 +252,11 @@ private:
                     o["name"]    = QString::fromStdString(ch->GetName());
                     o["vmon"]    = ch->GetVMon();
                     o["vset"]    = ch->GetVSet();
-                    o["imon"]    = ch->GetIMon();
-                    o["iset"]    = ch->GetISet();
+                    o["iSupported"] = ch->SupportsCurrentIO();
+                    if (ch->SupportsCurrentIO()) {
+                        o["imon"] = std::isnan(ch->GetIMon()) ? QJsonValue::Null : QJsonValue(ch->GetIMon());
+                        o["iset"] = std::isnan(ch->GetISet()) ? QJsonValue::Null : QJsonValue(ch->GetISet());
+                    }
                     o["on"]      = ch->IsTurnedOn();
 		    o["status"]  = QString::fromStdString(ch->GetStatusString());
                     arr.append(o);

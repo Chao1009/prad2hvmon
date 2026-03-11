@@ -72,13 +72,26 @@ void CAEN_Channel::SetName(const string &n)
         name = n;
 }
 
+// Returns true if the CAEN error code means the parameter simply does not
+// exist on this board model — not a real communication failure.
+static inline bool isUnsupportedParam(int err)
+{
+    return (err == 14 || err == 27); // "Property not found" / "Not available"
+}
+
 void CAEN_Channel::SetCurrent(const float &i)
 {
+    if (!supportsCurrentIO) return;
+
     float val = i;
     int handle = mother->GetHandle();
     unsigned short slot = mother->GetSlot();
     int err = CAENHV_SetChParam(handle, slot, "I0Set", 1, &channel, &val);
 
+    if (isUnsupportedParam(err)) {
+        supportsCurrentIO = false;
+        return;
+    }
     CAEN_ShowError("HV Channel Set Current", err);
 
     if(err == CAENHV_OK)
@@ -168,9 +181,11 @@ void CAEN_Channel::ReadVoltage()
     }
 
     err = CAENHV_GetChParam(handle, slot, "IMon", 1, &channel, &Imon);
+    if (isUnsupportedParam(err)) { supportsCurrentIO = false; Imon = NAN; Iset = NAN; return; }
     CAEN_ShowError("HV Channel Read Current Mon", err);
 
     err = CAENHV_GetChParam(handle, slot, "I0Set", 1, &channel, &Iset);
+    if (isUnsupportedParam(err)) { supportsCurrentIO = false; Iset = NAN; return; }
     CAEN_ShowError("HV Channel Read Current Set", err);
 }
 
@@ -244,18 +259,29 @@ void CAEN_Board::ReadBoardMap()
     CAEN_ShowError("HV Board Read Voltage Set", err);
 
     float imonVals[nChan], isetVals[nChan];
+    bool boardSupportsCurrentIO = true;
 
     err = CAENHV_GetChParam(mother->GetHandle(), slot, "IMon", nChan, list, imonVals);
-    CAEN_ShowError("HV Board Read Current Mon", err);
-
-    err = CAENHV_GetChParam(mother->GetHandle(), slot, "I0Set", nChan, list, isetVals);
-    CAEN_ShowError("HV Board Read Current Set", err);
+    if (isUnsupportedParam(err)) {
+        boardSupportsCurrentIO = false;
+        for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
+    } else {
+        CAEN_ShowError("HV Board Read Current Mon", err);
+        err = CAENHV_GetChParam(mother->GetHandle(), slot, "I0Set", nChan, list, isetVals);
+        if (isUnsupportedParam(err)) {
+            boardSupportsCurrentIO = false;
+            for (int k = 0; k < nChan; ++k) isetVals[k] = NAN;
+        } else {
+            CAEN_ShowError("HV Board Read Current Set", err);
+        }
+    }
 
     for(int k = 0; k < nChan; ++k)
     {
         string ch_name = nameList[k];
         auto *ch = new CAEN_Channel(this, k, ch_name, pwON[k], monVals[k], setVals[k]);
         ch->UpdateCurrent(imonVals[k], isetVals[k]);
+        if (!boardSupportsCurrentIO) ch->SetSupportsCurrentIO(false);
         channelList.push_back(ch);
     }
 
@@ -288,12 +314,22 @@ void CAEN_Board::ReadVoltage()
     CAEN_ShowError("HV Board Read Voltage Set", err);
 
     float imonVals[nChan], isetVals[nChan];
+    bool boardSupportsCurrentIO = true;
 
     err = CAENHV_GetChParam(handle, slot, "IMon", nChan, list, imonVals);
-    CAEN_ShowError("HV Board Read Current Mon", err);
-
-    err = CAENHV_GetChParam(handle, slot, "I0Set", nChan, list, isetVals);
-    CAEN_ShowError("HV Board Read Current Set", err);
+    if (isUnsupportedParam(err)) {
+        boardSupportsCurrentIO = false;
+        for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
+    } else {
+        CAEN_ShowError("HV Board Read Current Mon", err);
+        err = CAENHV_GetChParam(handle, slot, "I0Set", nChan, list, isetVals);
+        if (isUnsupportedParam(err)) {
+            boardSupportsCurrentIO = false;
+            for (int k = 0; k < nChan; ++k) isetVals[k] = NAN;
+        } else {
+            CAEN_ShowError("HV Board Read Current Set", err);
+        }
+    }
 
     for(int k = 0; k < nChan; ++k)
     {
@@ -306,6 +342,7 @@ void CAEN_Board::ReadVoltage()
         }
         channelList.at(k)->UpdateVoltage(pw[k], monVals[k], setVals[k]);
         channelList.at(k)->UpdateCurrent(imonVals[k], isetVals[k]);
+        if (!boardSupportsCurrentIO) channelList.at(k)->SetSupportsCurrentIO(false);
     }
 }
 
