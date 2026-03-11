@@ -898,14 +898,18 @@ function openModPopup(mod) {
         }
         grid.innerHTML = html;
         const hasChannel = !!c;
-        const iOK = hasChannel && c.iSupported !== false;
         vsetInput.disabled = !hasChannel || !expertMode;
         btnSetV.disabled   = !hasChannel || !expertMode;
+        vsetInput.style.opacity = (hasChannel && !expertMode) ? '0.35' : '1';
+        btnSetV.style.opacity   = (hasChannel && !expertMode) ? '0.35' : '1';
+
+        const iOK = hasChannel && c.iSupported !== false;
         isetInput.disabled = !iOK || !expertMode;
         btnSetI.disabled   = !iOK || !expertMode;
         rowI.style.display = (hasChannel && c.iSupported === false) ? 'none' : '';
         isetInput.style.opacity = (iOK && !expertMode) ? '0.35' : '1';
         btnSetI.style.opacity   = (iOK && !expertMode) ? '0.35' : '1';
+
         btnOn.disabled     = !hasChannel;
         btnOff.disabled    = !hasChannel;
     }
