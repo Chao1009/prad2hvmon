@@ -85,10 +85,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Apply render interval
                         if (cfg.intervals.renderMs) {
                             renderIntervalMs = cfg.intervals.renderMs;
-                            const rs = document.getElementById('render-slider');
-                            if (renderIntervalMs > parseInt(rs.max)) rs.max = renderIntervalMs;
-                            rs.value = renderIntervalMs;
-                            document.getElementById('render-val').textContent = renderIntervalMs;
                         }
                         // Apply poll interval
                         if (cfg.intervals.pollMs) {
@@ -124,11 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     startRenderLoop();
 
-    document.getElementById('render-slider').addEventListener('input', e => {
-        renderIntervalMs = parseInt(e.target.value);
-        document.getElementById('render-val').textContent = renderIntervalMs;
-        startRenderLoop();
-    });
+
 });
 
 function rebuildChMap() {
