@@ -77,14 +77,16 @@
                 <button class="chip active" data-filter="all">ALL</button>
                 <button class="chip on-chip" data-filter="on">ON</button>
                 <button class="chip off-chip" data-filter="off">OFF</button>
-                <button class="chip" data-filter="warn">⚠ ΔV</button>
                 <button class="chip primary-chip" data-filter="primary">⚡ PRIMARY</button>
+                <button class="chip" data-filter="warn">⚠ ΔV</button>
+		<button class="chip fault-chip" data-filter="fault">⚡ FAULT</button>
             </div>
+            <div class="chip-group" id="crate-chips"></div>
+	    <span class="spacer"></span>
             <div class="bulk-pwr-group">
                 <button class="bulk-btn bulk-on" id="btn-all-on" title="Turn ALL channels ON">⏻ All ON</button>
                 <button class="bulk-btn bulk-off" id="btn-all-off" title="Turn ALL channels OFF">⏻ All OFF</button>
             </div>
-            <div class="chip-group" id="crate-chips"></div>
         </div>
         <div id="table-wrap">
             <table>

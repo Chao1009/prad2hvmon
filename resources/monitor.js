@@ -248,8 +248,9 @@ function renderTable() {
     let data = allChannels.slice();
     if (filterStatus === 'on')   data = data.filter(c => c.on);
     if (filterStatus === 'off')  data = data.filter(c => !c.on);
-    if (filterStatus === 'warn') data = data.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
     if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
+    if (filterStatus === 'warn') data = data.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
+    if (filterStatus === 'fault') data = data.filter(c => statusClass(c.status) === 'status-err');
     if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
     if (searchText)              data = data.filter(c =>
         (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
