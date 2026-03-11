@@ -841,11 +841,15 @@ function openModPopup(mod) {
     vsetInput.type = 'number'; vsetInput.step = '0.1'; vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
+    const isetInput = document.createElement('input');
+    isetInput.type = 'number'; isetInput.step = '0.001'; isetInput.min = '0'; isetInput.placeholder = 'ISet (µA)';
+    const btnSetI = document.createElement('button');
+    btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
     const btnOn = document.createElement('button');
     btnOn.className = 'btn-sm btn-on'; btnOn.textContent = 'ON';
     const btnOff = document.createElement('button');
     btnOff.className = 'btn-sm btn-off'; btnOff.textContent = 'OFF';
-    actions.append(vsetInput, btnSetV, btnOn, btnOff);
+    actions.append(vsetInput, btnSetV, isetInput, btnSetI, btnOn, btnOff);
     body.appendChild(actions);
     el.appendChild(body);
 
@@ -864,20 +868,32 @@ function openModPopup(mod) {
             html += `<span class="plbl">VSet</span><span class="pval">${fmt(c.vset, 2)} V</span>`;
             const popupDiff = (c.vmon != null && c.vset != null) ? Math.abs(c.vmon - c.vset) : null;
             html += `<span class="plbl">ΔV</span><span class="pval">${fmt(popupDiff, 2)} V</span>`;
-            html += `<span class="plbl">IMon</span><span class="pval">${c.iSupported===false ? '<span style="color:var(--text-dim)">N/A</span>' : fmt(c.imon, 3)+' µA'}</span>`;
-            html += `<span class="plbl">ISet</span><span class="pval">${c.iSupported===false ? '<span style="color:var(--text-dim)">N/A</span>' : fmt(c.iset, 3)+' µA'}</span>`;
+            if (c.iSupported === false) {
+                html += `<span class="plbl">IMon</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
+                html += `<span class="plbl">ISet</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
+            } else {
+                html += `<span class="plbl">IMon</span><span class="pval">${fmt(c.imon, 3)} µA</span>`;
+                html += `<span class="plbl">ISet</span><span class="pval">${fmt(c.iset, 3)} µA</span>`;
+            }
             const stAbbr   = c.status ? c.status.split('|')[0] : '';
             const stDetail = c.status ? c.status.split('|')[1] : '';
             html += `<span class="plbl">Status</span><span class="pval ${statusClass(c.status)}" title="${stDetail}">${stAbbr}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
+            isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(3) : '';
         } else {
             html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
             vsetInput.value = '';
+            isetInput.value = '';
         }
         grid.innerHTML = html;
         const hasChannel = !!c;
+        const iOK = hasChannel && c.iSupported !== false;
         vsetInput.disabled = !hasChannel || !expertMode;
         btnSetV.disabled   = !hasChannel || !expertMode;
+        isetInput.disabled = !iOK || !expertMode;
+        btnSetI.disabled   = !iOK || !expertMode;
+        isetInput.style.opacity = (!iOK || !expertMode) ? '0.35' : '1';
+        btnSetI.style.opacity   = (!iOK || !expertMode) ? '0.35' : '1';
         btnOn.disabled     = !hasChannel;
         btnOff.disabled    = !hasChannel;
     }
@@ -894,6 +910,13 @@ function openModPopup(mod) {
         const v = parseFloat(vsetInput.value); if (isNaN(v)) return;
         hvMonitor.setChannelVoltage(c.crate, c.slot, c.channel, v);
         c.vset = v; refresh();
+    });
+    btnSetI.addEventListener('click', () => {
+        if (!hvMonitor || !expertMode) return;
+        const c = chByName[mod.n]; if (!c || c.iSupported === false) return;
+        const v = parseFloat(isetInput.value); if (isNaN(v) || v < 0) return;
+        hvMonitor.setChannelCurrent(c.crate, c.slot, c.channel, v);
+        c.iset = v; refresh();
     });
     btnOn.addEventListener('click', () => {
         if (!hvMonitor) return;
