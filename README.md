@@ -48,7 +48,6 @@ The binary is placed in `build/bin/prad2hvmon`. Resource files are located autom
 ```bash
 ./prad2hvmon
 ./prad2hvmon gui
-./prad2hvmon gui -p 3000                    # set poll interval to 3000 ms
 ./prad2hvmon gui -m /path/to/modules.json   # custom module geometry
 ./prad2hvmon gui -c /path/to/crates.json    # custom crate config
 ```
@@ -73,7 +72,6 @@ The binary is placed in `build/bin/prad2hvmon`. Resource files are located autom
 | `-c <file>` | Path to crates JSON config file (default: auto-discover) |
 | `-f <file>` | Path to channel voltage-setting file (write mode) |
 | `-s <file>` | Path to save channel readings (read mode) |
-| `-p <ms>` | Poll interval in milliseconds for GUI mode (default: 2000) |
 | `-m <file>` | Path to module geometry JSON file (GUI mode) |
 | `-h` | Show help message |
 
@@ -120,6 +118,10 @@ Controls the initial window size, ΔV warning thresholds, geometry color scale r
     },
     "geoView": {
         "extent": 600
+    },
+    "intervals": {
+        "pollMs":   3000,
+        "renderMs": 200
     }
 }
 ```
@@ -132,6 +134,8 @@ Controls the initial window size, ΔV warning thresholds, geometry color scale r
 | `deltaV` | `geo_excellent` / `geo_good` / `geo_warn` / `geo_bad` | Color band thresholds for the geometry ΔV view |
 | `colorRange` | `vmon_max` / `vset_max` | Upper bound of the voltage color scale in geometry VMon/VSet views |
 | `geoView` | `extent` | Half-width of the geometry canvas in mm (controls initial zoom-to-fit) |
+| `intervals` | `pollMs` | CAEN hardware poll interval in ms (overridable via the Poll slider at runtime) |
+| `intervals` | `renderMs` | GUI render loop interval in ms (overridable via the Render slider at runtime) |
 
 ### Module Geometry (`resources/hycal_modules.json`)
 
@@ -178,7 +182,6 @@ The application uses a C++ backend with a web frontend connected via Qt WebChann
                                               │  setChannelVoltage()     │
                                               │  setChannelName()        │
                                               │  setPollInterval()       │
-                                              │  getPollInterval()       │
                                               │  getModuleGeometry()     │
                                               │  getGuiConfig()          │
                                               │  channelsUpdated ───────►│
@@ -196,7 +199,7 @@ The application uses a C++ backend with a web frontend connected via Qt WebChann
                                               └──────────────────────────┘
 ```
 
-The `HVMonitor` QObject polls all crates on a configurable timer and emits `channelsUpdated(jsonStr)` each cycle. The JS frontend parses the JSON, updates the table and geometry map, and calls back into C++ slots for power, voltage, and name control. Crate definitions are loaded at startup from `crates.json`, parsed using Qt's built-in `QJsonDocument`. If crates fail to connect at startup the dashboard still launches and shows partial data.
+The `HVMonitor` QObject polls all crates on a configurable timer and emits `channelsUpdated(jsonStr)` each cycle — this is the slow hardware I/O loop. The JS frontend maintains a separate fast render loop (default 200 ms) that redraws the table and geometry map from cached data independently of the poll cadence, keeping the UI responsive. Both intervals are configured via `gui_config.json` and can be adjusted at runtime via sliders in the header. The JS calls back into C++ slots for power, voltage, and name control. Crate definitions are loaded at startup from `crates.json`, parsed using Qt's built-in `QJsonDocument`. If crates fail to connect at startup the dashboard still launches and shows partial data.
 
 ## Channel Types
 
