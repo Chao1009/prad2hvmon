@@ -634,11 +634,20 @@ function renderGeo() {
     }
 
     // Draw axis cross at center
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    // ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    // ctx.lineWidth = 1 / geoTransform.scale;
+    // ctx.beginPath();
+    // ctx.moveTo(-600, 0); ctx.lineTo(600, 0);
+    // ctx.moveTo(0, -600); ctx.lineTo(0, 600);
+    // ctx.stroke();
+
+    // Draw a small + marker at the world origin
+    const markerSize = 8 / geoTransform.scale;
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 1 / geoTransform.scale;
     ctx.beginPath();
-    ctx.moveTo(-600, 0); ctx.lineTo(600, 0);
-    ctx.moveTo(0, -600); ctx.lineTo(0, 600);
+    ctx.moveTo(-markerSize, 0); ctx.lineTo(markerSize, 0);
+    ctx.moveTo(0, -markerSize); ctx.lineTo(0, markerSize);
     ctx.stroke();
 
     ctx.restore();
