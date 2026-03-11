@@ -109,6 +109,11 @@ function rebuildChMap() {
     allChannels.forEach(ch => { chByName[ch.name] = ch; });
 }
 
+// Safe number formatter — returns '—' if value is null/undefined/NaN
+function fmt(val, decimals) {
+    return (val == null || isNaN(val)) ? '—' : Number(val).toFixed(decimals);
+}
+
 function renderActiveTab() {
     const active = document.querySelector('.tab-content.active');
     if (active.id === 'table-tab') renderTable();
@@ -250,7 +255,7 @@ function renderTable() {
     if (filterStatus === 'on')   data = data.filter(c => c.on);
     if (filterStatus === 'off')  data = data.filter(c => !c.on);
     if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
-    if (filterStatus === 'warn') data = data.filter(c => isSettled(c) && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
+    if (filterStatus === 'warn') data = data.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
     if (filterStatus === 'fault') data = data.filter(c => statusClass(c.status) === 'status-err');
     if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
     if (searchText) {
@@ -274,15 +279,15 @@ function renderTable() {
     }
     data.sort((a, b) => {
         let va = a[sortCol], vb = b[sortCol];
-        if (sortCol === 'diff') { va = Math.abs(a.vmon - a.vset); vb = Math.abs(b.vmon - b.vset); }
+        if (sortCol === 'diff') { va = (a.vmon != null && a.vset != null) ? Math.abs(a.vmon - a.vset) : -1; vb = (b.vmon != null && b.vset != null) ? Math.abs(b.vmon - b.vset) : -1; }
         if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
         if (typeof va === 'boolean') { va = va?1:0; vb = vb?1:0; }
         return sortAsc ? va - vb : vb - va;
     });
     const tbody = document.getElementById('ch-body');
     tbody.innerHTML = data.map(ch => {
-        const diff = Math.abs(ch.vmon - ch.vset);
-        const dcls = !ch.on ? 'diff-ok' : DV.table_ok ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
+        const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
+        const dcls = !ch.on ? 'diff-ok' : (diff == null || DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
         const onCls = ch.on ? 'on' : 'off';
         const prim = isPrimary(ch);
         return `<tr class="${prim ? 'primary-row' : ''}">
@@ -297,23 +302,23 @@ function renderTable() {
                    >✓</button>${prim ? '<span class="primary-badge">Primary</span>' : ''}`
                 : `${ch.name||'—'}${prim ? '<span class="primary-badge">Primary</span>' : ''}`
             }</td>
-            <td style="text-align:right">${ch.vmon.toFixed(2)}</td>
+            <td style="text-align:right">${fmt(ch.vmon, 2)}</td>
             <td style="text-align:right">${expertMode
-                ? `<input class="vset-inline" type="number" step="0.1" value="${ch.vset.toFixed(1)}"
+                ? `<input class="vset-inline" type="number" step="0.1" value="${fmt(ch.vset, 1)}"
                      onchange="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                    ><button class="vset-apply"
                      onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                    >✓</button>`
-                : ch.vset.toFixed(2)}</td>
-            <td style="text-align:right">${ch.imon !== undefined ? ch.imon.toFixed(3) : '—'}</td>
+                : fmt(ch.vset, 2)}</td>
+            <td style="text-align:right">${fmt(ch.imon, 3)}</td>
             <td style="text-align:right">${expertMode
-                ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${(ch.iset||0).toFixed(3)}"
+                ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${fmt(ch.iset, 3)}"
                      onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                    ><button class="vset-apply"
                      onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                    >✓</button>`
-                : (ch.iset !== undefined ? ch.iset.toFixed(3) : '—')}</td>
-            <td class="${dcls}" style="text-align:right">${diff.toFixed(2)}</td>
+                : fmt(ch.iset, 3)}</td>
+            <td class="${dcls}" style="text-align:right">${fmt(diff, 2)}</td>
             <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
             >${ch.status ? ch.status.split('|')[0] : ''}</td>
@@ -329,7 +334,7 @@ function renderTable() {
     const nCr     = new Set(allChannels.map(c => c.crate)).size;
     const primCnt = allChannels.filter(c => isPrimary(c)).length;
     const onCnt   = allChannels.filter(c => c.on).length;
-    const warns   = allChannels.filter(c => isSettled(c) && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
+    const warns   = allChannels.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
     const faults  = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
     document.getElementById('s-total').textContent   = total;
     document.getElementById('s-crates').textContent  = nCr;
@@ -362,7 +367,7 @@ function updateFooter() {
         let filtered = allChannels.slice();
         if (filterStatus === 'on')      filtered = filtered.filter(c => c.on);
         if (filterStatus === 'off')     filtered = filtered.filter(c => !c.on);
-        if (filterStatus === 'warn')    filtered = filtered.filter(c => isSettled(c) && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
+        if (filterStatus === 'warn')    filtered = filtered.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
         if (filterStatus === 'primary') filtered = filtered.filter(c => isPrimary(c));
         if (filterCrate)                filtered = filtered.filter(c => c.crate === filterCrate);
         if (searchText)                 filtered = filtered.filter(c =>
@@ -534,7 +539,7 @@ function moduleColor(mod) {
         if (!ch) return '#222';
         if (statusClass(ch.status) === 'status-err')  return '#f56565'; // fault: red
         if (!ch.on)                                    return '#4a5568'; // off: dim
-        if (isSettled(ch) && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold)
+        if (isSettled(ch) && ch.vmon != null && ch.vset != null && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold)
                                                        return '#eab308'; // warn: amber
         return '#2dd4a0'; // work: green    
     }
@@ -543,17 +548,18 @@ function moduleColor(mod) {
 
     if (mode === 'vmon') {
         if (!ch.on) return '#333';      // off: grey out
-        const t = Math.min(1, Math.max(0, Math.abs(ch.vmon) / CR.vmon_max));
+        const t = Math.min(1, Math.max(0, Math.abs(ch.vmon ?? 0) / CR.vmon_max));
         return vmonColorScale(t);
     }
 
     if (mode === 'vset') {
-        const t = Math.min(1, Math.max(0, Math.abs(ch.vset) / CR.vset_max));
+        const t = Math.min(1, Math.max(0, Math.abs(ch.vset ?? 0) / CR.vset_max));
         return vmonColorScale(t);
     }
 
     // mode === 'diff'
     if (!ch.on) return '#333';          // off: grey out
+    if (ch.vmon == null || ch.vset == null) return '#333';
     const diff = Math.abs(ch.vmon - ch.vset);
     if (diff < DV.geo_excellent) return '#1a5c44';
     if (diff < DV.geo_good)      return '#2dd4a0';
@@ -762,12 +768,12 @@ function updateGeoHover(e) {
         html += `<div class="tt-row"><span class="tt-label">Type</span><span class="tt-val">${mod.t}</span></div>`;
         if (ch) {
             html += `<div class="tt-row"><span class="tt-label">Crate</span><span class="tt-val">${ch.crate} s${ch.slot} ch${ch.channel}</span></div>`;
-            html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val">${ch.vmon.toFixed(2)} V</span></div>`;
-            html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${ch.vset.toFixed(2)} V</span></div>`;
-            const diff = Math.abs(ch.vmon - ch.vset);
-            html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val">${diff.toFixed(2)} V</span></div>`;
-            if (ch.imon !== undefined)
-                html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val">${ch.imon.toFixed(3)} µA</span></div>`;
+            html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val">${fmt(ch.vmon, 2)} V</span></div>`;
+            html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${fmt(ch.vset, 2)} V</span></div>`;
+            const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
+            html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val">${fmt(diff, 2)} V</span></div>`;
+            if (ch.imon != null)
+                html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val">${fmt(ch.imon, 3)} µA</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ch.on?'tt-on':'tt-off'}">${ch.on?'ON':'OFF'}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
@@ -850,15 +856,16 @@ function openModPopup(mod) {
             html += `<span class="plbl">Crate</span><span class="pval">${c.crate}</span>`;
             html += `<span class="plbl">Slot / Ch</span><span class="pval">${c.slot} / ${c.channel}</span>`;
             html += `<span class="plbl">Model</span><span class="pval">${c.model || '—'}</span>`;
-            html += `<span class="plbl">VMon</span><span class="pval">${c.vmon.toFixed(2)} V</span>`;
-            html += `<span class="plbl">VSet</span><span class="pval">${c.vset.toFixed(2)} V</span>`;
-            html += `<span class="plbl">ΔV</span><span class="pval">${Math.abs(c.vmon - c.vset).toFixed(2)} V</span>`;
-            html += `<span class="plbl">IMon</span><span class="pval">${c.imon !== undefined ? c.imon.toFixed(3)+' µA' : '—'}</span>`;
-            html += `<span class="plbl">ISet</span><span class="pval">${c.iset !== undefined ? c.iset.toFixed(3)+' µA' : '—'}</span>`;
+            html += `<span class="plbl">VMon</span><span class="pval">${fmt(c.vmon, 2)} V</span>`;
+            html += `<span class="plbl">VSet</span><span class="pval">${fmt(c.vset, 2)} V</span>`;
+            const popupDiff = (c.vmon != null && c.vset != null) ? Math.abs(c.vmon - c.vset) : null;
+            html += `<span class="plbl">ΔV</span><span class="pval">${fmt(popupDiff, 2)} V</span>`;
+            html += `<span class="plbl">IMon</span><span class="pval">${fmt(c.imon, 3)} µA</span>`;
+            html += `<span class="plbl">ISet</span><span class="pval">${fmt(c.iset, 3)} µA</span>`;
             const stAbbr   = c.status ? c.status.split('|')[0] : '';
             const stDetail = c.status ? c.status.split('|')[1] : '';
             html += `<span class="plbl">Status</span><span class="pval ${statusClass(c.status)}" title="${stDetail}">${stAbbr}</span>`;
-            vsetInput.value = c.vset.toFixed(1);
+            vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
         } else {
             html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
             vsetInput.value = '';
