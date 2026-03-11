@@ -14,6 +14,7 @@ let sortCol      = 'crate';
 let sortAsc      = true;
 let renderIntervalMs = 200;
 let renderTimerId    = null;
+let dataDirty        = false;  // set on data/state change, cleared after tbody rebuild
 let filterStatus = 'all';
 let filterCrate  = null;
 let searchText   = '';
@@ -62,12 +63,14 @@ document.addEventListener('DOMContentLoaded', () => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
             refreshAllPopups();
+            dataDirty = true;
         });
 
         hvMonitor.readAll(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
             populateCrateChips();
+            dataDirty = true;
             // Load module geometry from backend JSON file
             hvMonitor.getModuleGeometry(geoJson => {
                 MODULES = JSON.parse(geoJson);
@@ -150,7 +153,7 @@ function initTabs() {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById(btn.dataset.tab).classList.add('active');
-            renderActiveTab();
+            dataDirty = true; renderActiveTab();
             if (btn.dataset.tab === 'geo-tab') {
                 resizeGeoCanvas();
                 resetGeoView();
@@ -168,12 +171,12 @@ function initTableUI() {
         hvMonitor.readAll(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
-            renderActiveTab();
+            dataDirty = true; renderActiveTab();
         });
     });
     document.getElementById('search').addEventListener('input', e => {
         searchText = e.target.value.trim().toLowerCase();
-        renderTable();
+        dataDirty = true; renderTable();
     });
     document.getElementById('poll-slider').addEventListener('input', e => {
         const sec = parseFloat(e.target.value);
@@ -185,7 +188,7 @@ function initTableUI() {
             document.querySelectorAll('#status-chips .chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
             filterStatus = chip.dataset.filter;
-            renderTable();
+            dataDirty = true; renderTable();
         });
     });
     document.querySelectorAll('thead th[data-col]').forEach(th => {
@@ -196,7 +199,7 @@ function initTableUI() {
             document.querySelectorAll('thead th').forEach(h => h.classList.remove('sorted'));
             th.classList.add('sorted');
             th.querySelector('.sort-arrow').textContent = sortAsc ? '▲' : '▼';
-            renderTable();
+            dataDirty = true; renderTable();
         });
     });
 
@@ -207,7 +210,7 @@ function initTableUI() {
         if (!confirm(`Turn ON all ${n} channels?\n\nThis will energise every HV channel across all crates.`)) return;
         hvMonitor.setAllPower(true);
         allChannels.forEach(ch => { ch.on = true; });
-        renderActiveTab();
+        dataDirty = true; renderActiveTab();
     });
 
     document.getElementById('btn-all-off').addEventListener('click', () => {
@@ -216,7 +219,7 @@ function initTableUI() {
         if (!confirm(`Turn OFF all ${n} channels?\n\nThis will de-energise every HV channel across all crates.`)) return;
         hvMonitor.setAllPower(false);
         allChannels.forEach(ch => { ch.on = false; });
-        renderActiveTab();
+        dataDirty = true; renderActiveTab();
     });
 
     // ── Expert mode toggle ──────────────────────────────────────────────
@@ -233,7 +236,7 @@ function initTableUI() {
         }
         expertMode = e.target.checked;
         document.getElementById('expert-label').classList.toggle('active', expertMode);
-        renderActiveTab();
+        dataDirty = true; renderActiveTab();
     });
 }
 
@@ -258,7 +261,7 @@ function selectCrateChip(chip, name) {
     document.querySelectorAll('#crate-chips .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     filterCrate = name;
-    renderTable();
+    dataDirty = true; renderTable();
 }
 
 function isPrimary(ch) {
@@ -304,6 +307,7 @@ function renderTable() {
         return sortAsc ? va - vb : vb - va;
     });
     const tbody = document.getElementById('ch-body');
+    if (dataDirty) {
     tbody.innerHTML = data.map(ch => {
         const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
         const dcls = !ch.on ? 'diff-ok' : (diff == null || diff < DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
@@ -334,12 +338,12 @@ function renderTable() {
             <td style="text-align:right">${ch.iSupported===false
                 ? `<span style="color:var(--text-dim)">N/A</span>`
                 : expertMode
-                    ? `<input class="vset-inline" type="number" step="0.001" min="0" value="${fmt(ch.iset, 1)}"
+                    ? `<input class="vset-inline" type="number" step="0.1" min="0" value="${fmt(ch.iset, 1)}"
                          onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                        ><button class="vset-apply"
                          onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                        >✓</button>`
-                    : `<span style="color:var(--text-dim)">${fmt(ch.iset, 2)}</span>`
+                    : `<span style="color:var(--text-dim)">${fmt(ch.iset, 1)}</span>`
             }</td>
             <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
@@ -350,6 +354,8 @@ function renderTable() {
                 >${ch.on?'ON':'OFF'}</button>
             </td></tr>`;
     }).join('');
+    dataDirty = false;
+    } // end dataDirty
 
     // Summary
     const total   = allChannels.length;
@@ -410,7 +416,7 @@ function togglePower(crate, slot, channel, on) {
     hvMonitor.setChannelPower(crate, slot, channel, on);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) ch.on = on;
-    renderActiveTab();
+    dataDirty = true; renderActiveTab();
 }
 
 function inlineSetVoltage(crate, slot, channel, value) {
@@ -419,7 +425,7 @@ function inlineSetVoltage(crate, slot, channel, value) {
     if (isNaN(v) || v < 0) return;
     hvMonitor.setChannelVoltage(crate, slot, channel, v);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
-    if (ch) ch.vset = v;
+    if (ch) { ch.vset = v; dataDirty = true; }
 }
 
 function inlineSetCurrent(crate, slot, channel, value) {
@@ -429,7 +435,7 @@ function inlineSetCurrent(crate, slot, channel, value) {
     const v = parseFloat(value);
     if (isNaN(v) || v < 0) return;
     hvMonitor.setChannelCurrent(crate, slot, channel, v);
-    ch.iset = v;
+    ch.iset = v; dataDirty = true;
 }
 
 function inlineSetName(crate, slot, channel, value) {
@@ -440,7 +446,7 @@ function inlineSetName(crate, slot, channel, value) {
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) ch.name = n;
     rebuildChMap();   // chByName keyed by name — must rebuild after rename
-    renderActiveTab();
+    dataDirty = true; renderActiveTab();
 }
 
 function setPillConnected(ok) {
@@ -867,7 +873,7 @@ function openModPopup(mod) {
     const rowI = document.createElement('div');
     rowI.className = 'popup-action-row';
     const isetInput = document.createElement('input');
-    isetInput.type = 'number'; isetInput.step = '0.001'; isetInput.min = '0'; isetInput.placeholder = 'ISet (µA)';
+    isetInput.type = 'number'; isetInput.step = '0.1'; isetInput.min = '0'; isetInput.placeholder = 'ISet (µA)';
     const btnSetI = document.createElement('button');
     btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
     rowI.append(isetInput, btnSetI);
@@ -903,13 +909,13 @@ function openModPopup(mod) {
                 html += `<span class="plbl">ISet</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
             } else {
                 html += `<span class="plbl">IMon</span><span class="pval">${fmt(c.imon, 3)} µA</span>`;
-                html += `<span class="plbl">ISet</span><span class="pval">${fmt(c.iset, 3)} µA</span>`;
+                html += `<span class="plbl">ISet</span><span class="pval">${fmt(c.iset, 1)} µA</span>`;
             }
             const stAbbr   = c.status ? c.status.split('|')[0] : '';
             const stDetail = c.status ? c.status.split('|')[1] : '';
             html += `<span class="plbl">Status</span><span class="pval ${statusClass(c.status)}" title="${stDetail}">${stAbbr}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
-            isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(3) : '';
+            isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
         } else {
             html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
             vsetInput.value = '';
@@ -944,26 +950,26 @@ function openModPopup(mod) {
         const c = chByName[mod.n]; if (!c) return;
         const v = parseFloat(vsetInput.value); if (isNaN(v)) return;
         hvMonitor.setChannelVoltage(c.crate, c.slot, c.channel, v);
-        c.vset = v; refresh();
+        c.vset = v; dataDirty = true; refresh();
     });
     btnSetI.addEventListener('click', () => {
         if (!hvMonitor || !expertMode) return;
         const c = chByName[mod.n]; if (!c || c.iSupported === false) return;
         const v = parseFloat(isetInput.value); if (isNaN(v) || v < 0) return;
         hvMonitor.setChannelCurrent(c.crate, c.slot, c.channel, v);
-        c.iset = v; refresh();
+        c.iset = v; dataDirty = true; refresh();
     });
     btnOn.addEventListener('click', () => {
         if (!hvMonitor) return;
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, true);
-        c.on = true; refresh();
+        c.on = true; dataDirty = true; refresh();
     });
     btnOff.addEventListener('click', () => {
         if (!hvMonitor) return;
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, false);
-        c.on = false; refresh();
+        c.on = false; dataDirty = true; refresh();
     });
 
     // Drag via header
