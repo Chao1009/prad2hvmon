@@ -329,6 +329,7 @@ function renderTable() {
                      onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
                    >✓</button>`
                 : `<span style="color:var(--text-dim)">${fmt(ch.vset, 2)}</span>`}</td>
+            <td class="${dcls}" style="text-align:right">${fmt(diff, 2)}</td>
             <td style="text-align:right;color:${ch.iSupported===false?'var(--text-dim)':'inherit'}">${ch.iSupported===false ? 'N/A' : fmt(ch.imon, 3)}</td>
             <td style="text-align:right">${ch.iSupported===false
                 ? `<span style="color:var(--text-dim)">N/A</span>`
@@ -340,7 +341,6 @@ function renderTable() {
                        >✓</button>`
                     : `<span style="color:var(--text-dim)">${fmt(ch.iset, 3)}</span>`
             }</td>
-            <td class="${dcls}" style="text-align:right">${fmt(diff, 2)}</td>
             <td class="${statusClass(ch.status)}"
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
             >${ch.status ? ch.status.split('|')[0] : ''}</td>
