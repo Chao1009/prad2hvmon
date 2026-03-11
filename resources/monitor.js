@@ -306,7 +306,7 @@ function renderTable() {
     const tbody = document.getElementById('ch-body');
     tbody.innerHTML = data.map(ch => {
         const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
-        const dcls = !ch.on ? 'diff-ok' : (diff == null || DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
+        const dcls = !ch.on ? 'diff-ok' : (diff == null || diff < DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
         const onCls = ch.on ? 'on' : 'off';
         const prim = isPrimary(ch);
         return `<tr class="${prim ? 'primary-row' : ''}">
