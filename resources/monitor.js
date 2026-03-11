@@ -54,12 +54,14 @@ let GV = {
 document.addEventListener('DOMContentLoaded', () => {
     new QWebChannel(qt.webChannelTransport, channel => {
         hvMonitor = channel.objects.hvMonitor;
+
+        // Data update only — no render; the render loop handles display
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
             refreshAllPopups();
-            renderActiveTab();
         });
+
         hvMonitor.readAll(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
@@ -69,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 MODULES = JSON.parse(geoJson);
                 MODULES.forEach(m => { MOD_MAP[m.n] = m; });
                 console.log('Loaded ' + MODULES.length + ' modules');
-                renderActiveTab();
             });
             // Load GUI config (ΔV thresholds, etc.)
             hvMonitor.getGuiConfig(cfgJson => {
@@ -82,18 +83,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.warn('Failed to parse gui_config.json, using defaults', e);
                 }
-                renderActiveTab();
             });
             // Sync poll interval slider with backend setting
             hvMonitor.getPollInterval(ms => {
                 const sec = ms / 1000;
                 const slider = document.getElementById('poll-slider');
-                // Extend slider max if backend value exceeds it
                 if (sec > parseFloat(slider.max)) slider.max = Math.ceil(sec);
                 slider.value = sec;
                 document.getElementById('poll-val').textContent = sec.toFixed(1);
             });
-            renderActiveTab();
             document.getElementById('loading').classList.add('hidden');
             setPillConnected(true);
         });
@@ -102,6 +100,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initTableUI();
     initTabs();
     initGeoMap();
+
+    // Fast render loop — redraws from cached allChannels at ~200 ms,
+    // independent of the slow CAEN poll interval.
+    setInterval(() => {
+        if (allChannels.length > 0) renderActiveTab();
+    }, 200);
 });
 
 function rebuildChMap() {

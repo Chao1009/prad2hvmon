@@ -102,8 +102,9 @@ public slots:
 
     int getPollInterval() { return poll_interval_ms_; }
 
-    // ── JS-callable: one-shot read of all channels ──────────────────────
-    //    Returns a JSON string: array of channel objects.
+    // ── JS-callable: one-shot snapshot of cached channel state ─────────
+    //    Hardware I/O happens only in pollCrates(); this is a pure read
+    //    of the values already in memory (safe to call at any time).
     QString readAll()
     {
         return buildSnapshot();
@@ -230,17 +231,20 @@ signals:
 private slots:
     void pollCrates()
     {
-        QString snap = buildSnapshot();
-        emit channelsUpdated(snap);
+        // Hardware I/O — runs at the slow poll interval only
+        for (auto *cr : crates_) {
+            cr->CheckStatus();
+            cr->ReadVoltage();
+        }
+        emit channelsUpdated(buildSnapshot());
     }
 
 private:
+    // Pure serializer — reads cached values only, no hardware I/O
     QString buildSnapshot()
     {
         QJsonArray arr;
         for (auto *cr : crates_) {
-            cr->CheckStatus();
-            cr->ReadVoltage();
             for (auto *bd : cr->GetBoardList()) {
                 for (auto *ch : bd->GetChannelList()) {
                     QJsonObject o;
