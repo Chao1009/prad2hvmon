@@ -349,7 +349,8 @@ void CAEN_Board::ReadVoltage()
             continue;
         }
         channelList.at(k)->UpdateVoltage(pw[k], monVals[k], setVals[k]);
-        channelList.at(k)->UpdateCurrent(imonVals[k], isetVals[k]);
+        if (boardSupportsCurrentIO)
+            channelList.at(k)->UpdateCurrent(imonVals[k], isetVals[k]);
     }
 }
 
