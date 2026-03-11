@@ -125,7 +125,6 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .chip.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
 .chip.active.on-chip { background:var(--green-dim); border-color:var(--green); color:var(--green); }
 .chip.active.off-chip { background:var(--red-dim); border-color:var(--red); color:var(--red); }
-#filter-bar .spacer { flex:1; }
 #poll-label { font-size:10.5px; color:var(--text-dim); font-family:var(--mono); }
 #poll-slider {
     -webkit-appearance:none; width:80px; height:4px; background:var(--border);
