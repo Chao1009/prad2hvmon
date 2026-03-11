@@ -74,9 +74,12 @@ void CAEN_Channel::SetName(const string &n)
 
 // Returns true if the CAEN error code means the parameter simply does not
 // exist on this board model — not a real communication failure.
+// 0xe = "Property not found", 0x1b = "Function not available for device".
+// Note: negative error values are errors from the power supply itself and
+// should NOT be treated as unsupported — they are real hardware errors.
 static inline bool isUnsupportedParam(int err)
 {
-    return (err == 14 || err == 27); // "Property not found" / "Not available"
+    return (err == 0xe || err == 0x1b);
 }
 
 void CAEN_Channel::SetCurrent(const float &i)
@@ -625,46 +628,59 @@ void CAEN_ShowError(const string &prefix, const int &err, const bool &ShowSucces
     if(err == CAENHV_OK && !ShowSuccess)
         return;
 
+    if(err == CAENHV_OK) {
+        cout << prefix << ": Command successfully executed." << endl;
+        return;
+    }
+
     string result = prefix + " ERROR: ";
+
+    if(err < 0) {
+        // Negative values are errors reported directly by the power supply hardware
+        result += "Power supply error (code " + std::to_string(err) + ")";
+        cerr << result << endl;
+        return;
+    }
 
     switch(err)
     {
-    case 0: cout << prefix << ": Command is successfully executed," << endl; return;
-    case 1: result += "Error of operatived system"; break;
-    case 2: result += "Write error in communication channel"; break;
-    case 3: result += "Read error in communication channel"; break;
-    case 4: result += "Time out in server communication"; break;
-    case 5: result += "Command Front End application is down"; break;
-    case 6: result += "Communication with system not yet connected by a Login command"; break;
-    case 7: result += "Communication with a not present board/slot"; break;
-    case 8: result += "Communication with RS232 not yet implemented"; break;
-    case 9: result += "User memory not sufficient"; break;
-    case 10: result += "Value out of range"; break;
-    case 11: result += "Execute command not yet implemented"; break;
-    case 12: result += "Get Property not yet implemented"; break;
-    case 13: result += "Set Property not yet implemented"; break;
-    case 14: result += "Property not found"; break;
-    case 15: result += "Execute command not found"; break;
-    case 16: result += "No System property"; break;
-    case 17: result += "No get property"; break;
-    case 18: result += "No set property"; break;
-    case 19: result += "No execute command"; break;
-    case 20: result += "Device configuration changed"; break;
-    case 21: result += "Property of param not found"; break;
-    case 22: result += "Param not found"; break;
-    case 23: result += "No data present"; break;
-    case 24: result += "Device already open"; break;
-    case 25: result += "To Many devices opened"; break;
-    case 26: result += "Function Parameter not valid"; break;
-    case 27: result += "Function not available for the connected device"; break;
+    case 0x01: result += "Operating system error"; break;
+    case 0x02: result += "Write error in communication channel"; break;
+    case 0x03: result += "Read error in communication channel"; break;
+    case 0x04: result += "Timeout in server communication"; break;
+    case 0x05: result += "Command Front End application is down"; break;
+    case 0x06: result += "Communication with system not yet connected by a Login command"; break;
+    case 0x07: result += "Execute command not yet implemented"; break;
+    case 0x08: result += "Get property not yet implemented"; break;
+    case 0x09: result += "Set property not yet implemented"; break;
+    case 0x0a: result += "Communication with RS232 not yet implemented"; break;
+    case 0x0b: result += "User memory not sufficient"; break;
+    case 0x0c: result += "Value out of range"; break;
+    case 0x0d: result += "Property not yet implemented"; break;
+    case 0x0e: result += "Property not found"; break;
+    case 0x0f: result += "Command not found"; break;
+    case 0x10: result += "Not a property"; break;
+    case 0x11: result += "Not a reading property"; break;
+    case 0x12: result += "Not a writing property"; break;
+    case 0x13: result += "Not a command"; break;
+    case 0x14: result += "Configuration change"; break;
+    case 0x15: result += "Parameter's property not found"; break;
+    case 0x16: result += "Parameter not found"; break;
+    case 0x17: result += "No data present"; break;
+    case 0x18: result += "Device already open"; break;
+    case 0x19: result += "Too many devices opened"; break;
+    case 0x1a: result += "Function parameter not valid"; break;
+    case 0x1b: result += "Function not available for the connected device"; break;
+    case 0x1c: result += "Socket error"; break;
+    case 0x1d: result += "Communication error"; break;
+    case 0x1e: result += "Not yet implemented"; break;
     case 0x1001: result += "Device already connected"; break;
     case 0x1002: result += "Device not connected"; break;
     case 0x1003: result += "Operating system error"; break;
     case 0x1004: result += "Login failed"; break;
     case 0x1005: result += "Logout failed"; break;
     case 0x1006: result += "Link type not supported"; break;
-    case 0x1007: result += "Incorrect username/password"; break;
-    default: result += "Unknown error code"; break;
+    default: result += "Unknown error code (" + std::to_string(err) + ")"; break;
     }
 
     cerr << result << endl;
