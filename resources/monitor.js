@@ -434,6 +434,11 @@ function initGeoMap() {
     // Reset
     document.getElementById('geo-reset').addEventListener('click', () => { resetGeoView(); });
 
+    // Close Popups
+    document.getElementById('geo-close-popups').addEventListener('click', () => {
+        [...popups.keys()].forEach(name => closeModPopup(name));
+    });
+
     // Resize observer
     new ResizeObserver(() => { resizeGeoCanvas(); renderGeo(); }).observe(geoWrap);
 
