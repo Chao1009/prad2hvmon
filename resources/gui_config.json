@@ -1,4 +1,8 @@
 {
+    "window": {
+        "width": 1600,
+        "height": 1200
+    },
     "deltaV": {
         "warn_threshold": 2.0,
         "table_ok":       0.5,
@@ -13,6 +17,6 @@
         "vset_max": 2100
     },
     "geoView": {
-        "extent": 660
+        "extent": 600
     }
 }

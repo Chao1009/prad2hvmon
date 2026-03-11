@@ -190,10 +190,22 @@ int main(int argc, char *argv[])
         QWebChannel channel;
         channel.registerObject(QStringLiteral("hvMonitor"), &monitor);
 
+        // Read window size from gui_config.json (default 1400x900)
+        int winW = 1400, winH = 900;
+        if (!guiConfigPath.isEmpty()) {
+            QFile cf(guiConfigPath);
+            if (cf.open(QIODevice::ReadOnly)) {
+                QJsonObject cfg = QJsonDocument::fromJson(cf.readAll()).object();
+                QJsonObject win = cfg["window"].toObject();
+                if (win.contains("width"))  winW = win["width"].toInt(1400);
+                if (win.contains("height")) winH = win["height"].toInt(900);
+            }
+        }
+
         // Web view
         QWebEngineView view;
         view.setWindowTitle("PRad-II HV Monitor");
-        view.resize(1400, 900);
+        view.resize(winW, winH);
         view.page()->setWebChannel(&channel);
 
         // Load the dashboard HTML from the resources directory next to the
