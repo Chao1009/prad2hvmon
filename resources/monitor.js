@@ -1,4 +1,3 @@
-<script>
 // ═════════════════════════════════════════════════════════════════════
 //  Module geometry data (loaded from backend via getModuleGeometry)
 // ═════════════════════════════════════════════════════════════════════
@@ -718,6 +717,4 @@ function popupSetPower(on) {
     ch.on = on;
     openModPopup(popupMod); // refresh display
 }
-
-</script>
 
