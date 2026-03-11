@@ -301,12 +301,44 @@ function renderTable() {
     document.getElementById('s-warn').textContent   = warns;
     document.getElementById('s-primary').textContent = primCnt;
     document.getElementById('s-crates').textContent = nCr;
+    updateFooter();
 }
 
 function updateFooter() {
     document.getElementById('last-update').textContent = `Updated ${new Date().toLocaleTimeString()}`;
-    document.getElementById('row-count').textContent =
-        `${allChannels.length} channels | ${MODULES.length} modules`;
+
+    const active = document.querySelector('.tab-content.active');
+    if (active && active.id === 'geo-tab') {
+        // Geometry tab: count modules matching the geo search highlight
+        const total = MODULES.length;
+        if (geoHighlight) {
+            const matched = MODULES.filter(m => m.n.toUpperCase().includes(geoHighlight)).length;
+            document.getElementById('row-count').textContent =
+                `${matched} / ${total} modules shown`;
+        } else {
+            document.getElementById('row-count').textContent =
+                `${total} modules total`;
+        }
+    } else {
+        // Table tab: count visible (filtered) rows vs total channels
+        const total = allChannels.length;
+        let filtered = allChannels.slice();
+        if (filterStatus === 'on')      filtered = filtered.filter(c => c.on);
+        if (filterStatus === 'off')     filtered = filtered.filter(c => !c.on);
+        if (filterStatus === 'warn')    filtered = filtered.filter(c => c.on && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
+        if (filterStatus === 'primary') filtered = filtered.filter(c => isPrimary(c));
+        if (filterCrate)                filtered = filtered.filter(c => c.crate === filterCrate);
+        if (searchText)                 filtered = filtered.filter(c =>
+            (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+        const shown = filtered.length;
+        if (shown === total) {
+            document.getElementById('row-count').textContent =
+                `${total} channels total`;
+        } else {
+            document.getElementById('row-count').textContent =
+                `${shown} / ${total} channels shown`;
+        }
+    }
 }
 
 function togglePower(crate, slot, channel, on) {
@@ -395,6 +427,7 @@ function initGeoMap() {
     document.getElementById('geo-search').addEventListener('input', e => {
         geoHighlight = e.target.value.trim().toUpperCase();
         renderGeo();
+        updateFooter();
     });
 
     // Reset
