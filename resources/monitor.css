@@ -418,11 +418,19 @@ footer #last-update::before {
 #geo-tooltip .tt-label { color: var(--text-dim); }
 #geo-tooltip .tt-val { color: var(--text-bright); }
 #geo-tooltip .tt-val .tt-live { color: var(--green); font-weight: 600; }
-/* Unified status colours — used by both tooltip and popup */
-.st-on    { color: var(--green); font-weight: 600; }
-.st-ramp  { color: var(--green); font-weight: 600; opacity: 0.75; } /* RUP / RDN */
-.st-warn  { color: var(--amber); font-weight: 600; }
-.st-fault { color: var(--red);   font-weight: 600; }
+/* Unified status badge colours — used by both tooltip and popup.
+   .st-badges is the container; inner spans carry individual colours.
+   Specificity must beat .mod-popup .popup-grid .pval, hence the extra selector. */
+.st-badges { display: inline-flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.st-badges .st-on,
+.st-on    { color: var(--green);    font-weight: 600; }
+.st-badges .st-ramp,
+.st-ramp  { color: var(--green);    font-weight: 600; opacity: 0.8; } /* RUP / RDN */
+.st-badges .st-warn,
+.st-warn  { color: var(--amber);    font-weight: 600; }
+.st-badges .st-fault,
+.st-fault { color: var(--red);      font-weight: 600; }
+.st-badges .st-off,
 .st-off   { color: var(--text-dim); }
 
 /* ─── Floating module popups ──────────────────────────────────────── */

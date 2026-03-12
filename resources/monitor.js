@@ -1010,8 +1010,7 @@ function updateGeoHover(e) {
             html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val"${diffStyle}>${fmt(diff, 2)} V</span></div>`;
             if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
-            const ttSt = statusDisplay(ch);
-            html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ttSt.cls}" title="${ttSt.detail}">${ttSt.text}</span></div>`;
+            html += `<div class="tt-row"><span class="tt-label">Status</span><span class="st-badges">${statusDisplay(ch)}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
             const daqEntry = daqByName[mod.n];
@@ -1122,8 +1121,7 @@ function openModPopup(mod) {
             } else {
                 html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
             }
-            const pSt = statusDisplay(c);
-            html += `<span class="plbl">Status</span><span class="pval ${pSt.cls}" title="${pSt.detail}">${pSt.text}</span>`;
+            html += `<span class="plbl">Status</span><span class="pval st-badges">${statusDisplay(c)}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
             isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
         } else {
@@ -1252,9 +1250,17 @@ function dotClass(ch) {
     return ch.on ? 'on' : 'off';
 }
 
-// Shared status display helper — returns { text, cls } for tooltip and popup.
-// text: the CAEN abbreviation(s) + detail, e.g. "ON", "RUP", "TRIP OVC"
-// cls:  one of 'st-on' | 'st-ramp' | 'st-warn' | 'st-fault' | 'st-off'
+// Shared status display helper — returns an HTML string of coloured badge spans.
+// Always shows the power state (ON green / OFF dim) first, then any fault tokens
+// (red) and a ΔV badge (amber) if warranted.  Tooltip and popup both use this.
+//
+// Examples:
+//   ON                     → [ON]
+//   ON + ΔV warn           → [ON] [ΔV]
+//   ON + OV fault          → [ON] [OV]
+//   ON + OV + ΔV           → [ON] [OV] [ΔV]
+//   RUP                    → [RUP]
+//   OFF                    → [OFF]
 function statusDisplay(ch) {
     const abbr   = ch.status ? ch.status.split('|')[0].trim() : '';
     const detail = ch.status ? (ch.status.split('|')[1] || '').trim() : '';
@@ -1262,14 +1268,36 @@ function statusDisplay(ch) {
     const isWarn = isSettled(ch) && ch.vmon != null && ch.vset != null
                    && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
 
-    let cls;
-    if (sc === 'status-err')                           cls = 'st-fault';
-    else if (isWarn)                                   cls = 'st-warn';
-    else if (abbr === 'OFF' || !ch.on)                 cls = 'st-off';
-    else if (abbr === 'ON')                            cls = 'st-on';
-    else                                               cls = 'st-ramp'; // RUP / RDN
+    const badges = [];
 
-    const text = abbr || (ch.on ? 'ON' : 'OFF');
-    return { text, detail, cls };
+    // ── Power / ramp state badge (always present) ──────────────────────
+    if (!ch.on || abbr === 'OFF') {
+        badges.push('<span class="st-off">OFF</span>');
+    } else if (abbr === 'RUP' || abbr === 'RDN') {
+        badges.push(`<span class="st-ramp">${abbr}</span>`);
+    } else {
+        badges.push('<span class="st-on">ON</span>');
+    }
+
+    // ── Fault tokens (everything that isn't the power state) ───────────
+    if (sc === 'status-err') {
+        // Pull out the non-power-state tokens from the abbreviation string
+        const faultTokens = abbr.split(/\s+/).filter(t =>
+            t !== 'ON' && t !== 'OFF' && t !== 'RUP' && t !== 'RDN' && t !== '');
+        if (faultTokens.length > 0) {
+            const tip = detail ? ` title="${detail}"` : '';
+            badges.push(`<span class="st-fault"${tip}>${faultTokens.join(' ')}</span>`);
+        } else if (!detail) {
+            // No tokens extracted but still flagged as fault — show raw abbr in red
+            badges.push(`<span class="st-fault">${abbr}</span>`);
+        }
+    }
+
+    // ── ΔV warning badge ───────────────────────────────────────────────
+    if (isWarn) {
+        badges.push('<span class="st-warn">ΔV</span>');
+    }
+
+    return badges.join(' ');
 }
 
