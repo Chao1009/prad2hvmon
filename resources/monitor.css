@@ -647,7 +647,7 @@ footer #last-update::before {
     gap: 6px;
 }
 
-.booster-controls-pwr .booster-btn { flex: 1; }
+.booster-controls-pwr .booster-btn { flex: 0 0 auto; }
 
 .booster-vset-input {
     background: var(--bg);
