@@ -13,7 +13,6 @@ let allChannels  = [];
 let sortCol      = 'crate';
 let sortAsc      = true;
 let renderIntervalMs = 200;
-let renderTimerId    = null;
 let dataDirty        = false;  // set on data/state change, cleared after tbody rebuild
 let filterStatus = 'all';
 let filterCrate  = null;
@@ -62,8 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
-            refreshAllPopups();
             dataDirty = true;
+            // refreshAllPopups() is now called from renderActiveTab() when dirty,
+            // so we don't rebuild popup DOM on every data tick outside the render loop.
         });
 
         hvMonitor.readAll(jsonStr => {
@@ -75,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hvMonitor.getModuleGeometry(geoJson => {
                 MODULES = JSON.parse(geoJson);
                 MODULES.forEach(m => { MOD_MAP[m.n] = m; });
+                rebuildColorCache();   // MODULES just arrived — populate colour cache
                 console.log('Loaded ' + MODULES.length + ' modules');
             });
             // Load DAQ connection map
@@ -121,15 +122,19 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initGeoMap();
 
-    // Fast render loop — redraws from cached allChannels at configurable
-    // interval, independent of the slow CAEN poll interval.
-    function startRenderLoop() {
-        if (renderTimerId !== null) clearInterval(renderTimerId);
-        renderTimerId = setInterval(() => {
-            if (allChannels.length > 0) renderActiveTab();
-        }, renderIntervalMs);
+    // Render loop — driven by requestAnimationFrame so it never stacks,
+    // skips hidden tabs automatically, and self-throttles to display rate.
+    // renderIntervalMs caps how often we actually re-render, so we don't
+    // burn CPU on every 16 ms frame when data only changes every 2 s.
+    let lastRenderTs = 0;
+    function renderLoop(ts) {
+        if (dataDirty && allChannels.length > 0 && (ts - lastRenderTs) >= renderIntervalMs) {
+            renderActiveTab();
+            lastRenderTs = ts;
+        }
+        requestAnimationFrame(renderLoop);
     }
-    startRenderLoop();
+    requestAnimationFrame(renderLoop);
 
 
 });
@@ -137,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function rebuildChMap() {
     chByName = {};
     allChannels.forEach(ch => { chByName[ch.name] = ch; });
+    rebuildColorCache();   // invalidate geo colour cache on new data
 }
 
 // Safe number formatter — returns '—' if value is null/undefined/NaN
@@ -146,9 +152,10 @@ function fmt(val, decimals) {
 
 function renderActiveTab() {
     const active = document.querySelector('.tab-content.active');
-    if (active.id === 'table-tab') renderTable();
-    else if (active.id === 'geo-tab') renderGeo();
-    updateFooter();
+    if (active.id === 'table-tab') renderTable();     // calls updateFooter internally
+    else if (active.id === 'geo-tab') { renderGeo(); updateFooter(); }
+    // Refresh open popups here, in the render loop, not on every data tick
+    if (popups.size > 0) refreshAllPopups();
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -281,117 +288,273 @@ function renderTable() {
     if (document.activeElement && (
             document.activeElement.classList.contains('vset-inline') ||
             document.activeElement.classList.contains('name-inline'))) return;
-    let data = allChannels.slice();
-    if (filterStatus === 'on')   data = data.filter(c => c.on);
-    if (filterStatus === 'off')  data = data.filter(c => !c.on);
-    if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
-    if (filterStatus === 'warn') data = data.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
-    if (filterStatus === 'fault') data = data.filter(c => statusClass(c.status) === 'status-err');
-    if (filterCrate)             data = data.filter(c => c.crate === filterCrate);
+
+    // ── Filter & sort ─────────────────────────────────────────────────
+    let data = allChannels;
+    if (filterStatus === 'on')      data = data.filter(c => c.on);
+    else if (filterStatus === 'off')data = data.filter(c => !c.on);
+    else if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
+    else if (filterStatus === 'warn')    data = data.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
+    else if (filterStatus === 'fault')   data = data.filter(c => statusClass(c.status) === 'status-err');
+    if (filterCrate) data = data.filter(c => c.crate === filterCrate);
     if (searchText) {
         const colonIdx = searchText.indexOf(':');
         if (colonIdx > 0) {
             const col = searchText.slice(0, colonIdx).trim();
             const val = searchText.slice(colonIdx + 1).trim();
-            const colMap = { crate: 'crate', slot: 'slot', ch: 'channel', channel: 'channel',
-                             name: 'name', model: 'model', vmon: 'vmon', vset: 'vset' };
+            const colMap = { crate:'crate', slot:'slot', ch:'channel', channel:'channel',
+                             name:'name', model:'model', vmon:'vmon', vset:'vset' };
             const field = colMap[col];
-            if (field) {
-                data = data.filter(c => String(c[field]).toLowerCase().includes(val));
-            } else {
-                data = data.filter(c =>
-                    (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
-            }
+            data = field
+                ? data.filter(c => String(c[field]).toLowerCase().includes(val))
+                : data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
         } else {
-            data = data.filter(c =>
-                (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+            data = data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
         }
     }
-    data.sort((a, b) => {
+    data = data.slice().sort((a, b) => {
         let va = a[sortCol], vb = b[sortCol];
-        if (sortCol === 'diff') { va = (a.vmon != null && a.vset != null) ? Math.abs(a.vmon - a.vset) : -1; vb = (b.vmon != null && b.vset != null) ? Math.abs(b.vmon - b.vset) : -1; }
+        if (sortCol === 'diff') {
+            va = (a.vmon != null && a.vset != null) ? Math.abs(a.vmon - a.vset) : -1;
+            vb = (b.vmon != null && b.vset != null) ? Math.abs(b.vmon - b.vset) : -1;
+        }
         if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
         if (typeof va === 'boolean') { va = va?1:0; vb = vb?1:0; }
         return sortAsc ? va - vb : vb - va;
     });
-    const tbody = document.getElementById('ch-body');
-    if (dataDirty) {
-    tbody.innerHTML = data.map(ch => {
-        const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
-        const dcls = !ch.on ? 'diff-ok' : (diff == null || diff < DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
-        const sc    = statusClass(ch.status);
-        const isWarn = isSettled(ch) && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
-        const dotCls = sc === 'status-err' ? 'fault'
-                     : isWarn              ? 'warn'
-                     : ch.on               ? 'on'
-                     :                       'off';
-        const pwrCls = ch.on ? 'on' : 'off';   // power button only reflects on/off, not status
-        const prim = isPrimary(ch);
-        return `<tr class="${prim ? 'primary-row' : ''}">
-            <td><span class="status-dot ${dotCls}"></span></td>
-            <td title="${ch.ip}">${ch.crate}</td><td>${ch.slot}</td><td>${ch.channel}</td>
-            <td>${ch.model||'—'}</td>
-            <td>${expertMode
-                ? `<input class="name-inline" type="text" maxlength="12" value="${ch.name||''}"
-                     onchange="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                   ><button class="vset-apply"
-                     onclick="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                   >✓</button>${prim ? '<span class="primary-badge">Primary</span>' : ''}`
-                : `${ch.name||'—'}${prim ? '<span class="primary-badge">Primary</span>' : ''}`
-            }</td>
-            <td style="text-align:right">${fmt(ch.vmon, 2)}</td>
-            <td style="text-align:right">${expertMode
-                ? `<input class="vset-inline" type="text" value="${fmt(ch.vset, 2)}"
-                     onchange="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                   ><button class="vset-apply"
-                     onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                   >✓</button>`
-                : `<span style="color:var(--text-dim)">${fmt(ch.vset, 2)}</span>`}</td>
-            <td class="${dcls}" style="text-align:right">${fmt(diff, 2)}</td>
-            <td style="text-align:right;color:${ch.iSupported===false?'var(--text-dim)':'inherit'}">${ch.iSupported===false ? 'N/A' : fmt(ch.imon, 3)}</td>
-            <td style="text-align:right">${ch.iSupported===false
-                ? `<span style="color:var(--text-dim)">N/A</span>`
-                : expertMode
-                    ? `<input class="vset-inline" type="text" value="${fmt(ch.iset, 1)}"
-                         onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                       ><button class="vset-apply"
-                         onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                       >✓</button>`
-                    : `<span style="color:var(--text-dim)">${fmt(ch.iset, 1)}</span>`
-            }</td>
-            <td class="${statusClass(ch.status)}"
-                title="${ch.status ? ch.status.split('|')[1] : ''}"
-            >${ch.status ? ch.status.split('|')[0] : ''}</td>
-            <td style="text-align:center">
-                <button class="pwr-btn ${pwrCls}"
-                    onclick="togglePower('${ch.crate}',${ch.slot},${ch.channel},${ch.on?'false':'true'})"
-                >${ch.on?'ON':'OFF'}</button>
-            </td></tr>`;
-    }).join('');
-    dataDirty = false;
-    } // end dataDirty
 
-    // Summary
+    // ── Surgical DOM patch ────────────────────────────────────────────
+    // Build keyed rows once; on subsequent renders only update cells that
+    // actually changed.  This avoids tearing down and rebuilding ~1200 rows
+    // on every data tick.
+    const tbody = document.getElementById('ch-body');
+
+    // Build a map of currently displayed rows keyed by "crate|slot|channel"
+    const existingRows = new Map();
+    for (const tr of tbody.rows) {
+        const k = tr.dataset.key;
+        if (k) existingRows.set(k, tr);
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    for (const ch of data) {
+        const key = ch.crate + '|' + ch.slot + '|' + ch.channel;
+        const diff   = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
+        const dcls   = !ch.on ? 'diff-ok' : (diff == null || diff < DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
+        const sc     = statusClass(ch.status);
+        const isWarn = isSettled(ch) && ch.vmon != null && ch.vset != null && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
+        const dotCls = sc === 'status-err' ? 'fault' : isWarn ? 'warn' : ch.on ? 'on' : 'off';
+        const pwrCls = ch.on ? 'on' : 'off';
+        const prim   = isPrimary(ch);
+        const stAbbr   = ch.status ? ch.status.split('|')[0] : '';
+        const stDetail = ch.status ? ch.status.split('|')[1] : '';
+
+        let tr = existingRows.get(key);
+        if (!tr) {
+            // ── Create new row (first render, or row newly visible after filter) ──
+            tr = document.createElement('tr');
+            tr.dataset.key = key;
+            tr.dataset.expert = expertMode ? '1' : '0';
+            existingRows.delete(key);  // mark as still-needed (same as patch branch)
+
+            // td0: status dot
+            const td0 = document.createElement('td');
+            const dot = document.createElement('span');
+            dot.className = 'status-dot ' + dotCls;
+            td0.appendChild(dot);
+            tr.appendChild(td0);
+
+            // td1: crate  td2: slot  td3: channel  td4: model
+            for (const txt of [ch.crate, ch.slot, ch.channel, ch.model||'—']) {
+                const td = document.createElement('td');
+                td.textContent = txt;
+                tr.appendChild(td);
+            }
+            // td1 gets the IP title
+            tr.cells[1].title = ch.ip;
+
+            // td5: name
+            const td5 = document.createElement('td');
+            td5.innerHTML = buildNameCell(ch, prim);
+            tr.appendChild(td5);
+
+            // td6: vmon
+            const td6 = document.createElement('td');
+            td6.style.textAlign = 'right';
+            td6.textContent = fmt(ch.vmon, 2);
+            tr.appendChild(td6);
+
+            // td7: vset
+            const td7 = document.createElement('td');
+            td7.style.textAlign = 'right';
+            td7.innerHTML = buildVsetCell(ch);
+            tr.appendChild(td7);
+
+            // td8: diff
+            const td8 = document.createElement('td');
+            td8.className = dcls;
+            td8.style.textAlign = 'right';
+            td8.textContent = fmt(diff, 2);
+            tr.appendChild(td8);
+
+            // td9: imon
+            const td9 = document.createElement('td');
+            td9.style.textAlign = 'right';
+            td9.style.color = ch.iSupported === false ? 'var(--text-dim)' : '';
+            td9.textContent = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
+            tr.appendChild(td9);
+
+            // td10: iset
+            const td10 = document.createElement('td');
+            td10.style.textAlign = 'right';
+            td10.innerHTML = buildIsetCell(ch);
+            tr.appendChild(td10);
+
+            // td11: status
+            const td11 = document.createElement('td');
+            td11.className = sc;
+            td11.title = stDetail || '';
+            td11.textContent = stAbbr;
+            tr.appendChild(td11);
+
+            // td12: power button
+            const td12 = document.createElement('td');
+            td12.style.textAlign = 'center';
+            const btn = document.createElement('button');
+            btn.className = 'pwr-btn ' + pwrCls;
+            btn.textContent = ch.on ? 'ON' : 'OFF';
+            btn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
+            td12.appendChild(btn);
+            tr.appendChild(td12);
+
+            tr.className = prim ? 'primary-row' : '';
+        } else {
+            // ── Patch only what changed ───────────────────────────────────────
+            existingRows.delete(key);  // mark as still-needed
+
+            // status dot
+            const dot = tr.cells[0].firstElementChild;
+            const wantDot = 'status-dot ' + dotCls;
+            if (dot.className !== wantDot) dot.className = wantDot;
+
+            // vmon (td6)
+            const vmonTxt = fmt(ch.vmon, 2);
+            if (tr.cells[6].textContent !== vmonTxt) tr.cells[6].textContent = vmonTxt;
+
+            // diff class + value (td8)
+            if (tr.cells[8].className !== dcls) tr.cells[8].className = dcls;
+            const diffTxt = fmt(diff, 2);
+            if (tr.cells[8].textContent !== diffTxt) tr.cells[8].textContent = diffTxt;
+
+            // imon (td9)
+            const imonTxt = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
+            if (tr.cells[9].textContent !== imonTxt) tr.cells[9].textContent = imonTxt;
+
+            // status (td11)
+            if (tr.cells[11].className !== sc)       tr.cells[11].className = sc;
+            if (tr.cells[11].textContent !== stAbbr) tr.cells[11].textContent = stAbbr;
+            if (tr.cells[11].title !== (stDetail||'')) tr.cells[11].title = stDetail || '';
+
+            // power button (td12)
+            const pbtn = tr.cells[12].firstElementChild;
+            const wantPwr = 'pwr-btn ' + pwrCls;
+            if (pbtn.className !== wantPwr) pbtn.className = wantPwr;
+            const pwrTxt = ch.on ? 'ON' : 'OFF';
+            if (pbtn.textContent !== pwrTxt) {
+                pbtn.textContent = pwrTxt;
+                pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
+            }
+
+            // Expert mode cells (name td5, vset td7, iset td10) — rebuild if mode changed
+            const trExpert = tr.dataset.expert === '1';
+            if (trExpert !== expertMode) {
+                tr.cells[5].innerHTML  = buildNameCell(ch, prim);
+                tr.cells[7].innerHTML  = buildVsetCell(ch);
+                tr.cells[10].innerHTML = buildIsetCell(ch);
+                tr.dataset.expert = expertMode ? '1' : '0';
+            }
+        }
+        fragment.appendChild(tr);
+    }
+
+    // Remove rows no longer in filtered set
+    existingRows.forEach(tr => tr.remove());
+
+    // Re-append in sorted order (moves don't re-parse HTML, just reorder)
+    tbody.appendChild(fragment);
+
+    dataDirty = false;
+
+    // ── Summary counts (computed once from the same pass) ─────────────
     const total   = allChannels.length;
-    const primCnt = allChannels.filter(c => isPrimary(c)).length;
-    const onCnt   = allChannels.filter(c => c.on).length;
-    const warns   = allChannels.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
-    const faults  = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
+    let primCnt=0, onCnt=0, warns=0, faults=0;
+    for (const c of allChannels) {
+        if (isPrimary(c)) primCnt++;
+        if (c.on) onCnt++;
+        if (isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold) warns++;
+        if (statusClass(c.status) === 'status-err') faults++;
+    }
     document.getElementById('s-total').textContent   = total;
     document.getElementById('s-primary').textContent = primCnt;
     document.getElementById('s-on').textContent      = onCnt;
     document.getElementById('s-off').textContent     = total - onCnt;
     document.getElementById('s-warn').textContent    = warns;
     document.getElementById('s-fault').textContent   = faults;
-    updateFooter();
+
+    // Pass filtered count to footer without re-filtering
+    updateFooter(data.length, total);
 }
 
-function updateFooter() {
+// Helper: creates a closure for the power button onclick (avoids string eval)
+function makeToggle(crate, slot, channel, currentOn) {
+    return function() { togglePower(crate, slot, channel, !currentOn); };
+}
+
+function buildNameCell(ch, prim) {
+    const badge = prim ? '<span class="primary-badge">Primary</span>' : '';
+    if (expertMode) {
+        return `<input class="name-inline" type="text" maxlength="12" value="${ch.name||''}"
+                     onchange="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                   ><button class="vset-apply"
+                     onclick="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                   >\u2713</button>${badge}`;
+    }
+    return (ch.name||'—') + badge;
+}
+
+function buildVsetCell(ch) {
+    if (expertMode) {
+        return `<input class="vset-inline" type="text" value="${fmt(ch.vset, 2)}"
+                     onchange="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                   ><button class="vset-apply"
+                     onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                   >\u2713</button>`;
+    }
+    return `<span style="color:var(--text-dim)">${fmt(ch.vset, 2)}</span>`;
+}
+
+function buildIsetCell(ch) {
+    if (ch.iSupported === false) {
+        return `<span style="color:var(--text-dim)">N/A</span>`;
+    }
+    if (expertMode) {
+        return `<input class="vset-inline" type="text" value="${fmt(ch.iset, 1)}"
+                     onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                   ><button class="vset-apply"
+                     onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                   >\u2713</button>`;
+    }
+    return `<span style="color:var(--text-dim)">${fmt(ch.iset, 1)}</span>`;
+}
+
+// shownRows / totalRows are passed in by renderTable to avoid re-filtering.
+// When called from renderGeo (no args), falls back to module counts only.
+function updateFooter(shownRows, totalRows) {
     document.getElementById('last-update').textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
     const active = document.querySelector('.tab-content.active');
     if (active && active.id === 'geo-tab') {
-        // Geometry tab: count modules matching the geo search highlight
         const total = MODULES.length;
         if (geoHighlight) {
             const matched = MODULES.filter(m => m.n.toUpperCase().includes(geoHighlight)).length;
@@ -402,17 +565,8 @@ function updateFooter() {
                 `${total} modules | ${allChannels.length} channels`;
         }
     } else {
-        // Table tab: count visible (filtered) rows vs total channels
-        const total = allChannels.length;
-        let filtered = allChannels.slice();
-        if (filterStatus === 'on')      filtered = filtered.filter(c => c.on);
-        if (filterStatus === 'off')     filtered = filtered.filter(c => !c.on);
-        if (filterStatus === 'warn')    filtered = filtered.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
-        if (filterStatus === 'primary') filtered = filtered.filter(c => isPrimary(c));
-        if (filterCrate)                filtered = filtered.filter(c => c.crate === filterCrate);
-        if (searchText)                 filtered = filtered.filter(c =>
-            (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
-        const shown = filtered.length;
+        const total = totalRows != null ? totalRows : allChannels.length;
+        const shown = shownRows != null ? shownRows : total;
         if (shown === total) {
             document.getElementById('row-count').textContent =
                 `${total} channels | ${MODULES.length} modules`;
@@ -482,14 +636,24 @@ function initGeoMap() {
         if (e.button !== 0) return;
         geoDrag = { sx: e.clientX, sy: e.clientY, ox: geoTransform.x, oy: geoTransform.y };
     });
+    // Throttle mousemove to one rAF per frame — avoids running a 1731-module
+    // hit-test on every raw mouse event (can fire 200+ times/s).
+    let pendingMouseEvent = null;
     window.addEventListener('mousemove', e => {
         if (geoDrag) {
             geoTransform.x = geoDrag.ox + (e.clientX - geoDrag.sx);
             geoTransform.y = geoDrag.oy + (e.clientY - geoDrag.sy);
             renderGeo();
         }
-        updateGeoHover(e);
+        pendingMouseEvent = e;
     });
+    (function hoverLoop() {
+        if (pendingMouseEvent) {
+            updateGeoHover(pendingMouseEvent);
+            pendingMouseEvent = null;
+        }
+        requestAnimationFrame(hoverLoop);
+    })();
     window.addEventListener('mouseup', () => { geoDrag = null; });
 
     // Zoom
@@ -522,6 +686,7 @@ function initGeoMap() {
 
     // Color mode
     document.getElementById('geo-color-mode').addEventListener('change', () => {
+        rebuildColorCache();   // mode changed — recompute all colours
         drawGeoLegend();
         renderGeo();
     });
@@ -572,23 +737,47 @@ function resetGeoView() {
 // ── Color helpers ────────────────────────────────────────────────────
 function geoColorMode() { return document.getElementById('geo-color-mode').value; }
 
-function moduleColor(mod) {
-    const ch = chByName[mod.n];
+// ── Module colour cache ──────────────────────────────────────────────
+// moduleColor() is called for all 1731 modules on every renderGeo() frame.
+// Parsing hex strings in lerpColor() is expensive at that call rate.
+// Instead we pre-compute and cache one colour string per module whenever
+// data arrives (rebuildColorCache), keyed by module name + colour mode.
+// renderGeo() reads the cache; a colour-mode change also triggers a rebuild.
+let _colorCache = {};        // modName -> colour string
+let _colorCacheMode = '';    // mode the cache was built for
+
+function rebuildColorCache() {
     const mode = geoColorMode();
+    _colorCacheMode = mode;
+    _colorCache = {};
+    for (const mod of MODULES) {
+        _colorCache[mod.n] = _computeModuleColor(mod, mode);
+    }
+}
+
+function moduleColor(mod) {
+    // If mode changed since last build, rebuild first
+    const mode = geoColorMode();
+    if (mode !== _colorCacheMode) rebuildColorCache();
+    return _colorCache[mod.n] ?? '#222';
+}
+
+function _computeModuleColor(mod, mode) {
+    const ch = chByName[mod.n];
 
     if (mode === 'status') {
         if (!ch) return '#222';
-        if (statusClass(ch.status) === 'status-err')  return '#f56565'; // fault: red
-        if (!ch.on)                                    return '#4a5568'; // off: dim
+        if (statusClass(ch.status) === 'status-err')  return '#f56565';
+        if (!ch.on)                                    return '#4a5568';
         if (isSettled(ch) && ch.vmon != null && ch.vset != null && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold)
-                                                       return '#eab308'; // warn: amber
-        return '#2dd4a0'; // work: green    
+                                                       return '#eab308';
+        return '#2dd4a0';
     }
 
     if (!ch) return '#222';
 
     if (mode === 'vmon') {
-        if (!ch.on) return '#333';      // off: grey out
+        if (!ch.on) return '#333';
         const t = Math.min(1, Math.max(0, Math.abs(ch.vmon ?? 0) / CR.vmon_max));
         return vmonColorScale(t);
     }
@@ -598,8 +787,8 @@ function moduleColor(mod) {
         return vmonColorScale(t);
     }
 
-    // mode === 'diff'
-    if (!ch.on) return '#333';          // off: grey out
+    // diff
+    if (!ch.on) return '#333';
     if (ch.vmon == null || ch.vset == null) return '#333';
     const diff = Math.abs(ch.vmon - ch.vset);
     const t = Math.min(1, Math.max(0, diff / CR.diff_max));
@@ -804,7 +993,7 @@ function updateGeoHover(e) {
     if (mod) {
         if (geoHover !== mod.n) {
             geoHover = mod.n;
-            renderGeo();
+            if (!geoDrag) renderGeo();  // skip redraw if pan is already rendering
         }
         const ch = chByName[mod.n];
         let html = `<div class="tt-name">${mod.n}</div>`;
@@ -833,7 +1022,7 @@ function updateGeoHover(e) {
         tooltip.style.left = (e.clientX + 14) + 'px';
         tooltip.style.top  = (e.clientY + 14) + 'px';
     } else {
-        if (geoHover) { geoHover = null; renderGeo(); }
+        if (geoHover) { geoHover = null; if (!geoDrag) renderGeo(); }
         tooltip.style.display = 'none';
     }
 }
