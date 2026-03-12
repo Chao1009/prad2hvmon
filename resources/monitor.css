@@ -540,22 +540,19 @@ footer #last-update::before {
 .booster-subtitle { font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
 
 #booster-cards {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
 }
 
 .booster-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px 20px 16px;
-    min-width: 280px;
-    max-width: 340px;
-    flex: 1 1 280px;
+    border-radius: 12px;
+    padding: 24px 28px 22px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
     transition: border-color 0.2s;
 }
 
