@@ -395,7 +395,7 @@ private:
 //  Commands used:
 //    OUTP:STAT?          → "ON" or "OFF"
 //    OUTP:STAT 1/0      → turn output on/off
-//    SOUR:VOLT?          → measured voltage (float string)
+//    MEAS:VOLT?          → measured output voltage (float string)
 //    SOUR:VOLT <val>     → set voltage
 //    SOUR:MOD?           → operating mode: "CV" or "CC"
 //
@@ -528,9 +528,10 @@ struct BoosterSupply {
         if (s.isEmpty()) { failWith("no response (OUTP:STAT?)"); return; }
         on = (s.compare("ON", Qt::CaseInsensitive) == 0);
 
-        // Measured voltage
-        s = sendCmd("SOUR:VOLT?");
-        if (s.isEmpty()) { failWith("no response (SOUR:VOLT?)"); return; }
+        // Measured voltage — MEAS:VOLT? returns the actual output voltage;
+        // SOUR:VOLT? returns the programmed setpoint (same value even when OFF).
+        s = sendCmd("MEAS:VOLT?");
+        if (s.isEmpty()) { failWith("no response (MEAS:VOLT?)"); return; }
         bool ok;
         double v = s.toDouble(&ok);
         vmon = ok ? v : std::numeric_limits<double>::quiet_NaN();
