@@ -383,3 +383,283 @@ private:
     QString   gui_config_path_;
     QString   daq_map_path_;
 };
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  BoosterSupply – one TDK-Lambda GEN power supply accessed via SCPI/TCP
+// ═════════════════════════════════════════════════════════════════════════════
+//
+//  Protocol:  plain-text SCPI over TCP port 8003 (TDK-Lambda default).
+//  Each supply exposes exactly one channel.
+//
+//  Commands used:
+//    OUTP:STAT?          → "ON" or "OFF"
+//    OUTP:STAT ON/OFF    → turn output on/off
+//    SOUR:VOLT?          → measured voltage (float string)
+//    SOUR:VOLT <val>     → set voltage
+//    SOUR:MOD?           → operating mode: "CV" or "CC"
+//
+//  Threading model mirrors HVPoller:
+//    BoosterPoller lives on a dedicated QThread, owns QTcpSocket objects.
+//    BoosterMonitor lives on the GUI thread and is registered with QWebChannel.
+
+#include <QTcpSocket>
+#include <QHostAddress>
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  BoosterSupply – owns one QTcpSocket, manages the blocking SCPI dialogue
+// ─────────────────────────────────────────────────────────────────────────────
+struct BoosterSupply {
+    QString name;   // human label, e.g. "Booster 1"
+    QString ip;
+    quint16 port = 8003;
+
+    // Readback (updated by poll)
+    double  vmon     = std::numeric_limits<double>::quiet_NaN();
+    double  vset     = std::numeric_limits<double>::quiet_NaN();
+    bool    on       = false;
+    QString mode;       // "CV", "CC", or ""
+    QString error;      // last error string, empty if OK
+    bool    connected = false;
+
+    // The socket lives on the BoosterPoller's thread (created in poll()).
+    // We use synchronous (blocking) I/O with a short timeout so no event-loop
+    // juggling is needed inside the poll slot.
+    QTcpSocket *sock = nullptr;
+
+    // Send a command; return trimmed response, or "" on error.
+    QString sendCmd(const QString &cmd, int timeoutMs = 2000)
+    {
+        if (!sock) return {};
+        const QByteArray tx = (cmd + "\n").toUtf8();
+        sock->write(tx);
+        if (!sock->waitForBytesWritten(timeoutMs)) return {};
+        if (!sock->waitForReadyRead(timeoutMs))    return {};
+        return QString::fromUtf8(sock->readAll()).trimmed();
+    }
+
+    // Ensure socket is connected; reconnect if needed.
+    bool ensureConnected(int timeoutMs = 3000)
+    {
+        if (!sock) sock = new QTcpSocket();
+        if (sock->state() == QAbstractSocket::ConnectedState) return true;
+        sock->abort();
+        sock->connectToHost(ip, port);
+        if (!sock->waitForConnected(timeoutMs)) {
+            error     = sock->errorString();
+            connected = false;
+            return false;
+        }
+        connected = true;
+        error.clear();
+        return true;
+    }
+
+    // One full poll cycle: read status, voltage, mode.
+    void poll()
+    {
+        if (!ensureConnected()) return;
+
+        auto failWith = [this](const char *msg) {
+            connected = false;
+            error     = QString::fromUtf8(msg);
+        };
+
+        // Output state
+        QString s = sendCmd("OUTP:STAT?");
+        if (s.isEmpty()) { failWith("no response (OUTP:STAT?)"); return; }
+        on = (s.compare("ON", Qt::CaseInsensitive) == 0);
+
+        // Measured voltage
+        s = sendCmd("SOUR:VOLT?");
+        if (s.isEmpty()) { failWith("no response (SOUR:VOLT?)"); return; }
+        bool ok;
+        double v = s.toDouble(&ok);
+        vmon = ok ? v : std::numeric_limits<double>::quiet_NaN();
+
+        // Operating mode
+        s = sendCmd("SOUR:MOD?");
+        if (s.isEmpty()) { failWith("no response (SOUR:MOD?)"); return; }
+        mode = s;
+
+        // VSet (keep a local mirror; also refresh on startup/reconnect)
+        s = sendCmd("SOUR:VOLT:SET?");
+        if (s.isEmpty()) { failWith("no response (SOUR:VOLT:SET?)"); return; }
+        v = s.toDouble(&ok);
+        if (ok) vset = v;
+
+        error.clear();
+    }
+
+    void setOutput(bool enable)
+    {
+        if (!ensureConnected()) return;
+        sendCmd(enable ? "OUTP:STAT ON" : "OUTP:STAT OFF");
+        on = enable;
+    }
+
+    void setVoltage(double volts)
+    {
+        if (!ensureConnected()) return;
+        sendCmd(QString("SOUR:VOLT %1").arg(volts, 0, 'f', 2));
+        vset = volts;
+    }
+
+    ~BoosterSupply() { if (sock) { sock->abort(); delete sock; } }
+};
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  BoosterPoller – worker-thread owner of all BoosterSupply objects
+// ═════════════════════════════════════════════════════════════════════════════
+class BoosterPoller : public QObject
+{
+    Q_OBJECT
+
+public:
+    // supplies_def: list of { name, ip [, port] }
+    explicit BoosterPoller(
+        const std::vector<std::tuple<QString,QString,quint16>> &supplies_def,
+        QObject *parent = nullptr)
+        : QObject(parent), poll_interval_ms_(3000)
+    {
+        for (const auto &[name, ip, port] : supplies_def) {
+            auto *s  = new BoosterSupply();
+            s->name  = name;
+            s->ip    = ip;
+            s->port  = port;
+            supplies_.push_back(s);
+        }
+    }
+
+    ~BoosterPoller() override
+    {
+        if (timer_) { timer_->stop(); delete timer_; }
+        for (auto *s : supplies_) delete s;
+    }
+
+public slots:
+    void startPolling()
+    {
+        if (!timer_) {
+            timer_ = new QTimer(this);
+            timer_->setTimerType(Qt::CoarseTimer);
+            connect(timer_, &QTimer::timeout, this, &BoosterPoller::doPoll);
+        }
+        if (!timer_->isActive())
+            timer_->start(poll_interval_ms_);
+    }
+
+    void stopPolling()  { if (timer_) timer_->stop(); }
+
+    void setPollInterval(int ms)
+    {
+        poll_interval_ms_ = (ms < 500) ? 500 : ms;
+        if (timer_ && timer_->isActive()) { timer_->stop(); timer_->start(poll_interval_ms_); }
+    }
+
+    void setOutput(int idx, bool on)
+    {
+        if (idx >= 0 && idx < static_cast<int>(supplies_.size()))
+            supplies_[idx]->setOutput(on);
+    }
+
+    void setVoltage(int idx, double volts)
+    {
+        if (idx >= 0 && idx < static_cast<int>(supplies_.size()))
+            supplies_[idx]->setVoltage(volts);
+    }
+
+signals:
+    void snapshotReady(const QString &jsonData);
+
+private slots:
+    void doPoll()
+    {
+        for (auto *s : supplies_) s->poll();
+        emit snapshotReady(buildSnapshot());
+    }
+
+private:
+    QString buildSnapshot()
+    {
+        QJsonArray arr;
+        for (int i = 0; i < static_cast<int>(supplies_.size()); ++i) {
+            const auto *s = supplies_[i];
+            QJsonObject o;
+            o["idx"]       = i;
+            o["name"]      = s->name;
+            o["ip"]        = s->ip;
+            o["connected"] = s->connected;
+            o["on"]        = s->on;
+            o["mode"]      = s->mode;
+            o["error"]     = s->error;
+            o["vmon"]      = std::isnan(s->vmon) ? QJsonValue::Null : QJsonValue(s->vmon);
+            o["vset"]      = std::isnan(s->vset) ? QJsonValue::Null : QJsonValue(s->vset);
+            arr.append(o);
+        }
+        return QString(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+    }
+
+    QTimer *timer_ = nullptr;
+    int     poll_interval_ms_;
+    std::vector<BoosterSupply*> supplies_;
+};
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  BoosterMonitor – GUI-thread QWebChannel bridge
+// ═════════════════════════════════════════════════════════════════════════════
+class BoosterMonitor : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit BoosterMonitor(BoosterPoller *poller, QObject *parent = nullptr)
+        : QObject(parent), poller_(poller)
+    {
+        connect(poller_, &BoosterPoller::snapshotReady,
+                this,    &BoosterMonitor::onSnapshotReady,
+                Qt::QueuedConnection);
+    }
+
+public slots:
+    QString readAll() { return cache_.isEmpty() ? QStringLiteral("[]") : cache_; }
+
+    void setOutput(int idx, bool on)
+    {
+        QMetaObject::invokeMethod(poller_, "setOutput",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(int,  idx),
+                                  Q_ARG(bool, on));
+    }
+
+    void setVoltage(int idx, double volts)
+    {
+        QMetaObject::invokeMethod(poller_, "setVoltage",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(int,    idx),
+                                  Q_ARG(double, volts));
+    }
+
+    void setPollInterval(int ms)
+    {
+        QMetaObject::invokeMethod(poller_, "setPollInterval",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(int, ms));
+    }
+
+signals:
+    void boosterUpdated(const QString &jsonData);
+
+private slots:
+    void onSnapshotReady(const QString &json)
+    {
+        cache_ = json;
+        emit boosterUpdated(json);
+    }
+
+private:
+    BoosterPoller *poller_;
+    QString        cache_;
+};

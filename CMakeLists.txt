@@ -16,6 +16,7 @@ find_package(Qt5 REQUIRED COMPONENTS
     Widgets
     WebEngineWidgets   # QWebEngineView, QWebEnginePage, etc.
     WebChannel         # C++ <-> JS bridge (QWebChannel)
+    Network            # QTcpSocket for Booster HV supplies
 )
 
 # Required for Qt's code-generation tools (moc, uic, rcc)
@@ -77,6 +78,7 @@ target_link_libraries(prad2hvmon PRIVATE
     Qt5::Widgets
     Qt5::WebEngineWidgets
     Qt5::WebChannel
+    Qt5::Network       # QTcpSocket (BoosterPoller)
     fmt::fmt
 )
 
@@ -100,4 +102,5 @@ install(FILES
     resources/hycal_modules.json
     resources/gui_config.json
     resources/crates.json
+    resources/daq_map.json
         DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)

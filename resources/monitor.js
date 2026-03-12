@@ -19,6 +19,12 @@ let filterStatus = 'all';
 let filterCrate  = null;
 let searchText   = '';
 
+// Booster HV supplies (TDK-Lambda, via BoosterMonitor WebChannel object)
+let boosterMonitor  = null;
+let boosterSupplies = [];   // latest snapshot [{idx,name,ip,connected,on,mode,vmon,vset,error}]
+let boosterByName   = {};   // modName ('Booster1'…) → live booster data
+let boosterDirty    = false;
+
 // Geometry map state
 let geoTransform = { x: 0, y: 0, scale: 1 };
 let geoDrag      = null;
@@ -48,7 +54,7 @@ let CR = {
 
 // Geometry view settings (overridden by gui_config.json)
 let GV = {
-    extent: 680,
+    extent: 780,   // half-width in mm for resetGeoView; must cover booster cards at x=680+40=720
 };
 
 // ═════════════════════════════════════════════════════════════════════
@@ -57,6 +63,19 @@ let GV = {
 document.addEventListener('DOMContentLoaded', () => {
     new QWebChannel(qt.webChannelTransport, channel => {
         hvMonitor = channel.objects.hvMonitor;
+        boosterMonitor = channel.objects.boosterMonitor;
+        if (boosterMonitor) {
+            boosterMonitor.boosterUpdated.connect(jsonStr => {
+                boosterSupplies = JSON.parse(jsonStr);
+                boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
+                boosterDirty = true;
+            });
+            boosterMonitor.readAll(jsonStr => {
+                boosterSupplies = JSON.parse(jsonStr);
+                boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
+                boosterDirty = true;
+            });
+        }
 
         // Data update only — no render; the render loop handles display
         hvMonitor.channelsUpdated.connect(jsonStr => {
@@ -123,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTableUI();
     initTabs();
     initGeoMap();
+    initBoosterTab();
 
     // Render loop — driven by requestAnimationFrame so it never stacks,
     // skips hidden tabs automatically, and self-throttles to display rate.
@@ -132,7 +152,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let lastFooterSec = -1;  // guards "X s ago" footer — only write on whole-second changes
     let lastClockSec  = -1;  // guards header clock — same
     function renderLoop(ts) {
-        if (dataDirty && allChannels.length > 0 && (ts - lastRenderTs) >= renderIntervalMs) {
+        // Re-render if CAEN data changed, or if booster data changed and the
+        // geo tab is active (booster blocks are drawn on the geo canvas).
+        const geoActive = document.querySelector('.tab-content.active')?.id === 'geo-tab';
+        const shouldRender = (dataDirty && allChannels.length > 0)
+                           || (boosterDirty && geoActive);
+        if (shouldRender && (ts - lastRenderTs) >= renderIntervalMs) {
             renderActiveTab();
             lastRenderTs = ts;
         }
@@ -172,6 +197,7 @@ function renderActiveTab() {
     const active = document.querySelector('.tab-content.active');
     if (active.id === 'table-tab') renderTable();     // calls updateFooter internally
     else if (active.id === 'geo-tab') { renderGeo(); updateFooter(); }
+    else if (active.id === 'booster-tab') { if (boosterDirty) { renderBoosterCards(); boosterDirty = false; } }
     // Refresh open popups here, in the render loop, not on every data tick
     if (popups.size > 0) refreshAllPopups();
 }
@@ -798,6 +824,16 @@ function moduleColor(mod) {
 }
 
 function _computeModuleColor(mod, mode) {
+    // Booster modules get colour from live TCP data, independent of colour mode
+    if (mod.t === 'booster') {
+        const bs = boosterByName[mod.n];
+        if (!bs || !bs.connected) return '#1a1a2e';   // offline – very dark blue
+        if (bs.error)             return '#7f1d1d';   // error – dark red
+        if (!bs.on)               return '#1e293b';   // off – dark slate
+        if (bs.mode === 'CC')     return '#78350f';   // CC – amber warning
+        return '#14532d';                              // on + CV – solid green
+    }
+
     const ch = chByName[mod.n];
 
     if (mode === 'status') {
@@ -939,13 +975,41 @@ function renderGeo() {
             ctx.setLineDash([4 / geoTransform.scale, 3 / geoTransform.scale]);
             ctx.strokeRect(m.x - hw, m.y - hh, hw * 2, hh * 2);
             ctx.setLineDash([]);
-            // Draw label inside block
-            ctx.scale(1, -1); // un-flip Y for text
+            ctx.scale(1, -1);
             ctx.fillStyle = '#e8edf3';
             ctx.font = `${10 / geoTransform.scale}px monospace`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(m.n, m.x, -m.y); // negated y because we un-flipped
+            ctx.fillText(m.n, m.x, -m.y);
+            ctx.restore();
+        }
+
+        // Booster supply blocks: distinctive border + two-line live label
+        if (m.t === 'booster' && !noMatch) {
+            const bs = boosterByName[m.n];
+            const bdrCol = (!bs || !bs.connected) ? '#475569'
+                         : bs.error               ? '#f87171'
+                         : !bs.on                 ? '#64748b'
+                         : bs.mode === 'CC'        ? '#fbbf24'
+                         :                          '#4ade80';
+            ctx.save();
+            ctx.strokeStyle = bdrCol;
+            ctx.lineWidth = 2.5 / geoTransform.scale;
+            ctx.strokeRect(m.x - hw, m.y - hh, hw * 2, hh * 2);
+            ctx.scale(1, -1);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            // Name line
+            ctx.fillStyle = '#cbd5e1';
+            ctx.font = `bold ${11 / geoTransform.scale}px sans-serif`;
+            ctx.fillText(m.n, m.x, -(m.y + hh * 0.3));
+            // VMon / status line
+            const bLine2 = (!bs || !bs.connected) ? 'OFFLINE'
+                         : bs.vmon != null         ? bs.vmon.toFixed(1) + ' V'
+                         :                           (bs.on ? 'ON' : 'OFF');
+            ctx.fillStyle = bdrCol;
+            ctx.font = `${10 / geoTransform.scale}px monospace`;
+            ctx.fillText(bLine2, m.x, -(m.y - hh * 0.3));
             ctx.restore();
         }
 
@@ -986,6 +1050,7 @@ function renderGeo() {
         ctx.textBaseline = 'middle';
         ctx.fillStyle = 'rgba(255,255,255,0.7)';
         for (const m of MODULES) {
+            if (m.t === 'booster') continue;   // booster blocks draw their own labels
             // only draw labels that are within viewport
             const sx = m.x * s, sy = -m.y * s;
             if (sx < -geoTransform.x - 100 || sx > -geoTransform.x + geoCanvas.width/devicePixelRatio + 100) continue;
@@ -1033,6 +1098,33 @@ function updateGeoHover(e) {
         const ch = chByName[mod.n];
         let html = `<div class="tt-name">${mod.n}</div>`;
         html += `<div class="tt-row"><span class="tt-label">Type</span><span class="tt-val">${mod.t}</span></div>`;
+
+        // ── Booster tooltip (no HV/DAQ rows) ─────────────────────────────
+        if (mod.t === 'booster') {
+            html += `<div class="tt-row"><span class="tt-label">IP</span><span class="tt-val" style="font-family:monospace">${escHtml(mod.ip || '—')}</span></div>`;
+            const bs = boosterByName[mod.n];
+            if (bs) {
+                const connSpan = bs.connected
+                    ? '<span class="st-on">Connected</span>'
+                    : '<span class="st-off">Offline</span>';
+                html += `<div class="tt-row"><span class="tt-label">Link</span><span class="tt-val">${connSpan}</span></div>`;
+                if (bs.connected) {
+                    html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val"><span class="tt-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">Mode</span><span class="tt-val">${escHtml(bs.mode||'—')}</span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${bs.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>'}</span></div>`;
+                    if (bs.error) html += `<div class="tt-row"><span class="tt-label">Error</span><span class="tt-val" style="color:var(--red)">${escHtml(bs.error)}</span></div>`;
+                }
+            } else {
+                html += `<div class="tt-row"><span class="tt-label">Link</span><span class="tt-val" style="color:var(--text-dim)">waiting…</span></div>`;
+            }
+            tooltip.innerHTML = html;
+            tooltip.style.display = 'block';
+            tooltip.style.left = (e.clientX + 14) + 'px';
+            tooltip.style.top  = (e.clientY + 14) + 'px';
+            return;
+        }
+
         if (ch) {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val">${ch.crate} s${ch.slot} ch${ch.channel}</span></div>`;
             const daqEntry = daqByName[mod.n];
@@ -1081,6 +1173,9 @@ function openModPopup(mod) {
         bringToFront(popups.get(mod.n).el);
         return;
     }
+
+    // Booster supply popup — entirely different layout
+    if (mod.t === 'booster') { openBoosterPopup(mod); return; }
 
     const ch = chByName[mod.n];
 
@@ -1336,3 +1431,287 @@ function pwrHtml(ch) {
     return ch.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>';
 }
 
+
+
+// ═════════════════════════════════════════════════════════════════════
+//  BOOSTER – geo popup + tab card rendering
+// ═════════════════════════════════════════════════════════════════════
+
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Booster floating popup (opened from geo view click) ───────────────
+function openBoosterPopup(mod) {
+    if (popups.has(mod.n)) { bringToFront(popups.get(mod.n).el); return; }
+
+    const el = document.createElement('div');
+    el.className = 'mod-popup';
+    const offset = (popups.size % 8) * 26;
+    el.style.left = (120 + offset) + 'px';
+    el.style.top  = (100 + offset) + 'px';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'popup-header';
+    header.innerHTML = `<h2>${escHtml(mod.n)}</h2><button class="popup-close" title="Close">✕</button>`;
+    el.appendChild(header);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'popup-body';
+
+    const grid = document.createElement('div');
+    grid.className = 'popup-grid';
+    body.appendChild(grid);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'popup-actions';
+
+    const rowV = document.createElement('div');
+    rowV.className = 'popup-action-row';
+    const vsetInput = document.createElement('input');
+    vsetInput.type = 'number'; vsetInput.step = '0.1'; vsetInput.min = '0';
+    vsetInput.placeholder = 'VSet (V)';
+    const btnSetV = document.createElement('button');
+    btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
+    rowV.append(vsetInput, btnSetV);
+
+    const rowPwr = document.createElement('div');
+    rowPwr.className = 'popup-action-row';
+    const btnOn  = document.createElement('button');
+    btnOn.className  = 'btn-sm btn-on';  btnOn.textContent  = 'ON';
+    const btnOff = document.createElement('button');
+    btnOff.className = 'btn-sm btn-off'; btnOff.textContent = 'OFF';
+    rowPwr.append(btnOn, btnOff);
+
+    actions.append(rowV, rowPwr);
+    body.appendChild(actions);
+    el.appendChild(body);
+
+    // Find this supply's index from boosterSupplies
+    function supplyIdx() {
+        const i = boosterSupplies.findIndex(s => s.name === mod.n);
+        return i;  // -1 if not yet polled
+    }
+
+    function refresh() {
+        const bs = boosterByName[mod.n];
+        let html = '';
+        html += `<span class="plbl">IP</span><span class="pval" style="font-family:monospace">${escHtml(mod.ip||'—')}</span>`;
+        if (bs) {
+            const connSpan = bs.connected
+                ? '<span class="st-on">Connected</span>'
+                : '<span class="st-off">Offline</span>';
+            html += `<span class="plbl">Link</span><span class="pval">${connSpan}</span>`;
+            if (bs.connected) {
+                html += `<span class="plbl">VMon</span><span class="pval"><span class="pval-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span>`;
+                html += `<span class="plbl">VSet</span><span class="pval">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span>`;
+                const modeBadge = bs.mode
+                    ? `<span class="booster-mode-badge ${bs.mode.toUpperCase()==='CV'?'mode-cv':'mode-cc'}">${escHtml(bs.mode)}</span>`
+                    : '—';
+                html += `<span class="plbl">Mode</span><span class="pval">${modeBadge}</span>`;
+                html += `<span class="plbl">Pwr</span><span class="pval">${bs.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>'}</span>`;
+                if (bs.error) html += `<span class="plbl">Error</span><span class="pval" style="color:var(--red)">${escHtml(bs.error)}</span>`;
+                if (vsetInput.value === '' && bs.vset != null)
+                    vsetInput.value = bs.vset.toFixed(2);
+            }
+        } else {
+            html += `<span class="plbl">Link</span><span class="pval" style="color:var(--text-dim)">waiting…</span>`;
+        }
+        grid.innerHTML = html;
+        const hasConn = !!(bs && bs.connected);
+        vsetInput.disabled = !hasConn;
+        btnSetV.disabled   = !hasConn;
+        btnOn.disabled     = !hasConn;
+        btnOff.disabled    = !hasConn;
+        [vsetInput, btnSetV, btnOn, btnOff].forEach(el2 =>
+            el2.style.opacity = hasConn ? '1' : '0.35');
+    }
+    refresh();
+    popups.set(mod.n, { el, refresh });
+
+    header.querySelector('.popup-close').addEventListener('click', () => closeModPopup(mod.n));
+
+    btnSetV.addEventListener('click', () => {
+        if (!boosterMonitor) return;
+        const v = parseFloat(vsetInput.value);
+        if (isNaN(v) || v < 0) { vsetInput.style.borderColor = 'var(--red)'; return; }
+        vsetInput.style.borderColor = '';
+        const idx = supplyIdx(); if (idx < 0) return;
+        boosterMonitor.setVoltage(idx, v);
+        const bs = boosterByName[mod.n]; if (bs) bs.vset = v;
+        boosterDirty = true; refresh();
+    });
+    vsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetV.click(); });
+
+    btnOn.addEventListener('click', () => {
+        if (!boosterMonitor) return;
+        const idx = supplyIdx(); if (idx < 0) return;
+        boosterMonitor.setOutput(idx, true);
+        const bs = boosterByName[mod.n]; if (bs) bs.on = true;
+        boosterDirty = true; refresh();
+    });
+    btnOff.addEventListener('click', () => {
+        if (!boosterMonitor) return;
+        const idx = supplyIdx(); if (idx < 0) return;
+        boosterMonitor.setOutput(idx, false);
+        const bs = boosterByName[mod.n]; if (bs) bs.on = false;
+        boosterDirty = true; refresh();
+    });
+
+    // Drag via header
+    let drag = null;
+    header.addEventListener('mousedown', e => {
+        if (e.target.classList.contains('popup-close')) return;
+        bringToFront(el);
+        drag = { sx: e.clientX, sy: e.clientY, ox: el.offsetLeft, oy: el.offsetTop };
+        e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+        if (!drag) return;
+        let nx = drag.ox + (e.clientX - drag.sx);
+        let ny = drag.oy + (e.clientY - drag.sy);
+        nx = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  nx));
+        ny = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, ny));
+        el.style.left = nx + 'px'; el.style.top = ny + 'px';
+    });
+    window.addEventListener('mouseup', () => { drag = null; });
+    el.addEventListener('mousedown', () => bringToFront(el));
+
+    document.body.appendChild(el);
+    bringToFront(el);
+}
+
+// ── refreshAllPopups: extend to also refresh booster popups ───────────
+// (The existing refreshAllPopups calls popup.refresh() for all entries
+//  in the popups map, which now includes booster popups — no change needed.)
+
+// ── Booster tab card rendering ────────────────────────────────────────
+function initBoosterTab() { /* cards built lazily by renderBoosterCards */ }
+
+function renderBoosterCards() {
+    const container = document.getElementById('booster-cards');
+    if (!container) return;
+    boosterSupplies.forEach((s, idx) => {
+        let card = document.getElementById('booster-card-' + idx);
+        if (!card) {
+            card = buildBoosterCard(idx, s);
+            container.appendChild(card);
+        } else {
+            updateBoosterCard(card, idx, s);
+        }
+    });
+}
+
+function buildBoosterCard(idx, s) {
+    const card = document.createElement('div');
+    card.id = 'booster-card-' + idx;
+    card.className = 'booster-card ' + boosterCardClass(s);
+    card.innerHTML = boosterCardInnerHtml(s);
+    wireBoosterCard(card, idx);
+    return card;
+}
+
+function boosterCardInnerHtml(s) {
+    const connCls = s.connected ? 'conn-ok' : 'conn-err';
+    const connTxt = s.connected ? 'Connected' : 'Offline';
+    const vsetVal = s.vset != null ? s.vset.toFixed(2) : '';
+    return `
+<div class="booster-card-head">
+  <div>
+    <div class="booster-card-name">${escHtml(s.name)}</div>
+    <div class="booster-card-ip">${escHtml(s.ip)}</div>
+  </div>
+  <span class="booster-conn-badge ${connCls}">${connTxt}</span>
+</div>
+<div class="booster-readout">
+  <span class="booster-lbl">VMon</span>
+  <span class="booster-val val-live" data-field="vmon">${s.vmon!=null?s.vmon.toFixed(2)+' V':'—'}</span>
+  <span class="booster-lbl">VSet</span>
+  <span class="booster-val" data-field="vset">${s.vset!=null?s.vset.toFixed(2)+' V':'—'}</span>
+  <span class="booster-lbl">Mode</span>
+  <span class="booster-val" data-field="mode">${boosterModeBadge(s.mode)}</span>
+  <span class="booster-lbl">Output</span>
+  <span class="booster-val" data-field="pwr">${boosterPwrBadge(s)}</span>
+</div>
+<div class="booster-controls">
+  <input class="booster-vset-input" type="number" step="0.1" min="0"
+         placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input>
+  <button class="booster-btn b-btn-set" data-set-v>Set V</button>
+  <button class="booster-btn b-btn-on"  data-on>ON</button>
+  <button class="booster-btn b-btn-off" data-off>OFF</button>
+</div>
+<div class="booster-error ${s.error?'visible':''}" data-field="error">${escHtml(s.error||'')}</div>`;
+}
+
+function updateBoosterCard(card, idx, s) {
+    const wantCls = 'booster-card ' + boosterCardClass(s);
+    if (card.className !== wantCls) card.className = wantCls;
+
+    const badge = card.querySelector('.booster-conn-badge');
+    const connCls = s.connected ? 'conn-ok' : 'conn-err';
+    const connTxt = s.connected ? 'Connected' : 'Offline';
+    if (badge.className !== 'booster-conn-badge ' + connCls) badge.className = 'booster-conn-badge ' + connCls;
+    if (badge.textContent !== connTxt) badge.textContent = connTxt;
+
+    function sf(field, text) {
+        const el = card.querySelector(`[data-field="${field}"]`);
+        if (el && el.textContent !== text) el.textContent = text;
+    }
+    function sh(field, html2) {
+        const el = card.querySelector(`[data-field="${field}"]`);
+        if (el && el.innerHTML !== html2) el.innerHTML = html2;
+    }
+    sf('vmon', s.vmon != null ? s.vmon.toFixed(2) + ' V' : '—');
+    sf('vset', s.vset != null ? s.vset.toFixed(2) + ' V' : '—');
+    sh('mode', boosterModeBadge(s.mode));
+    sh('pwr',  boosterPwrBadge(s));
+    const errEl = card.querySelector('[data-field="error"]');
+    if (errEl) {
+        if (errEl.textContent !== (s.error||'')) errEl.textContent = s.error||'';
+        const wantVis = s.error ? 'booster-error visible' : 'booster-error';
+        if (errEl.className !== wantVis) errEl.className = wantVis;
+    }
+}
+
+function wireBoosterCard(card, idx) {
+    card.querySelector('[data-set-v]').addEventListener('click', () => {
+        if (!boosterMonitor) return;
+        const inp = card.querySelector('[data-vset-input]');
+        const v = parseFloat(inp.value);
+        if (isNaN(v) || v < 0) { inp.style.borderColor = 'var(--red)'; return; }
+        inp.style.borderColor = '';
+        boosterMonitor.setVoltage(idx, v);
+    });
+    card.querySelector('[data-on]').addEventListener('click', () => {
+        if (boosterMonitor) boosterMonitor.setOutput(idx, true);
+    });
+    card.querySelector('[data-off]').addEventListener('click', () => {
+        if (boosterMonitor) boosterMonitor.setOutput(idx, false);
+    });
+    card.querySelector('[data-vset-input]').addEventListener('keydown', e => {
+        if (e.key === 'Enter') card.querySelector('[data-set-v]').click();
+    });
+}
+
+function boosterCardClass(s) {
+    if (!s.connected || s.error) return 'card-fault';
+    if (s.on && s.mode === 'CC')  return 'card-warn';
+    if (s.on)                      return 'card-on';
+    return '';
+}
+
+function boosterModeBadge(mode) {
+    if (!mode) return '<span class="booster-val val-dim">—</span>';
+    const cls = mode.toUpperCase() === 'CV' ? 'mode-cv' : 'mode-cc';
+    return `<span class="booster-mode-badge ${cls}">${escHtml(mode)}</span>`;
+}
+
+function boosterPwrBadge(s) {
+    if (!s.connected) return '<span class="st-off">OFFLINE</span>';
+    return s.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>';
+}

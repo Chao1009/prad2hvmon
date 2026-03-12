@@ -208,6 +208,36 @@ int main(int argc, char *argv[])
         // ── GUI-thread bridge (registered with QWebChannel) ─────────────
         HVMonitor monitor(poller, moduleGeoPath, guiConfigPath, daqMapPath);
 
+        // ── Booster HV supplies (TDK-Lambda GEN via SCPI/TCP) ────────────
+        // IPs loaded from gui_config.json "booster" array; fall back to
+        // the three known addresses if the key is absent.
+        // Names MUST match the "n" field in hycal_modules.json so that
+        // boosterByName[mod.n] lookups in the frontend resolve correctly.
+        std::vector<std::tuple<QString,QString,quint16>> boosterDefs = {
+            { "Booster1", "129.57.160.191", 8003 },
+            { "Booster2", "129.57.160.190", 8003 },
+            { "Booster3", "129.57.160.189", 8003 },
+        };
+        if (!guiConfigPath.isEmpty()) {
+            QFile bcf(guiConfigPath);
+            if (bcf.open(QIODevice::ReadOnly)) {
+                QJsonObject bcfg = QJsonDocument::fromJson(bcf.readAll()).object();
+                QJsonArray bsupplies = bcfg["booster"].toArray();
+                if (!bsupplies.isEmpty()) {
+                    boosterDefs.clear();
+                    for (const auto &v : bsupplies) {
+                        QJsonObject bs = v.toObject();
+                        boosterDefs.emplace_back(
+                            bs["name"].toString("Booster"),
+                            bs["ip"].toString(),
+                            static_cast<quint16>(bs["port"].toInt(8003)));
+                    }
+                }
+            }
+        }
+        BoosterPoller  *bPoller  = new BoosterPoller(boosterDefs);
+        BoosterMonitor  bMonitor(bPoller);
+
         // ── Worker thread ────────────────────────────────────
         QThread workerThread;
         poller->moveToThread(&workerThread);
@@ -216,9 +246,16 @@ int main(int argc, char *argv[])
         QObject::connect(&workerThread, &QThread::finished,
                          poller, &QObject::deleteLater);
 
+        // Booster poller also runs on the same worker thread
+        QThread boosterThread;
+        bPoller->moveToThread(&boosterThread);
+        QObject::connect(&boosterThread, &QThread::finished,
+                         bPoller, &QObject::deleteLater);
+
         // Web channel (C++ <-> JS bridge)
         QWebChannel channel;
-        channel.registerObject(QStringLiteral("hvMonitor"), &monitor);
+        channel.registerObject(QStringLiteral("hvMonitor"),    &monitor);
+        channel.registerObject(QStringLiteral("boosterMonitor"), &bMonitor);
 
         // Read window size from gui_config.json (default 1400x900)
         int winW = 1400, winH = 900;
@@ -252,26 +289,24 @@ int main(int argc, char *argv[])
         if (htmlPath.isEmpty()) {
             std::cerr << "ERROR: cannot find monitor.html\n";
             delete poller;   // workerThread never started, deleteLater won't fire
+            delete bPoller;  // same for booster thread
             return -1;
         }
         view.setUrl(QUrl::fromLocalFile(QDir(htmlPath).absolutePath()));
         view.show();
 
-        // Start worker thread, then kick off polling on it via queued call
+        // Start worker threads, then kick off polling via queued calls
         workerThread.start();
         QMetaObject::invokeMethod(poller, "startPolling", Qt::QueuedConnection);
+        boosterThread.start();
+        QMetaObject::invokeMethod(bPoller, "startPolling", Qt::QueuedConnection);
 
         const int ret = app.exec();
 
-        // Clean shutdown.
-        // quit() posts QEvent::Quit to the worker event loop; wait() blocks
-        // until the thread exits.  Qt then processes any pending deleteLater
-        // events (including ~HVPoller) on the worker before it dies, so all
-        // CAEN objects are destroyed on the correct thread.
-        // There is no need to explicitly invokeMethod stopPolling here:
-        // ~HVPoller() stops and deletes the timer safely on the worker thread.
         workerThread.quit();
         workerThread.wait();
+        boosterThread.quit();
+        boosterThread.wait();
         return ret;
     }
 
