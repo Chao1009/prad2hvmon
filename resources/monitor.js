@@ -429,11 +429,9 @@ function renderTable() {
             td10.innerHTML = buildIsetCell(ch);
             tr.appendChild(td10);
 
-            // td11: status
+            // td11: status badges (no ON/OFF — Pwr column covers power state)
             const td11 = document.createElement('td');
-            td11.className = sc;
-            td11.title = stDetail || '';
-            td11.textContent = stAbbr;
+            td11.innerHTML = statusBadgesHtml(ch);
             tr.appendChild(td11);
 
             // td12: power button
@@ -469,10 +467,9 @@ function renderTable() {
             const imonTxt = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
             if (tr.cells[9].textContent !== imonTxt) tr.cells[9].textContent = imonTxt;
 
-            // status (td11)
-            if (tr.cells[11].className !== sc)       tr.cells[11].className = sc;
-            if (tr.cells[11].textContent !== stAbbr) tr.cells[11].textContent = stAbbr;
-            if (tr.cells[11].title !== (stDetail||'')) tr.cells[11].title = stDetail || '';
+            // status badges (td11)
+            const stHtml = statusBadgesHtml(ch);
+            if (tr.cells[11].innerHTML !== stHtml) tr.cells[11].innerHTML = stHtml;
 
             // power button (td12)
             const pbtn = tr.cells[12].firstElementChild;
@@ -1048,8 +1045,9 @@ function updateGeoHover(e) {
             html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val"${diffStyle}>${fmt(diff, 2)} V</span></div>`;
             if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
-            const ttSt = statusDisplay(ch);
-            html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ttSt.cls}" title="${ttSt.detail}">${ttSt.text}</span></div>`;
+            html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${pwrHtml(ch)}</span></div>`;
+            const ttSt = statusBadgesHtml(ch);
+            if (ttSt) html += `<div class="tt-row"><span class="tt-label">Status</span><span class="tt-val">${ttSt}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
             const daqEntry = daqByName[mod.n];
@@ -1160,8 +1158,9 @@ function openModPopup(mod) {
             } else {
                 html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
             }
-            const pSt = statusDisplay(c);
-            html += `<span class="plbl">Status</span><span class="pval ${pSt.cls}" title="${pSt.detail}">${pSt.text}</span>`;
+            html += `<span class="plbl">Pwr</span><span class="pval">${pwrHtml(c)}</span>`;
+            const ppSt = statusBadgesHtml(c);
+            if (ppSt) html += `<span class="plbl">Status</span><span class="pval">${ppSt}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
             isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
         } else {
@@ -1290,24 +1289,50 @@ function dotClass(ch) {
     return ch.on ? 'on' : 'off';
 }
 
-// Shared status display helper — returns { text, cls } for tooltip and popup.
-// text: the CAEN abbreviation(s) + detail, e.g. "ON", "RUP", "TRIP OVC"
-// cls:  one of 'st-on' | 'st-ramp' | 'st-warn' | 'st-fault' | 'st-off'
-function statusDisplay(ch) {
+// ── Status display helpers ───────────────────────────────────────────
+// statusBadgesHtml(ch)  — RUP/RDN (green) | fault tokens (red) | ΔV (amber)
+//   Returns '' for a clean ON/OFF channel.
+//   Used identically by the table Status column, tooltip, and popup.
+// pwrHtml(ch)           — ON (green) or OFF (dim).
+//   Used by the tooltip and popup Pwr row; table has its own Pwr column.
+
+function statusBadgesHtml(ch) {
     const abbr   = ch.status ? ch.status.split('|')[0].trim() : '';
     const detail = ch.status ? (ch.status.split('|')[1] || '').trim() : '';
     const sc     = statusClass(ch.status);
     const isWarn = isSettled(ch) && ch.vmon != null && ch.vset != null
                    && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
 
-    let cls;
-    if (sc === 'status-err')                           cls = 'st-fault';
-    else if (isWarn)                                   cls = 'st-warn';
-    else if (abbr === 'OFF' || !ch.on)                 cls = 'st-off';
-    else if (abbr === 'ON')                            cls = 'st-on';
-    else                                               cls = 'st-ramp'; // RUP / RDN
+    const badges = [];
 
-    const text = abbr || (ch.on ? 'ON' : 'OFF');
-    return { text, detail, cls };
+    // Ramp states — meaningful independent of power context
+    if (abbr === 'RUP' || abbr === 'RDN') {
+        badges.push(`<span class="st-ramp">${abbr}</span>`);
+    }
+
+    // Fault tokens — strip pure power-state tokens, keep the rest
+    if (sc === 'status-err') {
+        const faultTokens = abbr.split(/\s+/).filter(
+            t => t !== 'ON' && t !== 'OFF' && t !== 'RUP' && t !== 'RDN' && t !== '');
+        if (faultTokens.length > 0) {
+            const tip = detail ? ` title="${detail}"` : '';
+            badges.push(`<span class="st-fault"${tip}>${faultTokens.join('\u2009')}</span>`);
+        } else if (abbr && abbr !== 'ON' && abbr !== 'OFF' && abbr !== 'RUP' && abbr !== 'RDN') {
+            const tip = detail ? ` title="${detail}"` : '';
+            badges.push(`<span class="st-fault"${tip}>${abbr}</span>`);
+        }
+    }
+
+    // ΔV warning
+    if (isWarn) badges.push('<span class="st-warn">\u0394V</span>');
+
+    return badges.length ? `<span class="st-badges">${badges.join(' ')}</span>` : '';
+}
+
+// Power state badge for tooltip / popup Pwr row
+function pwrHtml(ch) {
+    const abbr = ch.status ? ch.status.split('|')[0].trim() : '';
+    if (abbr === 'RUP' || abbr === 'RDN') return `<span class="st-ramp">${abbr}</span>`;
+    return ch.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>';
 }
 
