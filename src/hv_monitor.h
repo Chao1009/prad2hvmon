@@ -123,10 +123,10 @@ public slots:
             timer_->setTimerType(Qt::CoarseTimer);
             connect(timer_, &QTimer::timeout, this, &HVPoller::doPoll);
         }
-        if (!timer_->isActive())
+        if (!timer_->isActive()) {
             timer_->start(poll_interval_ms_);
-        // Fire immediately so the GUI populates without waiting one full interval
-        doPoll();
+            doPoll();  // immediate first poll; inside isActive guard so re-calling startPolling() is safe
+        }
     }
 
     void stopPolling()
@@ -629,10 +629,10 @@ public slots:
             timer_->setTimerType(Qt::CoarseTimer);
             connect(timer_, &QTimer::timeout, this, &BoosterPoller::doPoll);
         }
-        if (!timer_->isActive())
+        if (!timer_->isActive()) {
             timer_->start(poll_interval_ms_);
-        // Fire immediately so the GUI populates without waiting one full interval
-        doPoll();
+            doPoll();  // immediate first poll; inside isActive guard so re-calling startPolling() is safe
+        }
     }
 
     void stopPolling()  { if (timer_) timer_->stop(); }
