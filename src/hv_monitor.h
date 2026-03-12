@@ -394,7 +394,7 @@ private:
 //
 //  Commands used:
 //    OUTP:STAT?          → "ON" or "OFF"
-//    OUTP:STAT ON/OFF    → turn output on/off
+//    OUTP:STAT 1/0      → turn output on/off
 //    SOUR:VOLT?          → measured voltage (float string)
 //    SOUR:VOLT <val>     → set voltage
 //    SOUR:MOD?           → operating mode: "CV" or "CC"
@@ -472,6 +472,21 @@ struct BoosterSupply {
         return QString::fromUtf8(resp).trimmed();
     }
 
+    // Send a set command — TDK-Lambda write commands produce no response.
+    // Does NOT call waitForReadyRead; just writes and returns.
+    void sendSet(const QString &cmd, int timeoutMs = 2000)
+    {
+        if (!sock) return;
+        if (sock->bytesAvailable() > 0)
+            sock->readAll();
+        const QByteArray tx = (cmd + "\n").toUtf8();
+        sock->write(tx);
+        if (!sock->waitForBytesWritten(timeoutMs)) {
+            sock->abort();
+            connected = false;
+        }
+    }
+
     // Ensure socket is connected; reconnect if needed.
     //
     // ConnectedState alone is not sufficient: a TCP connection can be
@@ -526,8 +541,7 @@ struct BoosterSupply {
         mode = s;
 
         // VSet (keep a local mirror; also refresh on startup/reconnect)
-        // TDK-Lambda GEN uses SOUR:VOLT:LEV:IMM:AMPL? for the voltage setpoint,
-        // not the non-standard SOUR:VOLT:SET? shorthand.
+        // TDK-Lambda GEN uses SOUR:VOLT:LEV:IMM:AMPL? for the voltage setpoint.
         s = sendCmd("SOUR:VOLT:LEV:IMM:AMPL?");
         if (s.isEmpty()) { failWith("no response (SOUR:VOLT:LEV:IMM:AMPL?)"); return; }
         v = s.toDouble(&ok);
@@ -539,14 +553,14 @@ struct BoosterSupply {
     void setOutput(bool enable)
     {
         if (!ensureConnected()) return;
-        sendCmd(enable ? "OUTP:STAT ON" : "OUTP:STAT OFF");
+        sendSet(enable ? "OUTP:STAT 1" : "OUTP:STAT 0");
         on = enable;
     }
 
     void setVoltage(double volts)
     {
         if (!ensureConnected()) return;
-        sendCmd(QString("SOUR:VOLT:LEV:IMM:AMPL %1").arg(volts, 0, 'f', 2));
+        sendSet(QString("SOUR:VOLT:LEV:IMM:AMPL %1").arg(volts, 0, 'f', 2));
         vset = volts;
     }
 
