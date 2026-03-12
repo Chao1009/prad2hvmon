@@ -418,6 +418,7 @@ struct BoosterSupply {
     double  vmon     = std::numeric_limits<double>::quiet_NaN();
     double  vset     = std::numeric_limits<double>::quiet_NaN();
     double  imon     = std::numeric_limits<double>::quiet_NaN();
+    double  iset     = std::numeric_limits<double>::quiet_NaN();
     bool    on       = false;
     QString mode;       // "CV", "CC", or ""
     QString error;      // last error string, empty if OK
@@ -555,6 +556,12 @@ struct BoosterSupply {
         v = s.toDouble(&ok);
         if (ok) vset = v;
 
+        // ISet — current limit setpoint
+        s = sendCmd("SOUR:CURR:LEV:IMM:AMPL?");
+        if (s.isEmpty()) { failWith("no response (SOUR:CURR:LEV:IMM:AMPL?)"); return; }
+        v = s.toDouble(&ok);
+        if (ok) iset = v;
+
         error.clear();
     }
 
@@ -570,6 +577,13 @@ struct BoosterSupply {
         if (!ensureConnected()) return;
         sendSet(QString("SOUR:VOLT:LEV:IMM:AMPL %1").arg(volts, 0, 'f', 2));
         vset = volts;
+    }
+
+    void setCurrent(double amps)
+    {
+        if (!ensureConnected()) return;
+        sendSet(QString("SOUR:CURR:LEV:IMM:AMPL %1").arg(amps, 0, 'f', 3));
+        iset = amps;
     }
 
     ~BoosterSupply() { if (sock) { sock->abort(); delete sock; } }
@@ -637,6 +651,12 @@ public slots:
             supplies_[idx]->setVoltage(volts);
     }
 
+    void setCurrent(int idx, double amps)
+    {
+        if (idx >= 0 && idx < static_cast<int>(supplies_.size()))
+            supplies_[idx]->setCurrent(amps);
+    }
+
 signals:
     void snapshotReady(const QString &jsonData);
 
@@ -664,6 +684,7 @@ private:
             o["vmon"]      = std::isnan(s->vmon) ? QJsonValue::Null : QJsonValue(s->vmon);
             o["vset"]      = std::isnan(s->vset) ? QJsonValue::Null : QJsonValue(s->vset);
             o["imon"]      = std::isnan(s->imon) ? QJsonValue::Null : QJsonValue(s->imon);
+            o["iset"]      = std::isnan(s->iset) ? QJsonValue::Null : QJsonValue(s->iset);
             arr.append(o);
         }
         return QString(QJsonDocument(arr).toJson(QJsonDocument::Compact));
@@ -708,6 +729,14 @@ public slots:
                                   Qt::QueuedConnection,
                                   Q_ARG(int,    idx),
                                   Q_ARG(double, volts));
+    }
+
+    void setCurrent(int idx, double amps)
+    {
+        QMetaObject::invokeMethod(poller_, "setCurrent",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(int,    idx),
+                                  Q_ARG(double, amps));
     }
 
     void setPollInterval(int ms)

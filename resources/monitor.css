@@ -636,6 +636,18 @@ footer #last-update::before {
 
 .booster-vset-input:focus { outline: none; border-color: var(--accent); }
 
+.booster-iset-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 1.05rem;
+    padding: 7px 12px;
+    width: 120px;
+    text-align: right;
+}
+.booster-iset-input:focus { outline: none; border-color: var(--amber); }
+
 .booster-btn {
     font-size: 1.0rem;
     font-weight: 600;
@@ -648,6 +660,8 @@ footer #last-update::before {
 
 .booster-btn:disabled { opacity: 0.35; cursor: default; }
 .b-btn-set  { background: var(--accent);              color: #000;         border-color: var(--accent); }
+.b-btn-seti { background: rgba(234,179,8,0.20);   color: var(--amber); border-color: var(--amber); }
+.b-btn-seti:hover { background: rgba(234,179,8,0.35); }
 .b-btn-on   { background: rgba(40,180,90,0.18);  color: var(--green); border-color: var(--green); }
 .b-btn-off  { background: rgba(220,60,60,0.15);  color: var(--red);   border-color: var(--red);   }
 .b-btn-on:hover  { background: rgba(40,180,90,0.30); }

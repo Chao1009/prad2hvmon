@@ -1112,6 +1112,7 @@ function updateGeoHover(e) {
                     html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val"><span class="tt-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">ISet</span><span class="tt-val">${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Mode</span><span class="tt-val">${escHtml(bs.mode||'—')}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${bs.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>'}</span></div>`;
                     if (bs.error) html += `<div class="tt-row"><span class="tt-label">Error</span><span class="tt-val" style="color:var(--red)">${escHtml(bs.error)}</span></div>`;
@@ -1481,6 +1482,15 @@ function openBoosterPopup(mod) {
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
     rowV.append(vsetInput, btnSetV);
 
+    const rowI = document.createElement('div');
+    rowI.className = 'popup-action-row';
+    const isetInput = document.createElement('input');
+    isetInput.type = 'text'; isetInput.setAttribute('inputmode', 'decimal');
+    isetInput.placeholder = 'ISet (A)';
+    const btnSetI = document.createElement('button');
+    btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
+    rowI.append(isetInput, btnSetI);
+
     const rowPwr = document.createElement('div');
     rowPwr.className = 'popup-action-row';
     const btnOn  = document.createElement('button');
@@ -1489,7 +1499,7 @@ function openBoosterPopup(mod) {
     btnOff.className = 'btn-sm btn-off'; btnOff.textContent = 'OFF';
     rowPwr.append(btnOn, btnOff);
 
-    actions.append(rowV, rowPwr);
+    actions.append(rowV, rowI, rowPwr);
     body.appendChild(actions);
     el.appendChild(body);
 
@@ -1512,6 +1522,7 @@ function openBoosterPopup(mod) {
                 html += `<span class="plbl">VMon</span><span class="pval"><span class="pval-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span>`;
                 html += `<span class="plbl">IMon</span><span class="pval"><span class="pval-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span>`;
                 html += `<span class="plbl">VSet</span><span class="pval">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span>`;
+                html += `<span class="plbl">ISet</span><span class="pval">${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span>`;
                 const modeBadge = bs.mode
                     ? `<span class="booster-mode-badge ${bs.mode.toUpperCase()==='CV'?'mode-cv':'mode-cc'}">${escHtml(bs.mode)}</span>`
                     : '—';
@@ -1520,17 +1531,23 @@ function openBoosterPopup(mod) {
                 if (bs.error) html += `<span class="plbl">Error</span><span class="pval" style="color:var(--red)">${escHtml(bs.error)}</span>`;
                 if (vsetInput.value === '' && bs.vset != null)
                     vsetInput.value = bs.vset.toFixed(2);
+                if (isetInput.value === '' && bs.iset != null)
+                    isetInput.value = bs.iset.toFixed(3);
             }
         } else {
             html += `<span class="plbl">Link</span><span class="pval" style="color:var(--text-dim)">waiting…</span>`;
         }
         grid.innerHTML = html;
         const hasConn = !!(bs && bs.connected);
-        // SetV requires both connection and expert mode
+        // SetV / SetI require both connection and expert mode
         vsetInput.disabled = !hasConn || !expertMode;
         btnSetV.disabled   = !hasConn || !expertMode;
         vsetInput.style.opacity = (hasConn && expertMode) ? '1' : '0.35';
         btnSetV.style.opacity   = (hasConn && expertMode) ? '1' : '0.35';
+        isetInput.disabled = !hasConn || !expertMode;
+        btnSetI.disabled   = !hasConn || !expertMode;
+        isetInput.style.opacity = (hasConn && expertMode) ? '1' : '0.35';
+        btnSetI.style.opacity   = (hasConn && expertMode) ? '1' : '0.35';
         // ON/OFF only requires connection
         btnOn.disabled  = !hasConn;
         btnOff.disabled = !hasConn;
@@ -1553,6 +1570,18 @@ function openBoosterPopup(mod) {
         boosterDirty = true; refresh();
     });
     vsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetV.click(); });
+
+    btnSetI.addEventListener('click', () => {
+        if (!boosterMonitor || !expertMode) return;
+        const v = parseFloat(isetInput.value);
+        if (isNaN(v) || v < 0) { isetInput.style.borderColor = 'var(--red)'; return; }
+        isetInput.style.borderColor = '';
+        const idx = supplyIdx(); if (idx < 0) return;
+        boosterMonitor.setCurrent(idx, v);
+        const bs = boosterByName[mod.n]; if (bs) bs.iset = v;
+        boosterDirty = true; refresh();
+    });
+    isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
 
     btnOn.addEventListener('click', () => {
         if (!boosterMonitor) return;
@@ -1626,6 +1655,7 @@ function boosterCardInnerHtml(s) {
     const connCls = s.connected ? 'conn-ok' : 'conn-err';
     const connTxt = s.connected ? 'Connected' : 'Offline';
     const vsetVal = s.vset != null ? s.vset.toFixed(2) : '';
+    const isetVal = s.iset != null ? s.iset.toFixed(3) : '';
     return `
 <div class="booster-card-head">
   <div>
@@ -1641,6 +1671,8 @@ function boosterCardInnerHtml(s) {
   <span class="booster-val" data-field="vset">${s.vset!=null?s.vset.toFixed(2)+' V':'—'}</span>
   <span class="booster-lbl">IMon</span>
   <span class="booster-val val-live" data-field="imon">${s.imon!=null?s.imon.toFixed(3)+' A':'—'}</span>
+  <span class="booster-lbl">ISet</span>
+  <span class="booster-val" data-field="iset">${s.iset!=null?s.iset.toFixed(3)+' A':'—'}</span>
   <span class="booster-lbl">Mode</span>
   <span class="booster-val" data-field="mode">${boosterModeBadge(s.mode)}</span>
   <span class="booster-lbl">Output</span>
@@ -1653,6 +1685,11 @@ function boosterCardInnerHtml(s) {
            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
     <button class="booster-btn b-btn-set" data-set-v
             ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set V</button>
+    <input class="booster-iset-input" type="text" inputmode="decimal"
+           placeholder="ISet (A)" value="${escHtml(isetVal)}" data-iset-input
+           ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
+    <button class="booster-btn b-btn-seti" data-set-i
+            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set I</button>
   </div>
   <div class="booster-controls-right">
     <button class="booster-btn b-btn-on"  data-on>ON</button>
@@ -1683,6 +1720,7 @@ function updateBoosterCard(card, idx, s) {
     sf('vmon', s.vmon != null ? s.vmon.toFixed(2) + ' V' : '—');
     sf('vset', s.vset != null ? s.vset.toFixed(2) + ' V' : '—');
     sf('imon', s.imon != null ? s.imon.toFixed(3) + ' A' : '—');
+    sf('iset', s.iset != null ? s.iset.toFixed(3) + ' A' : '—');
     sh('mode', boosterModeBadge(s.mode));
     sh('pwr',  boosterPwrBadge(s));
     const errEl = card.querySelector('[data-field="error"]');
@@ -1696,6 +1734,10 @@ function updateBoosterCard(card, idx, s) {
     const setVEl = card.querySelector('[data-set-v]');
     if (vsetEl) { vsetEl.disabled = !expertMode; vsetEl.style.opacity = expertMode ? '1' : '0.35'; }
     if (setVEl) { setVEl.disabled = !expertMode; setVEl.style.opacity = expertMode ? '1' : '0.35'; }
+    const isetEl = card.querySelector('[data-iset-input]');
+    const setIEl = card.querySelector('[data-set-i]');
+    if (isetEl) { isetEl.disabled = !expertMode; isetEl.style.opacity = expertMode ? '1' : '0.35'; }
+    if (setIEl) { setIEl.disabled = !expertMode; setIEl.style.opacity = expertMode ? '1' : '0.35'; }
 }
 
 function wireBoosterCard(card, idx) {
@@ -1707,6 +1749,14 @@ function wireBoosterCard(card, idx) {
         inp.style.borderColor = '';
         boosterMonitor.setVoltage(idx, v);
     });
+    card.querySelector('[data-set-i]').addEventListener('click', () => {
+        if (!boosterMonitor || !expertMode) return;
+        const inp = card.querySelector('[data-iset-input]');
+        const v = parseFloat(inp.value);
+        if (isNaN(v) || v < 0) { inp.style.borderColor = 'var(--red)'; return; }
+        inp.style.borderColor = '';
+        boosterMonitor.setCurrent(idx, v);
+    });
     card.querySelector('[data-on]').addEventListener('click', () => {
         if (boosterMonitor) boosterMonitor.setOutput(idx, true);
     });
@@ -1715,6 +1765,9 @@ function wireBoosterCard(card, idx) {
     });
     card.querySelector('[data-vset-input]').addEventListener('keydown', e => {
         if (e.key === 'Enter') card.querySelector('[data-set-v]').click();
+    });
+    card.querySelector('[data-iset-input]').addEventListener('keydown', e => {
+        if (e.key === 'Enter') card.querySelector('[data-set-i]').click();
     });
 }
 
