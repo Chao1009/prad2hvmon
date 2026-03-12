@@ -14,6 +14,7 @@ let sortCol      = 'crate';
 let sortAsc      = true;
 let renderIntervalMs = 200;
 let dataDirty        = false;  // set on data/state change, cleared after tbody rebuild
+let lastPollTime     = null;   // performance.now() timestamp of last hardware poll
 let filterStatus = 'all';
 let filterCrate  = null;
 let searchText   = '';
@@ -60,6 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Data update only — no render; the render loop handles display
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
+            lastPollTime = performance.now();
             rebuildChMap();
             dataDirty = true;
             // refreshAllPopups() is now called from renderActiveTab() when dirty,
@@ -126,11 +128,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // skips hidden tabs automatically, and self-throttles to display rate.
     // renderIntervalMs caps how often we actually re-render, so we don't
     // burn CPU on every 16 ms frame when data only changes every 2 s.
-    let lastRenderTs = 0;
+    let lastRenderTs  = 0;
+    let lastFooterSec = -1;   // last whole-second value shown, to avoid redundant DOM writes
     function renderLoop(ts) {
         if (dataDirty && allChannels.length > 0 && (ts - lastRenderTs) >= renderIntervalMs) {
             renderActiveTab();
             lastRenderTs = ts;
+        }
+        // Tick the "X s ago" footer every second without waiting for dataDirty
+        if (lastPollTime !== null) {
+            const sec = Math.floor((ts - lastPollTime) / 1000);
+            if (sec !== lastFooterSec) {
+                lastFooterSec = sec;
+                updatePollAge(sec);
+            }
         }
         requestAnimationFrame(renderLoop);
     }
@@ -551,7 +562,7 @@ function buildIsetCell(ch) {
 // shownRows / totalRows are passed in by renderTable to avoid re-filtering.
 // When called from renderGeo (no args), falls back to module counts only.
 function updateFooter(shownRows, totalRows) {
-    document.getElementById('last-update').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    // footer age label is maintained by the rAF loop via updatePollAge()
 
     const active = document.querySelector('.tab-content.active');
     if (active && active.id === 'geo-tab') {
@@ -575,6 +586,14 @@ function updateFooter(shownRows, totalRows) {
                 `${shown} / ${total} channels shown | ${MODULES.length} modules`;
         }
     }
+}
+
+function updatePollAge(sec) {
+    let label;
+    if (sec < 2)       label = 'Updated just now';
+    else if (sec < 60) label = `Updated ${sec} s ago`;
+    else               label = `Updated ${Math.floor(sec / 60)} min ago`;
+    document.getElementById('last-update').textContent = label;
 }
 
 function togglePower(crate, slot, channel, on) {
@@ -1010,7 +1029,8 @@ function updateGeoHover(e) {
             html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val"${diffStyle}>${fmt(diff, 2)} V</span></div>`;
             if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
-            html += `<div class="tt-row"><span class="tt-label">Status</span><span class="st-badges">${statusDisplay(ch)}</span></div>`;
+            const ttSt = statusDisplay(ch);
+            html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ttSt.cls}" title="${ttSt.detail}">${ttSt.text}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
             const daqEntry = daqByName[mod.n];
@@ -1121,7 +1141,8 @@ function openModPopup(mod) {
             } else {
                 html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
             }
-            html += `<span class="plbl">Status</span><span class="pval st-badges">${statusDisplay(c)}</span>`;
+            const pSt = statusDisplay(c);
+            html += `<span class="plbl">Status</span><span class="pval ${pSt.cls}" title="${pSt.detail}">${pSt.text}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
             isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
         } else {
@@ -1250,17 +1271,9 @@ function dotClass(ch) {
     return ch.on ? 'on' : 'off';
 }
 
-// Shared status display helper — returns an HTML string of coloured badge spans.
-// Always shows the power state (ON green / OFF dim) first, then any fault tokens
-// (red) and a ΔV badge (amber) if warranted.  Tooltip and popup both use this.
-//
-// Examples:
-//   ON                     → [ON]
-//   ON + ΔV warn           → [ON] [ΔV]
-//   ON + OV fault          → [ON] [OV]
-//   ON + OV + ΔV           → [ON] [OV] [ΔV]
-//   RUP                    → [RUP]
-//   OFF                    → [OFF]
+// Shared status display helper — returns { text, cls } for tooltip and popup.
+// text: the CAEN abbreviation(s) + detail, e.g. "ON", "RUP", "TRIP OVC"
+// cls:  one of 'st-on' | 'st-ramp' | 'st-warn' | 'st-fault' | 'st-off'
 function statusDisplay(ch) {
     const abbr   = ch.status ? ch.status.split('|')[0].trim() : '';
     const detail = ch.status ? (ch.status.split('|')[1] || '').trim() : '';
@@ -1268,36 +1281,14 @@ function statusDisplay(ch) {
     const isWarn = isSettled(ch) && ch.vmon != null && ch.vset != null
                    && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
 
-    const badges = [];
+    let cls;
+    if (sc === 'status-err')                           cls = 'st-fault';
+    else if (isWarn)                                   cls = 'st-warn';
+    else if (abbr === 'OFF' || !ch.on)                 cls = 'st-off';
+    else if (abbr === 'ON')                            cls = 'st-on';
+    else                                               cls = 'st-ramp'; // RUP / RDN
 
-    // ── Power / ramp state badge (always present) ──────────────────────
-    if (!ch.on || abbr === 'OFF') {
-        badges.push('<span class="st-off">OFF</span>');
-    } else if (abbr === 'RUP' || abbr === 'RDN') {
-        badges.push(`<span class="st-ramp">${abbr}</span>`);
-    } else {
-        badges.push('<span class="st-on">ON</span>');
-    }
-
-    // ── Fault tokens (everything that isn't the power state) ───────────
-    if (sc === 'status-err') {
-        // Pull out the non-power-state tokens from the abbreviation string
-        const faultTokens = abbr.split(/\s+/).filter(t =>
-            t !== 'ON' && t !== 'OFF' && t !== 'RUP' && t !== 'RDN' && t !== '');
-        if (faultTokens.length > 0) {
-            const tip = detail ? ` title="${detail}"` : '';
-            badges.push(`<span class="st-fault"${tip}>${faultTokens.join(' ')}</span>`);
-        } else if (!detail) {
-            // No tokens extracted but still flagged as fault — show raw abbr in red
-            badges.push(`<span class="st-fault">${abbr}</span>`);
-        }
-    }
-
-    // ── ΔV warning badge ───────────────────────────────────────────────
-    if (isWarn) {
-        badges.push('<span class="st-warn">ΔV</span>');
-    }
-
-    return badges.join(' ');
+    const text = abbr || (ch.on ? 'ON' : 'OFF');
+    return { text, detail, cls };
 }
 
