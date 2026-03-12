@@ -540,22 +540,19 @@ footer #last-update::before {
 .booster-subtitle { font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
 
 #booster-cards {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
 }
 
 .booster-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px 20px 16px;
-    min-width: 280px;
-    max-width: 340px;
-    flex: 1 1 280px;
+    border-radius: 12px;
+    padding: 24px 28px 22px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
     transition: border-color 0.2s;
 }
 
@@ -570,8 +567,8 @@ footer #last-update::before {
     gap: 8px;
 }
 
-.booster-card-name { font-size: 0.95rem; font-weight: 700; color: var(--text); }
-.booster-card-ip   { font-size: 0.72rem; color: var(--text-dim); font-family: monospace; }
+.booster-card-name { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+.booster-card-ip   { font-size: 0.82rem; color: var(--text-dim); font-family: monospace; }
 
 .booster-conn-badge {
     font-size: 0.72rem;
@@ -587,13 +584,13 @@ footer #last-update::before {
 .booster-readout {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 4px 12px;
+    gap: 6px 16px;
     align-items: baseline;
 }
 
-.booster-lbl { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
+.booster-lbl { font-size: 0.85rem; color: var(--text-dim); white-space: nowrap; }
 .booster-val {
-    font-size: 1.05rem;
+    font-size: 1.25rem;
     font-weight: 600;
     color: var(--text);
     font-variant-numeric: tabular-nums;
@@ -628,18 +625,18 @@ footer #last-update::before {
     border: 1px solid var(--border);
     border-radius: 5px;
     color: var(--text);
-    font-size: 0.82rem;
-    padding: 4px 8px;
-    width: 90px;
+    font-size: 0.95rem;
+    padding: 6px 10px;
+    width: 110px;
     text-align: right;
 }
 
 .booster-vset-input:focus { outline: none; border-color: var(--accent); }
 
 .booster-btn {
-    font-size: 0.78rem;
+    font-size: 0.88rem;
     font-weight: 600;
-    padding: 4px 11px;
+    padding: 6px 16px;
     border-radius: 5px;
     border: 1px solid transparent;
     cursor: pointer;
