@@ -1109,10 +1109,8 @@ function updateGeoHover(e) {
                     : '<span class="st-off">Offline</span>';
                 html += `<div class="tt-row"><span class="tt-label">Link</span><span class="tt-val">${connSpan}</span></div>`;
                 if (bs.connected) {
-                    html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val"><span class="tt-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span>`
-                           + `<span class="tt-label" style="margin-left:8px">VSet</span><span class="tt-val">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span></div>`;
-                    html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span>`
-                           + `<span class="tt-label" style="margin-left:8px">ISet</span><span class="tt-val">${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">VMon / VSet</span><span class="tt-val"><span class="tt-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span> / ${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">IMon / ISet</span><span class="tt-val"><span class="tt-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span> / ${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Mode</span><span class="tt-val">${escHtml(bs.mode||'—')}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${bs.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>'}</span></div>`;
                     if (bs.error) html += `<div class="tt-row"><span class="tt-label">Error</span><span class="tt-val" style="color:var(--red)">${escHtml(bs.error)}</span></div>`;

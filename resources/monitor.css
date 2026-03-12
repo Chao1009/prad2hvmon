@@ -570,13 +570,13 @@ footer #last-update::before {
     gap: 8px;
 }
 
-.booster-card-name { font-size: 1.05rem; font-weight: 700; color: var(--text); }
-.booster-card-ip   { font-size: 0.78rem; color: var(--text-dim); font-family: monospace; margin-top: 1px; }
+.booster-card-name { font-size: 1.25rem; font-weight: 700; color: var(--text); }
+.booster-card-ip   { font-size: 0.92rem; color: var(--text-dim); font-family: monospace; margin-top: 1px; }
 
 .booster-conn-badge {
-    font-size: 0.72rem;
+    font-size: 0.85rem;
     font-weight: 600;
-    padding: 2px 9px;
+    padding: 3px 10px;
     border-radius: 20px;
     white-space: nowrap;
 }
@@ -595,9 +595,9 @@ footer #last-update::before {
 .booster-readout .booster-lbl-full { grid-column: 1; }
 .booster-readout .booster-val-full { grid-column: 2 / 5; }
 
-.booster-lbl { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
+.booster-lbl { font-size: 0.88rem; color: var(--text-dim); white-space: nowrap; }
 .booster-val {
-    font-size: 0.95rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: var(--text);
     font-variant-numeric: tabular-nums;
@@ -609,9 +609,9 @@ footer #last-update::before {
 
 .booster-mode-badge {
     display: inline-block;
-    font-size: 0.68rem;
+    font-size: 0.80rem;
     font-weight: 700;
-    padding: 1px 6px;
+    padding: 2px 8px;
     border-radius: 4px;
     letter-spacing: 0.04em;
 }
@@ -635,9 +635,9 @@ footer #last-update::before {
     border: 1px solid var(--border);
     border-radius: 5px;
     color: var(--text);
-    font-size: 0.82rem;
-    padding: 4px 8px;
-    width: 90px;
+    font-size: 0.95rem;
+    padding: 5px 9px;
+    width: 100px;
     text-align: right;
 }
 
@@ -648,17 +648,17 @@ footer #last-update::before {
     border: 1px solid var(--border);
     border-radius: 5px;
     color: var(--text);
-    font-size: 0.82rem;
-    padding: 4px 8px;
-    width: 90px;
+    font-size: 0.95rem;
+    padding: 5px 9px;
+    width: 100px;
     text-align: right;
 }
 .booster-iset-input:focus { outline: none; border-color: var(--amber); }
 
 .booster-btn {
-    font-size: 0.78rem;
+    font-size: 0.92rem;
     font-weight: 600;
-    padding: 4px 12px;
+    padding: 5px 14px;
     border-radius: 5px;
     border: 1px solid transparent;
     cursor: pointer;
@@ -674,5 +674,5 @@ footer #last-update::before {
 .b-btn-on:hover  { background: rgba(40,180,90,0.30); }
 .b-btn-off:hover { background: rgba(220,60,60,0.28); }
 
-.booster-error { font-size: 0.74rem; color: var(--red); word-break: break-all; display: none; }
+.booster-error { font-size: 0.85rem; color: var(--red); word-break: break-all; display: none; }
 .booster-error.visible { display: block; }
