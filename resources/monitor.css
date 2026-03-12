@@ -98,17 +98,32 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .tab-content { display: none; overflow: hidden; min-height: 0; grid-row: 3; grid-column: 1; }
 .tab-content.active { display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
-/* ─── Summary Strip ───────────────────────────────────────────────── */
+/* ─── Summary Strip (doubles as filter selector) ──────────────────── */
 #summary-strip { display: flex; gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
-.summary-item { flex:1; display:flex; flex-direction:column; align-items:center; padding:10px 0; background:var(--bg-card); }
+.summary-item {
+    flex:1; display:flex; flex-direction:column; align-items:center; padding:10px 0;
+    background:var(--bg-card); cursor:pointer; user-select:none;
+    border-bottom: 2px solid transparent;
+    transition: background var(--transition), border-color var(--transition);
+}
+.summary-item:hover { background: var(--bg-hover); }
 .summary-item .label { font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim); margin-bottom:3px; }
 .summary-item .value { font-family:var(--mono); font-size:20px; font-weight:600; color:var(--text-bright); }
-.summary-item .value.green {color:var(--green)}
-.summary-item .value.red{color:var(--red)}
-.summary-item .value.amber {color:var(--amber)}
-.summary-item .value.accent{color:var(--accent)}
-.summary-item .value.teal{color:var(--teal)}
-.summary-item .value.dim { color: var(--text-dim) }
+.summary-item .value.green  { color:var(--green); }
+.summary-item .value.red    { color:var(--red); }
+.summary-item .value.amber  { color:var(--amber); }
+.summary-item .value.accent { color:var(--accent); }
+.summary-item .value.teal   { color:var(--teal); }
+.summary-item .value.dim    { color:var(--text-dim); }
+
+/* Active-filter underline colour matches the value colour in each tile */
+.summary-item.active-filter                        { background: var(--bg-card-alt); }
+.summary-item[data-filter="all"].active-filter     { border-bottom-color: var(--accent); }
+.summary-item[data-filter="primary"].active-filter { border-bottom-color: var(--teal); }
+.summary-item[data-filter="on"].active-filter      { border-bottom-color: var(--green); }
+.summary-item[data-filter="off"].active-filter     { border-bottom-color: var(--text-dim); }
+.summary-item[data-filter="warn"].active-filter    { border-bottom-color: var(--amber); }
+.summary-item[data-filter="fault"].active-filter   { border-bottom-color: var(--red); }
 
 /* ─── Filter / Search Bar ─────────────────────────────────────────── */
 #filter-bar { display:flex; align-items:center; gap:8px; padding:8px 20px; background:var(--bg-card); border-bottom:1px solid var(--border); }
@@ -129,10 +144,6 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 }
 .chip:hover { color:var(--text); border-color:var(--border-hi); }
 .chip.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
-.chip.active.on-chip { background:var(--green-dim); border-color:var(--green); color:var(--green); }
-.chip.active.off-chip { background: var(--bg-card); border-color: var(--green); color: var(--text-dim); }
-.chip[data-filter="warn"].active { background: var(--amber-dim); border-color: var(--amber); color: var(--amber); }
-.chip.active.fault-chip { background: var(--red-dim); border-color: var(--red); color: var(--red); }
 #poll-label { font-size:10.5px; color:var(--text-dim); font-family:var(--mono); }
 #poll-slider {
     -webkit-appearance:none; width:80px; height:4px; background:var(--border);
@@ -196,9 +207,7 @@ tr.primary-row {
     background: var(--teal-dim);
     border-left: 3px solid var(--teal);
 }
-tr.primary-row:hover {
-    background: ##0a3040cc;
-}
+tr.primary-row:hover { background: #0a3040cc; }
 tr.primary-row td {
     color: var(--text-bright);
 }
@@ -217,12 +226,6 @@ tr.primary-row td {
     margin-left: 6px;
     vertical-align: middle;
 }
-.chip.primary-chip.active {
-    background: var(--teal-dim);
-    border-color: var(--teal);
-    color: var(--teal);
-}
-
 /* ─── Bulk power buttons ──────────────────────────────────────────── */
 .bulk-pwr-group { display:flex; gap:4px; margin-left:8px; }
 .bulk-btn {

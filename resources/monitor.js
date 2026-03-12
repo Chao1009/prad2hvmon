@@ -183,11 +183,11 @@ function initTableUI() {
         document.getElementById('poll-val').textContent = sec.toFixed(1);
         if (hvMonitor) hvMonitor.setPollInterval(Math.round(sec * 1000));
     });
-    document.querySelectorAll('#status-chips .chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-            document.querySelectorAll('#status-chips .chip').forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            filterStatus = chip.dataset.filter;
+    document.querySelectorAll('#summary-strip .summary-item').forEach(item => {
+        item.addEventListener('click', () => {
+            document.querySelectorAll('#summary-strip .summary-item').forEach(s => s.classList.remove('active-filter'));
+            item.classList.add('active-filter');
+            filterStatus = item.dataset.filter;
             dataDirty = true; renderTable();
         });
     });
@@ -245,7 +245,7 @@ function populateCrateChips() {
     const wrap = document.getElementById('crate-chips');
     wrap.innerHTML = '';
     const allChip = document.createElement('button');
-    allChip.className = 'chip active'; allChip.dataset.crate = ''; allChip.textContent = 'All Crates';
+    allChip.className = 'chip active'; allChip.dataset.crate = ''; allChip.textContent = `All ${crates.length} Crates`;
     allChip.addEventListener('click', () => selectCrateChip(allChip, null));
     wrap.appendChild(allChip);
     crates.forEach(name => {
@@ -364,13 +364,11 @@ function renderTable() {
 
     // Summary
     const total   = allChannels.length;
-    const nCr     = new Set(allChannels.map(c => c.crate)).size;
     const primCnt = allChannels.filter(c => isPrimary(c)).length;
     const onCnt   = allChannels.filter(c => c.on).length;
     const warns   = allChannels.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold).length;
     const faults  = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
     document.getElementById('s-total').textContent   = total;
-    document.getElementById('s-crates').textContent  = nCr;
     document.getElementById('s-primary').textContent = primCnt;
     document.getElementById('s-on').textContent      = onCnt;
     document.getElementById('s-off').textContent     = total - onCnt;
