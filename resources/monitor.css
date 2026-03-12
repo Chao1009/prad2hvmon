@@ -619,6 +619,8 @@ footer #last-update::before {
 .mode-cv { background: rgba(59,158,255,0.15); color: var(--accent); }
 .mode-cc { background: rgba(255,180,0,0.15);  color: var(--amber);  }
 
+/* Parent grid: [input col] [set-btn col] [spacer] [on] [off]
+   Row 1 uses only first 2 columns; row 2 uses all 5. */
 .booster-controls {
     display: flex;
     flex-direction: column;
@@ -626,26 +628,28 @@ footer #last-update::before {
     margin-top: 2px;
 }
 
-/* Row 1: VSet input + Set V button */
+/* Row 1: VSet input (flex) + Set V (fixed width) */
 .booster-controls-vset {
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.booster-controls-vset .booster-vset-input { flex: 1; width: auto; min-width: 0; }
-.booster-controls-vset .booster-btn        { white-space: nowrap; flex-shrink: 0; }
+.booster-controls-vset .booster-vset-input { flex: 1; min-width: 0; }
+.booster-controls-vset .b-btn-set          { width: 58px; white-space: nowrap; flex-shrink: 0; }
 
-/* Row 2: ISet input + Set I button + ON + OFF */
+/* Row 2: ISet input (flex) + Set I (same fixed width) + spacer + ON + OFF */
 .booster-controls-iset {
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-.booster-controls-iset .booster-iset-input { flex: 1; width: auto; min-width: 0; }
-.booster-controls-iset .booster-btn        { white-space: nowrap; flex-shrink: 0; }
+.booster-controls-iset .booster-iset-input { flex: 1; min-width: 0; }
+.booster-controls-iset .b-btn-seti         { width: 58px; white-space: nowrap; flex-shrink: 0; }
 .booster-controls-spacer                   { flex: 1; }
+.booster-controls-iset .b-btn-on,
+.booster-controls-iset .b-btn-off          { white-space: nowrap; flex-shrink: 0; }
 
 .booster-vset-input {
     background: var(--bg);
