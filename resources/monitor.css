@@ -540,20 +540,23 @@ footer #last-update::before {
 .booster-subtitle { font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
 
 #booster-cards {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
 }
 
 .booster-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 24px 28px 22px;
+    border-radius: 10px;
+    padding: 16px 18px 14px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
     transition: border-color 0.2s;
+    flex: 1 1 320px;
+    min-width: 300px;
+    max-width: 480px;
 }
 
 .booster-card.card-fault { border-color: var(--red);   }
@@ -567,13 +570,13 @@ footer #last-update::before {
     gap: 8px;
 }
 
-.booster-card-name { font-size: 1.45rem; font-weight: 700; color: var(--text); }
-.booster-card-ip   { font-size: 1.0rem; color: var(--text-dim); font-family: monospace; }
+.booster-card-name { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+.booster-card-ip   { font-size: 0.78rem; color: var(--text-dim); font-family: monospace; margin-top: 1px; }
 
 .booster-conn-badge {
-    font-size: 1.0rem;
+    font-size: 0.72rem;
     font-weight: 600;
-    padding: 4px 12px;
+    padding: 2px 9px;
     border-radius: 20px;
     white-space: nowrap;
 }
@@ -584,13 +587,13 @@ footer #last-update::before {
 .booster-readout {
     display: grid;
     grid-template-columns: auto 1fr;
-    gap: 4px 12px;
+    gap: 3px 14px;
     align-items: baseline;
 }
 
-.booster-lbl { font-size: 1.05rem; color: var(--text-dim); white-space: nowrap; }
+.booster-lbl { font-size: 0.75rem; color: var(--text-dim); white-space: nowrap; }
 .booster-val {
-    font-size: 1.35rem;
+    font-size: 0.95rem;
     font-weight: 600;
     color: var(--text);
     font-variant-numeric: tabular-nums;
@@ -602,9 +605,9 @@ footer #last-update::before {
 
 .booster-mode-badge {
     display: inline-block;
-    font-size: 1.0rem;
+    font-size: 0.68rem;
     font-weight: 700;
-    padding: 3px 10px;
+    padding: 1px 6px;
     border-radius: 4px;
     letter-spacing: 0.04em;
 }
@@ -616,21 +619,21 @@ footer #last-update::before {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    margin-top: 4px;
+    gap: 6px;
+    margin-top: 2px;
 }
 
-.booster-controls-left  { display: flex; align-items: center; gap: 8px; }
-.booster-controls-right { display: flex; align-items: center; gap: 8px; }
+.booster-controls-left  { display: flex; align-items: center; gap: 6px; }
+.booster-controls-right { display: flex; align-items: center; gap: 6px; }
 
 .booster-vset-input {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 5px;
     color: var(--text);
-    font-size: 1.05rem;
-    padding: 7px 12px;
-    width: 120px;
+    font-size: 0.82rem;
+    padding: 4px 8px;
+    width: 90px;
     text-align: right;
 }
 
@@ -639,20 +642,20 @@ footer #last-update::before {
 .booster-iset-input {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 5px;
     color: var(--text);
-    font-size: 1.05rem;
-    padding: 7px 12px;
-    width: 120px;
+    font-size: 0.82rem;
+    padding: 4px 8px;
+    width: 90px;
     text-align: right;
 }
 .booster-iset-input:focus { outline: none; border-color: var(--amber); }
 
 .booster-btn {
-    font-size: 1.0rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    padding: 7px 20px;
-    border-radius: 6px;
+    padding: 4px 12px;
+    border-radius: 5px;
     border: 1px solid transparent;
     cursor: pointer;
     transition: opacity 0.15s;
