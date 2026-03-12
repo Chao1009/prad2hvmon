@@ -325,6 +325,7 @@ function renderTable() {
                      : isWarn              ? 'warn'
                      : ch.on               ? 'on'
                      :                       'off';
+        const pwrCls = ch.on ? 'on' : 'off';   // power button only reflects on/off, not status
         const prim = isPrimary(ch);
         return `<tr class="${prim ? 'primary-row' : ''}">
             <td><span class="status-dot ${dotCls}"></span></td>
@@ -362,7 +363,7 @@ function renderTable() {
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
             >${ch.status ? ch.status.split('|')[0] : ''}</td>
             <td style="text-align:center">
-                <button class="pwr-btn ${dotCls}"
+                <button class="pwr-btn ${pwrCls}"
                     onclick="togglePower('${ch.crate}',${ch.slot},${ch.channel},${ch.on?'false':'true'})"
                 >${ch.on?'ON':'OFF'}</button>
             </td></tr>`;
