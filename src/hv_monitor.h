@@ -428,21 +428,64 @@ struct BoosterSupply {
     QTcpSocket *sock = nullptr;
 
     // Send a command; return trimmed response, or "" on error.
+    //
+    // Two fixes vs the naive implementation:
+    //
+    // 1. Drain stale bytes before sending.  When a TCP response arrives in
+    //    two segments (e.g. "OFF" then "\r\n"), readAll() on the first
+    //    waitForReadyRead() call returns "OFF" correctly, but the trailing
+    //    "\r\n" sits in the kernel buffer.  The *next* sendCmd then hits
+    //    waitForReadyRead() immediately (bytes already available) and
+    //    readAll() returns "\r\n", which trims to "" — triggering a false
+    //    "no response" failure.  Draining at the top of each call flushes
+    //    any such leftovers before writing the next command.
+    //
+    // 2. Loop until '\n'.  Responses can be split across multiple TCP
+    //    segments.  We accumulate until a newline is present so we always
+    //    return a complete line regardless of packetisation.
     QString sendCmd(const QString &cmd, int timeoutMs = 2000)
     {
         if (!sock) return {};
+
+        // Drain any stale bytes left from a previous partial read.
+        if (sock->bytesAvailable() > 0)
+            sock->readAll();
+
         const QByteArray tx = (cmd + "\n").toUtf8();
         sock->write(tx);
-        if (!sock->waitForBytesWritten(timeoutMs)) return {};
-        if (!sock->waitForReadyRead(timeoutMs))    return {};
-        return QString::fromUtf8(sock->readAll()).trimmed();
+        if (!sock->waitForBytesWritten(timeoutMs)) {
+            sock->abort();          // mark socket as unusable; reconnect next poll
+            connected = false;
+            return {};
+        }
+
+        // Accumulate until we have a complete line (contains '\n').
+        QByteArray resp;
+        while (!resp.contains('\n')) {
+            if (!sock->waitForReadyRead(timeoutMs)) {
+                sock->abort();
+                connected = false;
+                return {};
+            }
+            resp += sock->readAll();
+        }
+        return QString::fromUtf8(resp).trimmed();
     }
 
     // Ensure socket is connected; reconnect if needed.
+    //
+    // ConnectedState alone is not sufficient: a TCP connection can be
+    // half-closed by the remote end without Qt changing the socket state
+    // until the next I/O attempt.  We therefore also reconnect whenever
+    // the supply was previously marked disconnected (connected == false),
+    // which sendCmd sets on any I/O failure.
     bool ensureConnected(int timeoutMs = 3000)
     {
         if (!sock) sock = new QTcpSocket();
-        if (sock->state() == QAbstractSocket::ConnectedState) return true;
+        // Reconnect if the socket is not in ConnectedState, OR if a previous
+        // sendCmd failure set connected=false (handles half-closed sockets).
+        if (sock->state() == QAbstractSocket::ConnectedState && connected)
+            return true;
         sock->abort();
         sock->connectToHost(ip, port);
         if (!sock->waitForConnected(timeoutMs)) {
