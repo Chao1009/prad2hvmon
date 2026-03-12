@@ -526,8 +526,10 @@ struct BoosterSupply {
         mode = s;
 
         // VSet (keep a local mirror; also refresh on startup/reconnect)
-        s = sendCmd("SOUR:VOLT:SET?");
-        if (s.isEmpty()) { failWith("no response (SOUR:VOLT:SET?)"); return; }
+        // TDK-Lambda GEN uses SOUR:VOLT:LEV:IMM:AMPL? for the voltage setpoint,
+        // not the non-standard SOUR:VOLT:SET? shorthand.
+        s = sendCmd("SOUR:VOLT:LEV:IMM:AMPL?");
+        if (s.isEmpty()) { failWith("no response (SOUR:VOLT:LEV:IMM:AMPL?)"); return; }
         v = s.toDouble(&ok);
         if (ok) vset = v;
 
@@ -544,7 +546,7 @@ struct BoosterSupply {
     void setVoltage(double volts)
     {
         if (!ensureConnected()) return;
-        sendCmd(QString("SOUR:VOLT %1").arg(volts, 0, 'f', 2));
+        sendCmd(QString("SOUR:VOLT:LEV:IMM:AMPL %1").arg(volts, 0, 'f', 2));
         vset = volts;
     }
 
