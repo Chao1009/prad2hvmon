@@ -14,7 +14,6 @@ let sortCol      = 'crate';
 let sortAsc      = true;
 let renderIntervalMs = 200;
 let dataDirty        = false;  // set on data/state change, cleared after tbody rebuild
-let lastPollTime     = null;   // performance.now() timestamp of last hardware poll
 let filterStatus = 'all';
 let filterCrate  = null;
 let searchText   = '';
@@ -61,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Data update only — no render; the render loop handles display
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
-            lastPollTime = performance.now();
             rebuildChMap();
             dataDirty = true;
             // refreshAllPopups() is now called from renderActiveTab() when dirty,
@@ -128,20 +126,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // skips hidden tabs automatically, and self-throttles to display rate.
     // renderIntervalMs caps how often we actually re-render, so we don't
     // burn CPU on every 16 ms frame when data only changes every 2 s.
-    let lastRenderTs  = 0;
-    let lastFooterSec = -1;   // last whole-second value shown, to avoid redundant DOM writes
+    let lastRenderTs = 0;
     function renderLoop(ts) {
         if (dataDirty && allChannels.length > 0 && (ts - lastRenderTs) >= renderIntervalMs) {
             renderActiveTab();
             lastRenderTs = ts;
-        }
-        // Tick the "X s ago" footer every second without waiting for dataDirty
-        if (lastPollTime !== null) {
-            const sec = Math.floor((ts - lastPollTime) / 1000);
-            if (sec !== lastFooterSec) {
-                lastFooterSec = sec;
-                updatePollAge(sec);
-            }
         }
         requestAnimationFrame(renderLoop);
     }
@@ -358,9 +347,6 @@ function renderTable() {
         const dotCls = sc === 'status-err' ? 'fault' : isWarn ? 'warn' : ch.on ? 'on' : 'off';
         const pwrCls = ch.on ? 'on' : 'off';
         const prim   = isPrimary(ch);
-        const stAbbr   = ch.status ? ch.status.split('|')[0] : '';
-        const stDetail = ch.status ? ch.status.split('|')[1] : '';
-
         let tr = existingRows.get(key);
         if (!tr) {
             // ── Create new row (first render, or row newly visible after filter) ──
@@ -422,11 +408,9 @@ function renderTable() {
             td10.innerHTML = buildIsetCell(ch);
             tr.appendChild(td10);
 
-            // td11: status
+            // td11: status badges (same logic as tooltip/popup)
             const td11 = document.createElement('td');
-            td11.className = sc;
-            td11.title = stDetail || '';
-            td11.textContent = stAbbr;
+            td11.innerHTML = statusDisplay(ch);
             tr.appendChild(td11);
 
             // td12: power button
@@ -462,10 +446,9 @@ function renderTable() {
             const imonTxt = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
             if (tr.cells[9].textContent !== imonTxt) tr.cells[9].textContent = imonTxt;
 
-            // status (td11)
-            if (tr.cells[11].className !== sc)       tr.cells[11].className = sc;
-            if (tr.cells[11].textContent !== stAbbr) tr.cells[11].textContent = stAbbr;
-            if (tr.cells[11].title !== (stDetail||'')) tr.cells[11].title = stDetail || '';
+            // status badges (td11)
+            const stHtml = statusDisplay(ch);
+            if (tr.cells[11].innerHTML !== stHtml) tr.cells[11].innerHTML = stHtml;
 
             // power button (td12)
             const pbtn = tr.cells[12].firstElementChild;
@@ -562,7 +545,7 @@ function buildIsetCell(ch) {
 // shownRows / totalRows are passed in by renderTable to avoid re-filtering.
 // When called from renderGeo (no args), falls back to module counts only.
 function updateFooter(shownRows, totalRows) {
-    // footer age label is maintained by the rAF loop via updatePollAge()
+    document.getElementById('last-update').textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
     const active = document.querySelector('.tab-content.active');
     if (active && active.id === 'geo-tab') {
@@ -586,14 +569,6 @@ function updateFooter(shownRows, totalRows) {
                 `${shown} / ${total} channels shown | ${MODULES.length} modules`;
         }
     }
-}
-
-function updatePollAge(sec) {
-    let label;
-    if (sec < 2)       label = 'Updated just now';
-    else if (sec < 60) label = `Updated ${sec} s ago`;
-    else               label = `Updated ${Math.floor(sec / 60)} min ago`;
-    document.getElementById('last-update').textContent = label;
 }
 
 function togglePower(crate, slot, channel, on) {
