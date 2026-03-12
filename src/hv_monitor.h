@@ -125,6 +125,8 @@ public slots:
         }
         if (!timer_->isActive())
             timer_->start(poll_interval_ms_);
+        // Fire immediately so the GUI populates without waiting one full interval
+        doPoll();
     }
 
     void stopPolling()
@@ -629,6 +631,8 @@ public slots:
         }
         if (!timer_->isActive())
             timer_->start(poll_interval_ms_);
+        // Fire immediately so the GUI populates without waiting one full interval
+        doPoll();
     }
 
     void stopPolling()  { if (timer_) timer_->stop(); }
