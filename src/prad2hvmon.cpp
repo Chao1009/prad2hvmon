@@ -209,32 +209,64 @@ int main(int argc, char *argv[])
         HVMonitor monitor(poller, moduleGeoPath, guiConfigPath, daqMapPath);
 
         // ── Booster HV supplies (TDK-Lambda GEN via SCPI/TCP) ────────────
-        // IPs loaded from gui_config.json "booster" array; fall back to
-        // the three known addresses if the key is absent.
+        // No hardcoded addresses. Priority order:
+        //   1. hycal_modules.json — entries with "t":"booster" carry "ip"
+        //      (and optionally "port") alongside their geometry fields.
+        //      This is the canonical source: add/change a booster by editing
+        //      the same file that defines its geometry block.
+        //   2. gui_config.json "booster" array — legacy/override path,
+        //      used only when the modules file has no booster entries.
+        //
         // Names MUST match the "n" field in hycal_modules.json so that
         // boosterByName[mod.n] lookups in the frontend resolve correctly.
-        std::vector<std::tuple<QString,QString,quint16>> boosterDefs = {
-            { "Booster1", "129.57.160.191", 8003 },
-            { "Booster2", "129.57.160.190", 8003 },
-            { "Booster3", "129.57.160.189", 8003 },
-        };
-        if (!guiConfigPath.isEmpty()) {
+        std::vector<std::tuple<QString,QString,quint16>> boosterDefs;
+
+        // Source 1: hycal_modules.json booster entries
+        if (!moduleGeoPath.isEmpty()) {
+            QFile mf(moduleGeoPath);
+            if (mf.open(QIODevice::ReadOnly)) {
+                QJsonArray mods = QJsonDocument::fromJson(mf.readAll()).array();
+                for (const auto &v : mods) {
+                    QJsonObject m = v.toObject();
+                    if (m["t"].toString().compare("booster", Qt::CaseInsensitive) != 0)
+                        continue;
+                    QString name = m["n"].toString();
+                    QString ip   = m["ip"].toString();
+                    quint16 port = static_cast<quint16>(m["port"].toInt(8003));
+                    if (name.isEmpty() || ip.isEmpty()) {
+                        std::cerr << "WARNING: booster entry in modules JSON missing "
+                                     "'n' or 'ip' field — skipped\n";
+                        continue;
+                    }
+                    boosterDefs.emplace_back(name, ip, port);
+                    std::cout << fmt::format("Booster {:s} @ {:s}:{:d} (from modules JSON)\n",
+                                             name.toStdString(), ip.toStdString(), port);
+                }
+            }
+        }
+
+        // Source 2: gui_config.json "booster" array (fallback)
+        if (boosterDefs.empty() && !guiConfigPath.isEmpty()) {
             QFile bcf(guiConfigPath);
             if (bcf.open(QIODevice::ReadOnly)) {
                 QJsonObject bcfg = QJsonDocument::fromJson(bcf.readAll()).object();
                 QJsonArray bsupplies = bcfg["booster"].toArray();
-                if (!bsupplies.isEmpty()) {
-                    boosterDefs.clear();
-                    for (const auto &v : bsupplies) {
-                        QJsonObject bs = v.toObject();
-                        boosterDefs.emplace_back(
-                            bs["name"].toString("Booster"),
-                            bs["ip"].toString(),
-                            static_cast<quint16>(bs["port"].toInt(8003)));
-                    }
+                for (const auto &v : bsupplies) {
+                    QJsonObject bs = v.toObject();
+                    QString name = bs["name"].toString();
+                    QString ip   = bs["ip"].toString();
+                    quint16 port = static_cast<quint16>(bs["port"].toInt(8003));
+                    if (name.isEmpty() || ip.isEmpty()) continue;
+                    boosterDefs.emplace_back(name, ip, port);
+                    std::cout << fmt::format("Booster {:s} @ {:s}:{:d} (from gui_config)\n",
+                                             name.toStdString(), ip.toStdString(), port);
                 }
             }
         }
+
+        if (boosterDefs.empty())
+            std::cerr << "WARNING: no booster supplies defined — "
+                         "add entries with \"t\":\"booster\" and \"ip\" to hycal_modules.json\n";
         BoosterPoller  *bPoller  = new BoosterPoller(boosterDefs);
         BoosterMonitor  bMonitor(bPoller);
 
