@@ -1679,19 +1679,20 @@ function boosterCardInnerHtml(s) {
   <span class="booster-val booster-val-full" data-field="pwr">${boosterPwrBadge(s)}</span>
 </div>
 <div class="booster-controls">
-  <div class="booster-controls-set">
+  <div class="booster-controls-vset">
     <input class="booster-vset-input" type="text" inputmode="decimal"
            placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input
            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
     <button class="booster-btn b-btn-set" data-set-v
             ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set V</button>
+  </div>
+  <div class="booster-controls-iset">
     <input class="booster-iset-input" type="text" inputmode="decimal"
            placeholder="ISet (A)" value="${escHtml(isetVal)}" data-iset-input
            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
     <button class="booster-btn b-btn-seti" data-set-i
             ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set I</button>
-  </div>
-  <div class="booster-controls-pwr">
+    <span class="booster-controls-spacer"></span>
     <button class="booster-btn b-btn-on"  data-on>ON</button>
     <button class="booster-btn b-btn-off" data-off>OFF</button>
   </div>
