@@ -34,16 +34,13 @@ let DV = {
     warn_threshold: 2.0,
     table_ok:       0.5,
     table_warn:     2.0,
-    geo_excellent:  0.2,
-    geo_good:       1.0,
-    geo_warn:       3.0,
-    geo_bad:        10.0,
 };
 
 // Color scale ranges (overridden by gui_config.json)
 let CR = {
     vmon_max: 2100,
     vset_max: 2100,
+    diff_max: 10.0,
 };
 
 // Geometry view settings (overridden by gui_config.json)
@@ -593,11 +590,14 @@ function moduleColor(mod) {
     if (!ch.on) return '#333';          // off: grey out
     if (ch.vmon == null || ch.vset == null) return '#333';
     const diff = Math.abs(ch.vmon - ch.vset);
-    if (diff < DV.geo_excellent) return '#1a5c44';
-    if (diff < DV.geo_good)      return '#2dd4a0';
-    if (diff < DV.geo_warn)      return '#eab308';
-    if (diff < DV.geo_bad)       return '#f56565';
-    return '#ff2222';                   // very bad: bright red
+    const t = Math.min(1, Math.max(0, diff / CR.diff_max));
+    return diffColorScale(t);
+}
+
+function diffColorScale(t) {
+    // 0 -> #2dd4a0 (green), 0.5 -> #eab308 (amber), 1.0 -> #f56565 (red)
+    if (t < 0.5) return lerpColor('#2dd4a0', '#eab308', t * 2);
+    else         return lerpColor('#eab308', '#f56565', (t - 0.5) * 2);
 }
 
 function vmonColorScale(t) {
@@ -643,14 +643,13 @@ function drawGeoLegend() {
         document.getElementById('leg-lo').textContent = '0 V';
         document.getElementById('leg-hi').textContent = rangeMax + ' V';
     } else {
-        // diff: green -> amber -> red
-        const stops = [ [0,'#1a5c44'], [0.15,'#2dd4a0'], [0.4,'#eab308'], [0.7,'#f56565'], [1,'#ff2222'] ];
-        const grad = ctx.createLinearGradient(0,0,w,0);
-        stops.forEach(([s,c]) => grad.addColorStop(s,c));
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, w, h);
+        // diff: continuous green -> amber -> red
+        for (let i = 0; i < w; i++) {
+            ctx.fillStyle = diffColorScale(i / w);
+            ctx.fillRect(i, 0, 1, h);
+        }
         document.getElementById('leg-lo').textContent = '0 V';
-        document.getElementById('leg-hi').textContent = DV.geo_bad + '+ V';
+        document.getElementById('leg-hi').textContent = CR.diff_max + '+ V';
     }
 }
 
