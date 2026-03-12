@@ -635,9 +635,9 @@ footer #last-update::before {
 }
 
 .booster-controls-set .booster-vset-input,
-.booster-controls-set .booster-iset-input { flex: 1; width: auto; }
+.booster-controls-set .booster-iset-input { flex: 1; width: auto; min-width: 0; }
 
-.booster-controls-set .booster-btn { white-space: nowrap; }
+.booster-controls-set .booster-btn { white-space: nowrap; min-width: 0; flex-shrink: 0; }
 
 /* Row 2: ON / OFF pushed to the right */
 .booster-controls-pwr {
@@ -657,6 +657,7 @@ footer #last-update::before {
     font-size: 0.95rem;
     padding: 5px 9px;
     width: 100px;
+    min-width: 0;
     text-align: right;
 }
 
@@ -670,6 +671,7 @@ footer #last-update::before {
     font-size: 0.95rem;
     padding: 5px 9px;
     width: 100px;
+    min-width: 0;
     text-align: right;
 }
 .booster-iset-input:focus { outline: none; border-color: var(--amber); }
