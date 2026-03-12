@@ -417,6 +417,7 @@ struct BoosterSupply {
     // Readback (updated by poll)
     double  vmon     = std::numeric_limits<double>::quiet_NaN();
     double  vset     = std::numeric_limits<double>::quiet_NaN();
+    double  imon     = std::numeric_limits<double>::quiet_NaN();
     bool    on       = false;
     QString mode;       // "CV", "CC", or ""
     QString error;      // last error string, empty if OK
@@ -535,6 +536,12 @@ struct BoosterSupply {
         bool ok;
         double v = s.toDouble(&ok);
         vmon = ok ? v : std::numeric_limits<double>::quiet_NaN();
+
+        // Measured current — MEAS:CURR? returns actual output current in Amps
+        s = sendCmd("MEAS:CURR?");
+        if (s.isEmpty()) { failWith("no response (MEAS:CURR?)"); return; }
+        v = s.toDouble(&ok);
+        imon = ok ? v : std::numeric_limits<double>::quiet_NaN();
 
         // Operating mode
         s = sendCmd("SOUR:MOD?");
@@ -656,6 +663,7 @@ private:
             o["error"]     = s->error;
             o["vmon"]      = std::isnan(s->vmon) ? QJsonValue::Null : QJsonValue(s->vmon);
             o["vset"]      = std::isnan(s->vset) ? QJsonValue::Null : QJsonValue(s->vset);
+            o["imon"]      = std::isnan(s->imon) ? QJsonValue::Null : QJsonValue(s->imon);
             arr.append(o);
         }
         return QString(QJsonDocument(arr).toJson(QJsonDocument::Compact));

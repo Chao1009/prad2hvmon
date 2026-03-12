@@ -1005,7 +1005,7 @@ function renderGeo() {
             ctx.fillText(m.n, m.x, -(m.y + hh * 0.3));
             // VMon / status line
             const bLine2 = (!bs || !bs.connected) ? 'OFFLINE'
-                         : bs.vmon != null         ? bs.vmon.toFixed(1) + ' V'
+                         : bs.vmon != null         ? bs.vmon.toFixed(1) + ' V' + (bs.imon != null ? ' / ' + bs.imon.toFixed(3) + ' A' : '')
                          :                           (bs.on ? 'ON' : 'OFF');
             ctx.fillStyle = bdrCol;
             ctx.font = `${10 / geoTransform.scale}px monospace`;
@@ -1110,6 +1110,7 @@ function updateGeoHover(e) {
                 html += `<div class="tt-row"><span class="tt-label">Link</span><span class="tt-val">${connSpan}</span></div>`;
                 if (bs.connected) {
                     html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val"><span class="tt-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Mode</span><span class="tt-val">${escHtml(bs.mode||'—')}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${bs.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>'}</span></div>`;
@@ -1509,6 +1510,7 @@ function openBoosterPopup(mod) {
             html += `<span class="plbl">Link</span><span class="pval">${connSpan}</span>`;
             if (bs.connected) {
                 html += `<span class="plbl">VMon</span><span class="pval"><span class="pval-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span>`;
+                html += `<span class="plbl">IMon</span><span class="pval"><span class="pval-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span>`;
                 html += `<span class="plbl">VSet</span><span class="pval">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span>`;
                 const modeBadge = bs.mode
                     ? `<span class="booster-mode-badge ${bs.mode.toUpperCase()==='CV'?'mode-cv':'mode-cc'}">${escHtml(bs.mode)}</span>`
@@ -1637,6 +1639,8 @@ function boosterCardInnerHtml(s) {
   <span class="booster-val val-live" data-field="vmon">${s.vmon!=null?s.vmon.toFixed(2)+' V':'—'}</span>
   <span class="booster-lbl">VSet</span>
   <span class="booster-val" data-field="vset">${s.vset!=null?s.vset.toFixed(2)+' V':'—'}</span>
+  <span class="booster-lbl">IMon</span>
+  <span class="booster-val val-live" data-field="imon">${s.imon!=null?s.imon.toFixed(3)+' A':'—'}</span>
   <span class="booster-lbl">Mode</span>
   <span class="booster-val" data-field="mode">${boosterModeBadge(s.mode)}</span>
   <span class="booster-lbl">Output</span>
@@ -1674,6 +1678,7 @@ function updateBoosterCard(card, idx, s) {
     }
     sf('vmon', s.vmon != null ? s.vmon.toFixed(2) + ' V' : '—');
     sf('vset', s.vset != null ? s.vset.toFixed(2) + ' V' : '—');
+    sf('imon', s.imon != null ? s.imon.toFixed(3) + ' A' : '—');
     sh('mode', boosterModeBadge(s.mode));
     sh('pwr',  boosterPwrBadge(s));
     const errEl = card.querySelector('[data-field="error"]');
