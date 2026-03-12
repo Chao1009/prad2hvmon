@@ -29,6 +29,9 @@ let geoCanvas, geoCtx, geoWrap;
 // Channel lookup by name for geometry
 let chByName = {};
 
+// DAQ connection map lookup by module name (loaded from daq_map.json)
+let daqByName = {};
+
 // ΔV thresholds (overridden by gui_config.json)
 let DV = {
     warn_threshold: 2.0,
@@ -73,6 +76,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 MODULES = JSON.parse(geoJson);
                 MODULES.forEach(m => { MOD_MAP[m.n] = m; });
                 console.log('Loaded ' + MODULES.length + ' modules');
+            });
+            // Load DAQ connection map
+            hvMonitor.getDAQMap(daqJson => {
+                daqByName = {};
+                JSON.parse(daqJson).forEach(e => {
+                    daqByName[e.name] = { crate: e.crate, slot: e.slot, channel: e.channel };
+                });
+                console.log('Loaded DAQ map: ' + Object.keys(daqByName).length + ' entries');
             });
             // Load GUI config (ΔV thresholds, intervals, etc.)
             hvMonitor.getGuiConfig(cfgJson => {
@@ -922,6 +933,15 @@ function openModPopup(mod) {
             html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
             vsetInput.value = '';
             isetInput.value = '';
+        }
+        // ── DAQ connection info ──────────────────────────────────────────
+        const daq = daqByName[mod.n];
+        html += `<span class="plbl popup-section-hdr" style="grid-column:1/-1">DAQ</span>`;
+        if (daq) {
+            html += `<span class="plbl">Crate</span><span class="pval">${daq.crate}</span>`;
+            html += `<span class="plbl">Slot / Ch</span><span class="pval">${daq.slot} / ${daq.channel}</span>`;
+        } else {
+            html += `<span class="plbl">—</span><span class="pval" style="color:var(--text-dim)">No mapping</span>`;
         }
         grid.innerHTML = html;
         const hasChannel = !!c;

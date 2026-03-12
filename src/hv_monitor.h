@@ -30,11 +30,12 @@ public:
     explicit HVMonitor(
         const std::vector<std::pair<std::string, std::string>> &crate_list,
         const QString &module_json_path = "",
-        const QString &gui_config_path = "",
+        const QString &gui_config_path  = "",
+        const QString &daq_map_path     = "",
         QObject *parent = nullptr)
         : QObject(parent), poll_interval_ms_(3000),  // overridden by gui_config.json at runtime
           crate_defs_(crate_list), module_json_path_(module_json_path),
-          gui_config_path_(gui_config_path)
+          gui_config_path_(gui_config_path), daq_map_path_(daq_map_path)
     {
         connect(&timer_, &QTimer::timeout, this, &HVMonitor::pollCrates);
     }
@@ -161,6 +162,19 @@ public slots:
         return QString::fromUtf8(f.readAll());
     }
 
+    // ── JS-callable: read the DAQ connection map JSON file ──────────────
+    QString getDAQMap()
+    {
+        if (daq_map_path_.isEmpty()) return QStringLiteral("[]");
+        QFile f(daq_map_path_);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            std::cerr << "Cannot open DAQ map file: "
+                      << daq_map_path_.toStdString() << "\n";
+            return QStringLiteral("[]");
+        }
+        return QString::fromUtf8(f.readAll());
+    }
+
     // ── JS-callable: turn a single channel ON / OFF ─────────────────────
     void setChannelPower(const QString &crateName, int slot,
                          int channel, bool on)
@@ -275,6 +289,7 @@ private:
     std::vector<std::pair<std::string, std::string>> crate_defs_;
     QString module_json_path_;
     QString gui_config_path_;
+    QString daq_map_path_;
     std::vector<CAEN_Crate*> crates_;
     std::map<std::string, CAEN_Crate*> crate_map_;
 };

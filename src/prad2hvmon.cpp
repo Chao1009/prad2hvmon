@@ -175,8 +175,23 @@ int main(int argc, char *argv[])
         if (!guiConfigPath.isEmpty())
             std::cout << "GUI config: " << guiConfigPath.toStdString() << "\n";
 
+        // Locate DAQ connection map JSON
+        QString daqMapPath;
+        {
+            QStringList candidates = {
+                QCoreApplication::applicationDirPath() + "/../resources/daq_map.json",
+                QCoreApplication::applicationDirPath() + "/../../resources/daq_map.json",
+                QString::fromStdString(std::string(RESOURCE_DIR) + "/daq_map.json"),
+            };
+            for (const auto &p : candidates) {
+                if (QFile::exists(p)) { daqMapPath = QDir(p).absolutePath(); break; }
+            }
+        }
+        if (!daqMapPath.isEmpty())
+            std::cout << "DAQ map: " << daqMapPath.toStdString() << "\n";
+
         // initiate monitor
-        HVMonitor monitor(crate_list, moduleGeoPath, guiConfigPath);
+        HVMonitor monitor(crate_list, moduleGeoPath, guiConfigPath, daqMapPath);
         if (!monitor.initCrates()) {
             std::cerr << "WARNING: not all crates connected – "
                          "dashboard will show partial data.\n";
