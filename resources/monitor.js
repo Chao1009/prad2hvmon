@@ -809,16 +809,23 @@ function updateGeoHover(e) {
         let html = `<div class="tt-name">${mod.n}</div>`;
         html += `<div class="tt-row"><span class="tt-label">Type</span><span class="tt-val">${mod.t}</span></div>`;
         if (ch) {
-            html += `<div class="tt-row"><span class="tt-label">Crate</span><span class="tt-val">${ch.crate} s${ch.slot} ch${ch.channel}</span></div>`;
-            html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val">${fmt(ch.vmon, 2)} V</span></div>`;
-            html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${fmt(ch.vset, 2)} V</span></div>`;
+            html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val">${ch.crate} s${ch.slot} ch${ch.channel}</span></div>`;
+            const daqEntry = daqByName[mod.n];
+            const daqStr = daqEntry ? ('c' + daqEntry.crate + ' s' + daqEntry.slot + ' ch' + daqEntry.channel) : '<span style="color:var(--text-dim)">—</span>';
+            html += `<div class="tt-row"><span class="tt-label">DAQ</span><span class="tt-val">${daqStr}</span></div>`;
+            html += `<div class="tt-row"><span class="tt-label">VMon / VSet</span><span class="tt-val"><span class="tt-live">${fmt(ch.vmon, 2)}</span> / ${fmt(ch.vset, 2)} V</span></div>`;
             const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
-            html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val">${fmt(diff, 2)} V</span></div>`;
+            const diffColor = (diff != null && ch.on) ? diffColorScale(Math.min(1, diff / CR.diff_max)) : null;
+            const diffStyle = diffColor ? (' style="color:' + diffColor + ';font-weight:600"') : '';
+            html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val"${diffStyle}>${fmt(diff, 2)} V</span></div>`;
             if (ch.iSupported !== false && ch.imon != null)
-                html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val">${fmt(ch.imon, 3)} µA</span></div>`;
+                html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ch.on?'tt-on':'tt-off'}">${ch.on?'ON':'OFF'}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
+            const daqEntry = daqByName[mod.n];
+            const daqStr = daqEntry ? ('c' + daqEntry.crate + ' s' + daqEntry.slot + ' ch' + daqEntry.channel) : '<span style="color:var(--text-dim)">—</span>';
+            html += `<div class="tt-row"><span class="tt-label">DAQ</span><span class="tt-val">${daqStr}</span></div>`;
         }
         tooltip.innerHTML = html;
         tooltip.style.display = 'block';
@@ -913,16 +920,15 @@ function openModPopup(mod) {
             html += `<span class="plbl">Crate</span><span class="pval">${c.crate}</span>`;
             html += `<span class="plbl">Slot / Ch</span><span class="pval">${c.slot} / ${c.channel}</span>`;
             html += `<span class="plbl">Model</span><span class="pval">${c.model || '—'}</span>`;
-            html += `<span class="plbl">VMon</span><span class="pval">${fmt(c.vmon, 2)} V</span>`;
-            html += `<span class="plbl">VSet</span><span class="pval">${fmt(c.vset, 2)} V</span>`;
+            html += `<span class="plbl">VMon / VSet</span><span class="pval"><span class="pval-live">${fmt(c.vmon, 2)}</span> / ${fmt(c.vset, 2)} V</span>`;
             const popupDiff = (c.vmon != null && c.vset != null) ? Math.abs(c.vmon - c.vset) : null;
-            html += `<span class="plbl">ΔV</span><span class="pval">${fmt(popupDiff, 2)} V</span>`;
+            const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.min(1, popupDiff / CR.diff_max)) : null;
+            const popupDiffStyle = popupDiffColor ? ('color:' + popupDiffColor + ';font-weight:600') : '';
+            html += `<span class="plbl">ΔV</span><span class="pval" ${popupDiffStyle ? ('style="' + popupDiffStyle + '"') : ''}>${fmt(popupDiff, 2)} V</span>`;
             if (c.iSupported === false) {
-                html += `<span class="plbl">IMon</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
-                html += `<span class="plbl">ISet</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
+                html += `<span class="plbl">IMon / ISet</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
             } else {
-                html += `<span class="plbl">IMon</span><span class="pval">${fmt(c.imon, 3)} µA</span>`;
-                html += `<span class="plbl">ISet</span><span class="pval">${fmt(c.iset, 1)} µA</span>`;
+                html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
             }
             const stAbbr   = c.status ? c.status.split('|')[0] : '';
             const stDetail = c.status ? c.status.split('|')[1] : '';

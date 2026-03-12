@@ -417,6 +417,7 @@ footer #last-update::before {
 #geo-tooltip .tt-row { display: flex; justify-content: space-between; gap: 16px; }
 #geo-tooltip .tt-label { color: var(--text-dim); }
 #geo-tooltip .tt-val { color: var(--text-bright); }
+#geo-tooltip .tt-val .tt-live { color: var(--green); font-weight: 600; }
 #geo-tooltip .tt-on { color: var(--green); }
 #geo-tooltip .tt-off { color: var(--red); }
 
@@ -463,6 +464,7 @@ footer #last-update::before {
 }
 .mod-popup .popup-grid .plbl { color: var(--text-dim); font-size: 11px; }
 .mod-popup .popup-grid .pval { color: var(--text-bright); font-size: 12px; }
+.mod-popup .popup-grid .pval .pval-live { color: var(--green); font-weight: 600; }
 .mod-popup .popup-grid .popup-section-hdr {
     font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
     color: var(--text-dim); border-top: 1px solid var(--border);
