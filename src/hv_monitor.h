@@ -287,7 +287,12 @@ public slots:
     int getPollInterval() { return 0; }   // not used by JS currently
 
     // ── JS-callable: return last cached snapshot (instant, no I/O) ──────
-    QString readAll() { return cachedSnapshot_; }
+    // Returns "[]" rather than "" before the first poll snapshot arrives,
+    // so JSON.parse() in the JS bootstrap never sees an empty string.
+    QString readAll()
+    {
+        return cachedSnapshot_.isEmpty() ? QStringLiteral("[]") : cachedSnapshot_;
+    }
 
     // ── JS-callable: static file reads (GUI thread, no hardware) ────────
     QString getModuleGeometry() { return readJsonFile(module_json_path_, "[]"); }
