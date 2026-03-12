@@ -319,7 +319,7 @@ function renderTable() {
                      :                       'off';
         const prim = isPrimary(ch);
         return `<tr class="${prim ? 'primary-row' : ''}">
-            <td><span class="status-dot ${onCls}"></span></td>
+            <td><span class="status-dot ${dotCls}"></span></td>
             <td title="${ch.ip}">${ch.crate}</td><td>${ch.slot}</td><td>${ch.channel}</td>
             <td>${ch.model||'—'}</td>
             <td>${expertMode
