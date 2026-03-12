@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <QApplication>
+#include <QThread>
 #include <QWebEngineView>
 #include <QWebChannel>
 #include <QWebEnginePage>
@@ -190,12 +191,30 @@ int main(int argc, char *argv[])
         if (!daqMapPath.isEmpty())
             std::cout << "DAQ map: " << daqMapPath.toStdString() << "\n";
 
-        // initiate monitor
-        HVMonitor monitor(crate_list, moduleGeoPath, guiConfigPath, daqMapPath);
-        if (!monitor.initCrates()) {
+        // ── Hardware poller (heap-allocated, will live on worker thread) ─────
+        // Heap allocation is required: poller must be destroyed on the worker
+        // thread (via deleteLater), not on the main thread stack.  A stack
+        // variable would have its destructor run on the main thread after
+        // wait(), but its thread affinity is the worker – undefined behaviour.
+        //
+        // initCrates() runs here before moveToThread – safe because the
+        // worker thread has not started yet, so there is no race.
+        HVPoller *poller = new HVPoller(crate_list);
+        if (!poller->initCrates()) {
             std::cerr << "WARNING: not all crates connected – "
                          "dashboard will show partial data.\n";
         }
+
+        // ── GUI-thread bridge (registered with QWebChannel) ─────────────
+        HVMonitor monitor(poller, moduleGeoPath, guiConfigPath, daqMapPath);
+
+        // ── Worker thread ────────────────────────────────────
+        QThread workerThread;
+        poller->moveToThread(&workerThread);
+        // When the worker event loop exits, Qt destroys poller via deleteLater
+        // on the worker thread itself – the correct thread for ~HVPoller().
+        QObject::connect(&workerThread, &QThread::finished,
+                         poller, &QObject::deleteLater);
 
         // Web channel (C++ <-> JS bridge)
         QWebChannel channel;
@@ -237,10 +256,22 @@ int main(int argc, char *argv[])
         view.setUrl(QUrl::fromLocalFile(QDir(htmlPath).absolutePath()));
         view.show();
 
-        // Start periodic polling
-        monitor.startPolling();
+        // Start worker thread, then kick off polling on it via queued call
+        workerThread.start();
+        QMetaObject::invokeMethod(poller, "startPolling", Qt::QueuedConnection);
 
-        return app.exec();
+        const int ret = app.exec();
+
+        // Clean shutdown.
+        // quit() posts QEvent::Quit to the worker event loop; wait() blocks
+        // until the thread exits.  Qt then processes any pending deleteLater
+        // events (including ~HVPoller) on the worker before it dies, so all
+        // CAEN objects are destroyed on the correct thread.
+        // There is no need to explicitly invokeMethod stopPolling here:
+        // ~HVPoller() stops and deletes the timer safely on the worker thread.
+        workerThread.quit();
+        workerThread.wait();
+        return ret;
     }
 
     // ── Console modes (read / write) ────────────────────────────────────
