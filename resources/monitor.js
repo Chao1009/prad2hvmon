@@ -82,6 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
             allChannels = JSON.parse(jsonStr);
             lastPollTime = performance.now();
             rebuildChMap();
+            const crateKey = [...new Set(allChannels.map(c => c.crate))].sort().join('|');
+            if (crateKey !== window._crateKey) { window._crateKey = crateKey; populateCrateChips(); }
             dataDirty = true;
             // refreshAllPopups() is now called from renderActiveTab() when dirty,
             // so we don't rebuild popup DOM on every data tick outside the render loop.
@@ -230,6 +232,7 @@ function initTableUI() {
         hvMonitor.readAll(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             rebuildChMap();
+            populateCrateChips();
             dataDirty = true; renderActiveTab();
         });
     });
