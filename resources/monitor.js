@@ -295,7 +295,7 @@ function initTableUI() {
         }
         expertMode = e.target.checked;
         document.getElementById('expert-label').classList.toggle('active', expertMode);
-        dataDirty = true; renderActiveTab();
+        dataDirty = true; boosterDirty = true; renderActiveTab();
     });
 }
 
@@ -1474,7 +1474,7 @@ function openBoosterPopup(mod) {
     const rowV = document.createElement('div');
     rowV.className = 'popup-action-row';
     const vsetInput = document.createElement('input');
-    vsetInput.type = 'number'; vsetInput.step = '0.1'; vsetInput.min = '0';
+    vsetInput.type = 'text'; vsetInput.setAttribute('inputmode', 'decimal');
     vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
@@ -1524,12 +1524,16 @@ function openBoosterPopup(mod) {
         }
         grid.innerHTML = html;
         const hasConn = !!(bs && bs.connected);
-        vsetInput.disabled = !hasConn;
-        btnSetV.disabled   = !hasConn;
-        btnOn.disabled     = !hasConn;
-        btnOff.disabled    = !hasConn;
-        [vsetInput, btnSetV, btnOn, btnOff].forEach(el2 =>
-            el2.style.opacity = hasConn ? '1' : '0.35');
+        // SetV requires both connection and expert mode
+        vsetInput.disabled = !hasConn || !expertMode;
+        btnSetV.disabled   = !hasConn || !expertMode;
+        vsetInput.style.opacity = (hasConn && expertMode) ? '1' : '0.35';
+        btnSetV.style.opacity   = (hasConn && expertMode) ? '1' : '0.35';
+        // ON/OFF only requires connection
+        btnOn.disabled  = !hasConn;
+        btnOff.disabled = !hasConn;
+        btnOn.style.opacity  = hasConn ? '1' : '0.35';
+        btnOff.style.opacity = hasConn ? '1' : '0.35';
     }
     refresh();
     popups.set(mod.n, { el, refresh });
@@ -1537,7 +1541,7 @@ function openBoosterPopup(mod) {
     header.querySelector('.popup-close').addEventListener('click', () => closeModPopup(mod.n));
 
     btnSetV.addEventListener('click', () => {
-        if (!boosterMonitor) return;
+        if (!boosterMonitor || !expertMode) return;
         const v = parseFloat(vsetInput.value);
         if (isNaN(v) || v < 0) { vsetInput.style.borderColor = 'var(--red)'; return; }
         vsetInput.style.borderColor = '';
@@ -1639,9 +1643,11 @@ function boosterCardInnerHtml(s) {
   <span class="booster-val" data-field="pwr">${boosterPwrBadge(s)}</span>
 </div>
 <div class="booster-controls">
-  <input class="booster-vset-input" type="number" step="0.1" min="0"
-         placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input>
-  <button class="booster-btn b-btn-set" data-set-v>Set V</button>
+  <input class="booster-vset-input" type="text" inputmode="decimal"
+         placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input
+         ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
+  <button class="booster-btn b-btn-set" data-set-v
+          ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set V</button>
   <button class="booster-btn b-btn-on"  data-on>ON</button>
   <button class="booster-btn b-btn-off" data-off>OFF</button>
 </div>
@@ -1676,11 +1682,16 @@ function updateBoosterCard(card, idx, s) {
         const wantVis = s.error ? 'booster-error visible' : 'booster-error';
         if (errEl.className !== wantVis) errEl.className = wantVis;
     }
+    // Expert mode guard — SetV input and button only
+    const vsetEl = card.querySelector('[data-vset-input]');
+    const setVEl = card.querySelector('[data-set-v]');
+    if (vsetEl) { vsetEl.disabled = !expertMode; vsetEl.style.opacity = expertMode ? '1' : '0.35'; }
+    if (setVEl) { setVEl.disabled = !expertMode; setVEl.style.opacity = expertMode ? '1' : '0.35'; }
 }
 
 function wireBoosterCard(card, idx) {
     card.querySelector('[data-set-v]').addEventListener('click', () => {
-        if (!boosterMonitor) return;
+        if (!boosterMonitor || !expertMode) return;
         const inp = card.querySelector('[data-vset-input]');
         const v = parseFloat(inp.value);
         if (isNaN(v) || v < 0) { inp.style.borderColor = 'var(--red)'; return; }
