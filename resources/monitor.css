@@ -628,25 +628,27 @@ footer #last-update::before {
     margin-top: 2px;
 }
 
-/* Row 1: VSet input (flex) + Set V (fixed width) */
+/* Row 1: VSet input (fixed) + Set V (fixed) — no stretching */
 .booster-controls-vset {
     display: flex;
     align-items: center;
     gap: 6px;
+    align-self: flex-start;
 }
 
-.booster-controls-vset .booster-vset-input { flex: 1; min-width: 0; }
-.booster-controls-vset .b-btn-set          { width: 58px; white-space: nowrap; flex-shrink: 0; }
+.booster-controls-vset .booster-vset-input { width: 110px; flex-shrink: 0; }
+.booster-controls-vset .b-btn-set          { width: 58px;  white-space: nowrap; flex-shrink: 0; }
 
-/* Row 2: ISet input (flex) + Set I (same fixed width) + spacer + ON + OFF */
+/* Row 2: ISet input (fixed) + Set I (fixed) + spacer + ON + OFF */
 .booster-controls-iset {
     display: flex;
     align-items: center;
     gap: 6px;
+    width: 100%;
 }
 
-.booster-controls-iset .booster-iset-input { flex: 1; min-width: 0; }
-.booster-controls-iset .b-btn-seti         { width: 58px; white-space: nowrap; flex-shrink: 0; }
+.booster-controls-iset .booster-iset-input { width: 110px; flex-shrink: 0; }
+.booster-controls-iset .b-btn-seti         { width: 58px;  white-space: nowrap; flex-shrink: 0; }
 .booster-controls-spacer                   { flex: 1; }
 .booster-controls-iset .b-btn-on,
 .booster-controls-iset .b-btn-off          { white-space: nowrap; flex-shrink: 0; }
