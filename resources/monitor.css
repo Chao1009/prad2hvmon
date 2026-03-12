@@ -418,8 +418,12 @@ footer #last-update::before {
 #geo-tooltip .tt-label { color: var(--text-dim); }
 #geo-tooltip .tt-val { color: var(--text-bright); }
 #geo-tooltip .tt-val .tt-live { color: var(--green); font-weight: 600; }
-#geo-tooltip .tt-on { color: var(--green); }
-#geo-tooltip .tt-off { color: var(--red); }
+/* Unified status colours — used by both tooltip and popup */
+.st-on    { color: var(--green); font-weight: 600; }
+.st-ramp  { color: var(--green); font-weight: 600; opacity: 0.75; } /* RUP / RDN */
+.st-warn  { color: var(--amber); font-weight: 600; }
+.st-fault { color: var(--red);   font-weight: 600; }
+.st-off   { color: var(--text-dim); }
 
 /* ─── Floating module popups ──────────────────────────────────────── */
 .mod-popup {

@@ -1010,7 +1010,8 @@ function updateGeoHover(e) {
             html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val"${diffStyle}>${fmt(diff, 2)} V</span></div>`;
             if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
-            html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ch.on?'tt-on':'tt-off'}">${ch.on?'ON':'OFF'}</span></div>`;
+            const ttSt = statusDisplay(ch);
+            html += `<div class="tt-row"><span class="tt-label">Status</span><span class="${ttSt.cls}" title="${ttSt.detail}">${ttSt.text}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
             const daqEntry = daqByName[mod.n];
@@ -1121,9 +1122,8 @@ function openModPopup(mod) {
             } else {
                 html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
             }
-            const stAbbr   = c.status ? c.status.split('|')[0] : '';
-            const stDetail = c.status ? c.status.split('|')[1] : '';
-            html += `<span class="plbl">Status</span><span class="pval ${statusClass(c.status)}" title="${stDetail}">${stAbbr}</span>`;
+            const pSt = statusDisplay(c);
+            html += `<span class="plbl">Status</span><span class="pval ${pSt.cls}" title="${pSt.detail}">${pSt.text}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
             isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
         } else {
@@ -1250,5 +1250,26 @@ function dotClass(ch) {
     if (isSettled(ch) && ch.vmon != null && ch.vset != null &&
         Math.abs(ch.vmon - ch.vset) > DV.warn_threshold) return 'warn';
     return ch.on ? 'on' : 'off';
+}
+
+// Shared status display helper — returns { text, cls } for tooltip and popup.
+// text: the CAEN abbreviation(s) + detail, e.g. "ON", "RUP", "TRIP OVC"
+// cls:  one of 'st-on' | 'st-ramp' | 'st-warn' | 'st-fault' | 'st-off'
+function statusDisplay(ch) {
+    const abbr   = ch.status ? ch.status.split('|')[0].trim() : '';
+    const detail = ch.status ? (ch.status.split('|')[1] || '').trim() : '';
+    const sc     = statusClass(ch.status);
+    const isWarn = isSettled(ch) && ch.vmon != null && ch.vset != null
+                   && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
+
+    let cls;
+    if (sc === 'status-err')                           cls = 'st-fault';
+    else if (isWarn)                                   cls = 'st-warn';
+    else if (abbr === 'OFF' || !ch.on)                 cls = 'st-off';
+    else if (abbr === 'ON')                            cls = 'st-on';
+    else                                               cls = 'st-ramp'; // RUP / RDN
+
+    const text = abbr || (ch.on ? 'ON' : 'OFF');
+    return { text, detail, cls };
 }
 
