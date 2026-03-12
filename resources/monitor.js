@@ -1647,13 +1647,17 @@ function boosterCardInnerHtml(s) {
   <span class="booster-val" data-field="pwr">${boosterPwrBadge(s)}</span>
 </div>
 <div class="booster-controls">
-  <input class="booster-vset-input" type="text" inputmode="decimal"
-         placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input
-         ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
-  <button class="booster-btn b-btn-set" data-set-v
-          ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set V</button>
-  <button class="booster-btn b-btn-on"  data-on>ON</button>
-  <button class="booster-btn b-btn-off" data-off>OFF</button>
+  <div class="booster-controls-left">
+    <input class="booster-vset-input" type="text" inputmode="decimal"
+           placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input
+           ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
+    <button class="booster-btn b-btn-set" data-set-v
+            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set V</button>
+  </div>
+  <div class="booster-controls-right">
+    <button class="booster-btn b-btn-on"  data-on>ON</button>
+    <button class="booster-btn b-btn-off" data-off>OFF</button>
+  </div>
 </div>
 <div class="booster-error ${s.error?'visible':''}" data-field="error">${escHtml(s.error||'')}</div>`;
 }

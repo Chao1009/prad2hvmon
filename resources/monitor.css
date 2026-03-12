@@ -615,29 +615,32 @@ footer #last-update::before {
 .booster-controls {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
     margin-top: 4px;
-    flex-wrap: wrap;
 }
+
+.booster-controls-left  { display: flex; align-items: center; gap: 8px; }
+.booster-controls-right { display: flex; align-items: center; gap: 8px; }
 
 .booster-vset-input {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: 6px;
     color: var(--text);
-    font-size: 0.82rem;
-    padding: 4px 8px;
-    width: 90px;
+    font-size: 1.05rem;
+    padding: 7px 12px;
+    width: 120px;
     text-align: right;
 }
 
 .booster-vset-input:focus { outline: none; border-color: var(--accent); }
 
 .booster-btn {
-    font-size: 0.78rem;
+    font-size: 1.0rem;
     font-weight: 600;
-    padding: 4px 11px;
-    border-radius: 5px;
+    padding: 7px 20px;
+    border-radius: 6px;
     border: 1px solid transparent;
     cursor: pointer;
     transition: opacity 0.15s;
