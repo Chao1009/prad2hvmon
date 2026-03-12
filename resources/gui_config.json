@@ -17,7 +17,7 @@
         "extent": 600
     },
     "intervals": {
-        "pollMs":   3000,
+        "pollMs":   2000,
         "renderMs": 200
     }
 }

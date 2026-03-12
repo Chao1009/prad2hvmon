@@ -915,11 +915,12 @@ function openModPopup(mod) {
         let html = '';
         html += `<span class="plbl">Type</span><span class="pval">${mod.t}</span>`;
         html += `<span class="plbl">Position</span><span class="pval">(${mod.x.toFixed(1)}, ${mod.y.toFixed(1)}) mm</span>`;
-        html += `<span class="plbl">Size</span><span class="pval">${mod.sx} × ${mod.sy} mm</span>`;
         if (c) {
-            html += `<span class="plbl">Crate</span><span class="pval">${c.crate}</span>`;
-            html += `<span class="plbl">Slot / Ch</span><span class="pval">${c.slot} / ${c.channel}</span>`;
-            html += `<span class="plbl">Model</span><span class="pval">${c.model || '—'}</span>`;
+            html += `<span class="plbl">HV</span><span class="pval">${c.crate} s${c.slot} ch${c.channel}</span>`;
+            html += `<span class="plbl">HV Board</span><span class="pval">${c.model || '—'}</span>`;
+            const daqC = daqByName[mod.n];
+            const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
+            html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
             html += `<span class="plbl">VMon / VSet</span><span class="pval"><span class="pval-live">${fmt(c.vmon, 2)}</span> / ${fmt(c.vset, 2)} V</span>`;
             const popupDiff = (c.vmon != null && c.vset != null) ? Math.abs(c.vmon - c.vset) : null;
             const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.min(1, popupDiff / CR.diff_max)) : null;
@@ -937,17 +938,11 @@ function openModPopup(mod) {
             isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
         } else {
             html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
+            const daqC = daqByName[mod.n];
+            const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
+            html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
             vsetInput.value = '';
             isetInput.value = '';
-        }
-        // ── DAQ connection info ──────────────────────────────────────────
-        const daq = daqByName[mod.n];
-        html += `<span class="plbl popup-section-hdr" style="grid-column:1/-1">DAQ</span>`;
-        if (daq) {
-            html += `<span class="plbl">Crate</span><span class="pval">${daq.crate}</span>`;
-            html += `<span class="plbl">Slot / Ch</span><span class="pval">${daq.slot} / ${daq.channel}</span>`;
-        } else {
-            html += `<span class="plbl">—</span><span class="pval" style="color:var(--text-dim)">No mapping</span>`;
         }
         grid.innerHTML = html;
         const hasChannel = !!c;
