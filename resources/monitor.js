@@ -311,7 +311,12 @@ function renderTable() {
     tbody.innerHTML = data.map(ch => {
         const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
         const dcls = !ch.on ? 'diff-ok' : (diff == null || diff < DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
-        const onCls = ch.on ? 'on' : 'off';
+        const sc    = statusClass(ch.status);
+        const isWarn = isSettled(ch) && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
+        const dotCls = sc === 'status-err' ? 'fault'
+                     : isWarn              ? 'warn'
+                     : ch.on               ? 'on'
+                     :                       'off';
         const prim = isPrimary(ch);
         return `<tr class="${prim ? 'primary-row' : ''}">
             <td><span class="status-dot ${onCls}"></span></td>
@@ -349,7 +354,7 @@ function renderTable() {
                 title="${ch.status ? ch.status.split('|')[1] : ''}"
             >${ch.status ? ch.status.split('|')[0] : ''}</td>
             <td style="text-align:center">
-                <button class="pwr-btn ${onCls}"
+                <button class="pwr-btn ${dotCls}"
                     onclick="togglePower('${ch.crate}',${ch.slot},${ch.channel},${ch.on?'false':'true'})"
                 >${ch.on?'ON':'OFF'}</button>
             </td></tr>`;
