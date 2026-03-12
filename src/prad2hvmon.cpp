@@ -251,6 +251,7 @@ int main(int argc, char *argv[])
         }
         if (htmlPath.isEmpty()) {
             std::cerr << "ERROR: cannot find monitor.html\n";
+            delete poller;   // workerThread never started, deleteLater won't fire
             return -1;
         }
         view.setUrl(QUrl::fromLocalFile(QDir(htmlPath).absolutePath()));
