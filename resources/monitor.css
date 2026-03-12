@@ -621,14 +621,33 @@ footer #last-update::before {
 
 .booster-controls {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
     gap: 6px;
     margin-top: 2px;
 }
 
-.booster-controls-left  { display: flex; align-items: center; gap: 6px; }
-.booster-controls-right { display: flex; align-items: center; gap: 6px; }
+/* Row 1: VSet input + Set V button + ISet input + Set I button */
+.booster-controls-set {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.booster-controls-set .booster-vset-input,
+.booster-controls-set .booster-iset-input { flex: 1; width: auto; }
+
+.booster-controls-set .booster-btn { white-space: nowrap; }
+
+/* Row 2: ON / OFF pushed to the right */
+.booster-controls-pwr {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.booster-controls-pwr .booster-btn { flex: 1; }
 
 .booster-vset-input {
     background: var(--bg);
