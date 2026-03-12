@@ -1109,10 +1109,10 @@ function updateGeoHover(e) {
                     : '<span class="st-off">Offline</span>';
                 html += `<div class="tt-row"><span class="tt-label">Link</span><span class="tt-val">${connSpan}</span></div>`;
                 if (bs.connected) {
-                    html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val"><span class="tt-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span></div>`;
-                    html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span></div>`;
-                    html += `<div class="tt-row"><span class="tt-label">VSet</span><span class="tt-val">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span></div>`;
-                    html += `<div class="tt-row"><span class="tt-label">ISet</span><span class="tt-val">${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">VMon</span><span class="tt-val"><span class="tt-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span>`
+                           + `<span class="tt-label" style="margin-left:8px">VSet</span><span class="tt-val">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span></div>`;
+                    html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span>`
+                           + `<span class="tt-label" style="margin-left:8px">ISet</span><span class="tt-val">${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Mode</span><span class="tt-val">${escHtml(bs.mode||'—')}</span></div>`;
                     html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${bs.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>'}</span></div>`;
                     if (bs.error) html += `<div class="tt-row"><span class="tt-label">Error</span><span class="tt-val" style="color:var(--red)">${escHtml(bs.error)}</span></div>`;
@@ -1519,10 +1519,12 @@ function openBoosterPopup(mod) {
                 : '<span class="st-off">Offline</span>';
             html += `<span class="plbl">Link</span><span class="pval">${connSpan}</span>`;
             if (bs.connected) {
-                html += `<span class="plbl">VMon</span><span class="pval"><span class="pval-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span></span>`;
-                html += `<span class="plbl">IMon</span><span class="pval"><span class="pval-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span></span>`;
-                html += `<span class="plbl">VSet</span><span class="pval">${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span>`;
-                html += `<span class="plbl">ISet</span><span class="pval">${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span>`;
+                html += `<span class="plbl">VMon / VSet</span>`
+                       + `<span class="pval"><span class="pval-live">${bs.vmon != null ? bs.vmon.toFixed(2)+' V' : '—'}</span>`
+                       + ` / ${bs.vset != null ? bs.vset.toFixed(2)+' V' : '—'}</span>`;
+                html += `<span class="plbl">IMon / ISet</span>`
+                       + `<span class="pval"><span class="pval-live">${bs.imon != null ? bs.imon.toFixed(3)+' A' : '—'}</span>`
+                       + ` / ${bs.iset != null ? bs.iset.toFixed(3)+' A' : '—'}</span>`;
                 const modeBadge = bs.mode
                     ? `<span class="booster-mode-badge ${bs.mode.toUpperCase()==='CV'?'mode-cv':'mode-cc'}">${escHtml(bs.mode)}</span>`
                     : '—';
@@ -1673,10 +1675,10 @@ function boosterCardInnerHtml(s) {
   <span class="booster-val val-live" data-field="imon">${s.imon!=null?s.imon.toFixed(3)+' A':'—'}</span>
   <span class="booster-lbl">ISet</span>
   <span class="booster-val" data-field="iset">${s.iset!=null?s.iset.toFixed(3)+' A':'—'}</span>
-  <span class="booster-lbl">Mode</span>
-  <span class="booster-val" data-field="mode">${boosterModeBadge(s.mode)}</span>
-  <span class="booster-lbl">Output</span>
-  <span class="booster-val" data-field="pwr">${boosterPwrBadge(s)}</span>
+  <span class="booster-lbl booster-lbl-full">Mode</span>
+  <span class="booster-val booster-val-full" data-field="mode">${boosterModeBadge(s.mode)}</span>
+  <span class="booster-lbl booster-lbl-full">Output</span>
+  <span class="booster-val booster-val-full" data-field="pwr">${boosterPwrBadge(s)}</span>
 </div>
 <div class="booster-controls">
   <div class="booster-controls-left">
