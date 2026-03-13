@@ -30,6 +30,8 @@ private:
     unsigned int status;
     bool supportsCurrentIO;
 
+    static std::vector<std::string> error_ignore_list;
+
 public:
     // constructor
     CAEN_Channel(CAEN_Board *m)
@@ -58,6 +60,9 @@ public:
     void SetLimit(const float &l);
     void SetStatus(unsigned int s) { status = s; }
     void SetSupportsCurrentIO(bool v) { supportsCurrentIO = v; }
+
+    static void SetErrorIgnoreList(const std::vector<std::string> &names);
+    static const std::vector<std::string> &GetErrorIgnoreList();
 
     void ReadVoltage();
     void CheckStatus();

@@ -711,10 +711,24 @@ float CAEN_VoltageLimit(const string &name)
     return 1500;
 }
 
+// ── CAEN_Channel static member definition ────────────────────────────────────
+vector<string> CAEN_Channel::error_ignore_list;
+
+void CAEN_Channel::SetErrorIgnoreList(const vector<string> &names)
+{
+    error_ignore_list = names;
+}
+
+const vector<string> &CAEN_Channel::GetErrorIgnoreList()
+{
+    return error_ignore_list;
+}
+
 void CAEN_ShowChError(const string &n, const unsigned int &err_bit)
 {
-    // known problematic channels
-    if((n == "W305") || n == "G900") return;
+    for (const auto &ignored : CAEN_Channel::GetErrorIgnoreList()) {
+        if (n == ignored) return;
+    }
 
     if(err_bit&(1 << 3)) cerr << "Channel " << n << " is in overcurrent!" << endl;
     if(err_bit&(1 << 4)) cerr << "Channel " << n << " is in overvoltage!" << endl;

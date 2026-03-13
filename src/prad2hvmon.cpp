@@ -73,7 +73,35 @@ load_crate_list(const QString &path)
     return list;
 }
 
-// ── Forward declarations (console helpers, unchanged) ────────────────────────
+// ── Load error-ignore list from JSON ────────────────────────────────────────
+static std::vector<std::string>
+load_error_ignore_list(const QString &path)
+{
+    std::vector<std::string> list;
+    if (path.isEmpty()) return list;
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        std::cerr << "WARNING: cannot open error-ignore file: "
+                  << path.toStdString() << "\n";
+        return list;
+    }
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (doc.isNull()) {
+        std::cerr << "WARNING: invalid JSON in error-ignore file: "
+                  << err.errorString().toStdString() << "\n";
+        return list;
+    }
+    for (const auto &val : doc.object()["ignore"].toArray())
+        list.push_back(val.toString().toStdString());
+
+    std::cout << fmt::format("Loaded {} error-ignore channel(s) from {}\n",
+                             list.size(), path.toStdString());
+    return list;
+}
+
+
 static bool init_crates_console(const std::vector<std::pair<std::string, std::string>> &crate_list,
                                 std::vector<CAEN_Crate*> &crates,
                                 std::map<std::string, CAEN_Crate*> &crate_map);
@@ -93,6 +121,7 @@ int main(int argc, char *argv[])
     ConfigOption co;
     co.AddOpts(ConfigOption::arg_require, 'c', "crates");
     co.AddOpts(ConfigOption::arg_require, 'f', "file");
+    co.AddOpts(ConfigOption::arg_require, 'i', "ignore");
     co.AddOpts(ConfigOption::arg_require, 's', "save");
     co.AddOpts(ConfigOption::arg_require, 'm', "module-geo");
     co.AddOpts(ConfigOption::help_message, 'h', "help");
@@ -101,6 +130,7 @@ int main(int argc, char *argv[])
     co.SetDesc("usage: %0 <mode> [gui, read, write]");
     co.SetDesc('c', "path to crates JSON file (default: auto-discover).");
     co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
+    co.SetDesc('i', "path to error-ignore JSON file (default: auto-discover).");
     co.SetDesc('s', "path to save channel readings (read mode, optional).");
     co.SetDesc('m', "path to module geometry JSON file (GUI mode).");
     co.SetDesc('h', "show help messages.");
@@ -110,12 +140,13 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    std::string setting_file, save_file, module_geo_file, crate_config_file;
+    std::string setting_file, save_file, module_geo_file, crate_config_file, ignore_file;
 
     for (auto &opt : co.GetOptions()) {
         switch (opt.mark) {
         case 'c': crate_config_file = opt.var.String(); break;
         case 'f': setting_file      = opt.var.String(); break;
+        case 'i': ignore_file       = opt.var.String(); break;
         case 's': save_file         = opt.var.String(); break;
         case 'm': module_geo_file   = opt.var.String(); break;
         }
@@ -144,6 +175,18 @@ int main(int argc, char *argv[])
         std::cerr << "ERROR: no crates defined in "
                   << crateConfigPath.toStdString() << "\n";
         return -1;
+    }
+
+    // ── Load and apply error-ignore list ────────────────────────────────
+    {
+        QString ignoreConfigPath;
+        if (!ignore_file.empty()) {
+            ignoreConfigPath = QString::fromStdString(ignore_file);
+        } else {
+            ignoreConfigPath = QString::fromStdString(
+                std::string(DATABASE_DIR) + "/error_ignore.json");
+        }
+        CAEN_Channel::SetErrorIgnoreList(load_error_ignore_list(ignoreConfigPath));
     }
 
     // ── GUI mode ────────────────────────────────────────────────────────

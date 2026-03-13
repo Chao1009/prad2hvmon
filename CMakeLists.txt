@@ -68,6 +68,7 @@ target_include_directories(prad2hvmon PRIVATE
 # Pass the resource directory so the binary can locate monitor.html at runtime
 target_compile_definitions(prad2hvmon PRIVATE
     RESOURCE_DIR="${CMAKE_SOURCE_DIR}/resources"
+    DATABASE_DIR="${CMAKE_SOURCE_DIR}/database"
 )
 
 target_link_libraries(prad2hvmon PRIVATE
@@ -104,3 +105,7 @@ install(FILES
     resources/crates.json
     resources/daq_map.json
         DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)
+
+install(FILES
+    database/error_ignore.json
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/database)
