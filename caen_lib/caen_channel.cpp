@@ -488,11 +488,15 @@ bool CAEN_Crate::Initialize()
 
 bool CAEN_Crate::DeInitialize()
 {
-    int err = CAENHV_DeinitSystem(handle);
+    // -1 means not established, so no need to deinitialize
+    if (handle != -1) {
 
-    if(err != CAENHV_OK) {
-        CAEN_ShowError("HV Crate DeInitialize", err);
-        return false;
+        int err = CAENHV_DeinitSystem(handle);
+
+        if(err != CAENHV_OK) {
+            CAEN_ShowError("HV Crate DeInitialize", err);
+            return false;
+        }
     }
 
     Clear();
