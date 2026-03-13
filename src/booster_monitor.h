@@ -149,6 +149,7 @@ private slots:
     // Build a snapshot of current supply state.  Called by BoosterMonitor's
     // constructor (before moveToThread) to pre-populate the cache so that
     // readAll() returns supply definitions to the frontend immediately.
+public:
     QString initialSnapshot() { return buildSnapshot(); }
 
 private:

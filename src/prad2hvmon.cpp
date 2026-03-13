@@ -474,6 +474,11 @@ int main(int argc, char *argv[])
 
         workerThread.quit();
         workerThread.wait();
+        // Explicitly disconnect all booster TCP sockets before tearing down
+        // the thread, so the connections are released promptly rather than
+        // relying on destructor cleanup via deleteLater.
+        QMetaObject::invokeMethod(bPoller, "disconnectAll",
+                                  Qt::BlockingQueuedConnection);
         boosterThread.quit();
         boosterThread.wait();
         return ret;
