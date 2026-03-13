@@ -59,6 +59,7 @@ target_link_libraries(caen_channel PUBLIC caenhvwrapper)
 add_executable(prad2hvmon
     src/prad2hvmon.cpp
     src/hv_monitor.h      # listed so AUTOMOC processes the Q_OBJECT macro
+    src/booster_monitor.h  # likewise – BoosterPoller & BoosterMonitor Q_OBJECTs
 )
 target_include_directories(prad2hvmon PRIVATE
     ${CMAKE_SOURCE_DIR}/src

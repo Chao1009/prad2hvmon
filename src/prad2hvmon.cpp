@@ -37,6 +37,7 @@
 #include <fmt/format.h>
 
 #include "hv_monitor.h"
+#include "booster_monitor.h"
 
 #include <iostream>
 #include <fstream>
@@ -612,5 +613,6 @@ static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
     std::cout << "Restored HV settings from " << setting_path << '\n';
 }
 
-// ── Pull in MOC-generated code for the header-only QObject ──────────────────
+// ── Pull in MOC-generated code for the header-only QObjects ──────────────────
 #include "moc_hv_monitor.cpp"
+#include "moc_booster_monitor.cpp"
