@@ -1,7 +1,6 @@
 {
     "_comment": "Channel names whose HV status errors are silently ignored at runtime. Add or remove entries here without recompiling.",
     "ignore": [
-        "W305",
-        "G900"
+        "G29"
     ]
 }
