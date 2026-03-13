@@ -35,6 +35,8 @@ The HyCal calorimeter consists of ~1200 detector modules (PbWO4 crystals and PbG
 - Controls per card: VSet and ISet inputs (expert mode required), ON/OFF buttons (always available).
 - Supply definitions are loaded from `hycal_modules.json` entries with `"t": "booster"`.
 
+> **⚠️ Single-connection limit:** Each TDK-Lambda GEN supply only accepts one TCP connection at a time. If multiple instances of the monitor are running simultaneously, only the first instance to connect will communicate successfully with the boosters. All subsequent instances will receive a **connection refused** error for those supplies and will show them as disconnected in the booster panel. Ensure any previously running monitor instance is closed before starting a new one if booster control or readback is needed.
+
 ![Channel geo view](docs/screenshots/boosterpanel.png)
 
 ## Get Started
