@@ -337,8 +337,7 @@ int main(int argc, char *argv[])
 
         // Detached windows — one per detachable tab.
         // QPointers let us detect if a window is still open and raise it
-        // instead of creating a duplicate.  Both share the same QWebChannel
-        // so they receive the same live data without any extra polling.
+        // instead of creating a duplicate.
         struct DetachedViews {
             QPointer<QWebEngineView> geo;
             QPointer<QWebEngineView> booster;
@@ -347,7 +346,7 @@ int main(int argc, char *argv[])
 
         QObject::connect(&monitor, &HVMonitor::detachRequested,
                          &view,
-                         [&channel, htmlPath, detached](const QString &tabId)
+                         [&monitor, &bMonitor, htmlPath, detached](const QString &tabId)
         {
             QPointer<QWebEngineView> &slot =
                 (tabId == QLatin1String("geo-tab")) ? detached->geo
@@ -364,7 +363,13 @@ int main(int argc, char *argv[])
                     ? QStringLiteral("HyCal Geometry — PRad-II HV Monitor")
                     : QStringLiteral("Booster HV — PRad-II HV Monitor"));
             dv->resize(1100, 800);
-            dv->page()->setWebChannel(&channel);
+            // Each detached view gets its own QWebChannel so signal indices
+            // are initialised fresh for that client — sharing one QWebChannel
+            // across multiple QWebEnginePages causes "unhandled signal" errors.
+            auto *ch = new QWebChannel(dv);
+            ch->registerObject(QStringLiteral("hvMonitor"),      &monitor);
+            ch->registerObject(QStringLiteral("boosterMonitor"), &bMonitor);
+            dv->page()->setWebChannel(ch);
             QUrl url = QUrl::fromLocalFile(QDir(htmlPath).absolutePath());
             QUrlQuery q;
             q.addQueryItem(QStringLiteral("tab"), tabId);

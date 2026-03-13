@@ -126,7 +126,7 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .tab-btn.active .tab-detach-btn { opacity: 1; }
 .tab-detach-btn:hover { color: var(--accent); }
 
-/* Detached window: hide chrome, tab content fills the remaining space */
+/* Detached window: hide chrome, tab content fills remaining space */
 body.detached header,
 body.detached #tab-bar,
 body.detached footer  { display: none !important; }
