@@ -87,6 +87,31 @@ public slots:
 
     void stopPolling()  { if (timer_) timer_->stop(); }
 
+    // Connect all supplies (called from GUI via BoosterMonitor bridge).
+    // Starts polling which implicitly opens TCP connections on first poll.
+    void connectAll()
+    {
+        startPolling();
+    }
+
+    // Disconnect all supplies: stop polling and close every TCP socket
+    // so that other monitor instances can take over the connections.
+    void disconnectAll()
+    {
+        stopPolling();
+        for (auto *s : supplies_) {
+            if (s->sock) { s->sock->abort(); }
+            s->connected = false;
+            s->error.clear();
+            s->vmon = std::numeric_limits<double>::quiet_NaN();
+            s->imon = std::numeric_limits<double>::quiet_NaN();
+            s->on   = false;
+            s->mode.clear();
+        }
+        // Emit one final snapshot so the UI sees "disconnected" state
+        emit snapshotReady(buildSnapshot());
+    }
+
     void setPollInterval(int ms)
     {
         poll_interval_ms_ = (ms < 500) ? 500 : ms;
@@ -198,6 +223,18 @@ public slots:
         QMetaObject::invokeMethod(poller_, "setPollInterval",
                                   Qt::QueuedConnection,
                                   Q_ARG(int, ms));
+    }
+
+    void connectAll()
+    {
+        QMetaObject::invokeMethod(poller_, "connectAll",
+                                  Qt::QueuedConnection);
+    }
+
+    void disconnectAll()
+    {
+        QMetaObject::invokeMethod(poller_, "disconnectAll",
+                                  Qt::QueuedConnection);
     }
 
 signals:

@@ -132,9 +132,26 @@
 
     <!-- ═══════════════ BOOSTER TAB ═══════════════ -->
     <div class="tab-content" id="booster-tab">
+        <!-- Overlay shown when boosters are not connected -->
+        <div id="booster-overlay">
+            <div class="booster-overlay-box">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--accent)"
+                     stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                <div class="booster-overlay-title">Booster HV Disconnected</div>
+                <div class="booster-overlay-desc">
+                    TDK-Lambda supplies allow only one TCP connection at a time.<br>
+                    Connecting here will lock out other monitor instances.
+                </div>
+                <button class="booster-overlay-btn" id="btn-booster-connect">⏻ Connect to Boosters</button>
+            </div>
+        </div>
         <div id="booster-header">
             <span class="booster-title">TDK-Lambda GEN Booster Supplies</span>
             <span class="booster-subtitle">SCPI / TCP</span>
+            <span style="flex:1"></span>
+            <button class="btn booster-disconnect-btn" id="btn-booster-disconnect" title="Disconnect from boosters to free TCP connections for others">⏻ Disconnect</button>
         </div>
         <div id="booster-cards"></div>
     </div>

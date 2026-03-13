@@ -464,7 +464,11 @@ int main(int argc, char *argv[])
         workerThread.start();
         QMetaObject::invokeMethod(poller, "startPolling", Qt::QueuedConnection);
         boosterThread.start();
-        QMetaObject::invokeMethod(bPoller, "startPolling", Qt::QueuedConnection);
+        // NOTE: booster polling is NOT started automatically.
+        // The TDK-Lambda GEN supplies allow only one TCP connection at a time,
+        // so we let the user manually connect from the Booster HV tab to avoid
+        // locking out other monitor instances.
+        // QMetaObject::invokeMethod(bPoller, "startPolling", Qt::QueuedConnection);
 
         const int ret = app.exec();
 

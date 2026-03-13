@@ -24,6 +24,7 @@ let boosterMonitor  = null;
 let boosterSupplies = [];   // latest snapshot [{idx,name,ip,connected,on,mode,vmon,vset,error}]
 let boosterByName   = {};   // modName ('Booster1'…) → live booster data
 let boosterDirty    = false;
+let boosterConnected = false;  // whether we have an active TCP connection to boosters
 
 // Geometry map state
 let geoTransform = { x: 0, y: 0, scale: 1 };
@@ -69,12 +70,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 boosterSupplies = JSON.parse(jsonStr);
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
                 boosterDirty = true;
+                // Track connection state from the data itself:
+                // If ANY supply reports connected, we're connected.
+                // If all show disconnected (after disconnectAll), we're disconnected.
+                const anyConn = boosterSupplies.some(s => s.connected);
+                if (anyConn && !boosterConnected) setBoosterConnected(true);
+                else if (!anyConn && boosterConnected && boosterSupplies.length > 0) setBoosterConnected(false);
             });
-            boosterMonitor.readAll(jsonStr => {
-                boosterSupplies = JSON.parse(jsonStr);
-                boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
-                boosterDirty = true;
-            });
+            // Don't call readAll or connectAll here — boosters start disconnected.
+            // The user must click "Connect" in the Booster HV tab.
         }
 
         // Data update only — no render; the render loop handles display
@@ -1655,7 +1659,37 @@ function openBoosterPopup(mod) {
 //  in the popups map, which now includes booster popups — no change needed.)
 
 // ── Booster tab card rendering ────────────────────────────────────────
-function initBoosterTab() { /* cards built lazily by renderBoosterCards */ }
+function initBoosterTab() {
+    // Connect button (inside overlay)
+    document.getElementById('btn-booster-connect').addEventListener('click', () => {
+        if (!boosterMonitor) return;
+        boosterMonitor.connectAll();
+    });
+    // Disconnect button (in header bar)
+    document.getElementById('btn-booster-disconnect').addEventListener('click', () => {
+        if (!boosterMonitor) return;
+        if (!confirm('Disconnect from TDK-Lambda boosters?\n\n' +
+                      'This will free the TCP connections so other\n' +
+                      'monitor instances can access the supplies.')) return;
+        boosterMonitor.disconnectAll();
+    });
+    // Initial state: overlay visible, disconnect button hidden
+    setBoosterConnected(false);
+}
+
+function setBoosterConnected(connected) {
+    boosterConnected = connected;
+    const overlay    = document.getElementById('booster-overlay');
+    const disconnBtn = document.getElementById('btn-booster-disconnect');
+    if (!overlay || !disconnBtn) return;
+    if (connected) {
+        overlay.classList.add('hidden');
+        disconnBtn.style.display = '';
+    } else {
+        overlay.classList.remove('hidden');
+        disconnBtn.style.display = 'none';
+    }
+}
 
 function renderBoosterCards() {
     const container = document.getElementById('booster-cards');
