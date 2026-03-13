@@ -146,6 +146,11 @@ private slots:
         emit snapshotReady(buildSnapshot());
     }
 
+    // Build a snapshot of current supply state.  Called by BoosterMonitor's
+    // constructor (before moveToThread) to pre-populate the cache so that
+    // readAll() returns supply definitions to the frontend immediately.
+    QString initialSnapshot() { return buildSnapshot(); }
+
 private:
     QString buildSnapshot()
     {
@@ -186,6 +191,12 @@ public:
     explicit BoosterMonitor(BoosterPoller *poller, QObject *parent = nullptr)
         : QObject(parent), poller_(poller)
     {
+        // Pre-populate cache with supply definitions before the poller
+        // moves to its worker thread.  This lets readAll() return card
+        // data to the frontend immediately at init time, so static cards
+        // (name, ip) are built before any connection attempt.
+        cache_ = poller_->initialSnapshot();
+
         connect(poller_, &BoosterPoller::snapshotReady,
                 this,    &BoosterMonitor::onSnapshotReady,
                 Qt::QueuedConnection);

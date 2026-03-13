@@ -605,8 +605,10 @@ footer #last-update::before {
     white-space: nowrap;
 }
 
-.booster-conn-badge.conn-ok  { background: rgba(40,180,90,0.15); color: var(--green); }
-.booster-conn-badge.conn-err { background: rgba(220,60,60,0.15);  color: var(--red);  }
+.booster-conn-badge .conn-ok         { background: rgba(40,180,90,0.15); color: var(--green); padding: 3px 10px; border-radius: 20px; }
+.booster-conn-badge .conn-err        { background: rgba(220,60,60,0.15); color: var(--red);   padding: 3px 10px; border-radius: 20px; }
+.booster-conn-badge .conn-connecting { background: rgba(59,158,255,0.15); color: var(--accent); padding: 3px 10px; border-radius: 20px; animation: pulse-text 1.5s ease infinite; }
+.booster-conn-badge .conn-off        { background: rgba(107,123,143,0.12); color: var(--text-dim); padding: 3px 10px; border-radius: 20px; }
 
 .booster-readout {
     display: grid;
@@ -723,8 +725,24 @@ footer #last-update::before {
 .b-btn-on:hover  { background: rgba(40,180,90,0.30); }
 .b-btn-off:hover { background: rgba(220,60,60,0.28); }
 
-.booster-error { font-size: 0.85rem; color: var(--red); word-break: break-all; display: none; }
-.booster-error.visible { display: block; }
+/* ─── Booster card status line (bottom) ──────────────────────────── */
+.booster-status {
+    font-size: 0.85rem;
+    min-height: 1.2em;
+}
+.booster-status .bst-connecting {
+    color: var(--accent);
+    animation: pulse-text 1.5s ease infinite;
+}
+.booster-status .bst-error {
+    color: var(--red);
+    word-break: break-all;
+}
+.booster-status .bst-ok {
+    color: var(--green);
+}
+
+@keyframes pulse-text { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
 /* ─── Booster disconnected overlay ───────────────────────────────── */
 #booster-overlay {

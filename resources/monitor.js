@@ -24,7 +24,8 @@ let boosterMonitor  = null;
 let boosterSupplies = [];   // latest snapshot [{idx,name,ip,connected,on,mode,vmon,vset,error}]
 let boosterByName   = {};   // modName ('Booster1'…) → live booster data
 let boosterDirty    = false;
-let boosterConnected = false;  // whether we have an active TCP connection to boosters
+let boosterConnected  = false;  // whether we have an active TCP connection to boosters
+let boosterConnecting = false;  // true between Connect click and first real poll result
 
 // Geometry map state
 let geoTransform = { x: 0, y: 0, scale: 1 };
@@ -69,10 +70,18 @@ document.addEventListener('DOMContentLoaded', () => {
             boosterMonitor.boosterUpdated.connect(jsonStr => {
                 boosterSupplies = JSON.parse(jsonStr);
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
+                // Real poll data arrived — clear the "connecting" state
+                if (boosterConnecting) boosterConnecting = false;
                 boosterDirty = true;
             });
-            // Don't call readAll or connectAll here — boosters start disconnected.
-            // The user must click "Connect" in the Booster HV tab.
+            // Fetch static supply definitions (name, ip) to build cards now.
+            // The cache is pre-populated by the C++ constructor with all supplies
+            // in disconnected state, so cards appear immediately behind the overlay.
+            boosterMonitor.readAll(jsonStr => {
+                boosterSupplies = JSON.parse(jsonStr);
+                boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
+                boosterDirty = true;
+            });
         }
 
         // Data update only — no render; the render loop handles display
@@ -1657,19 +1666,20 @@ function initBoosterTab() {
     // Connect button (inside overlay)
     document.getElementById('btn-booster-connect').addEventListener('click', () => {
         if (!boosterMonitor) return;
-        // Immediately hide overlay so the user sees card status (including
-        // connection errors) once the first snapshot arrives.
+        boosterConnecting = true;
         setBoosterConnected(true);
+        // Force immediate re-render so cards show "Connecting…"
+        boosterDirty = true;
+        renderBoosterCards();
         boosterMonitor.connectAll();
     });
     // Retry button (in header bar) — disconnect then immediately reconnect
     document.getElementById('btn-booster-retry').addEventListener('click', () => {
         if (!boosterMonitor) return;
         boosterMonitor.disconnectAll();
-        // Clear old cards so fresh state builds from scratch
-        boosterSupplies = [];
-        boosterByName = {};
-        document.getElementById('booster-cards').innerHTML = '';
+        boosterConnecting = true;
+        boosterDirty = true;
+        renderBoosterCards();
         boosterMonitor.connectAll();
     });
     // Disconnect button (in header bar)
@@ -1679,13 +1689,10 @@ function initBoosterTab() {
                       'This will free the TCP connections so other\n' +
                       'monitor instances can access the supplies.')) return;
         boosterMonitor.disconnectAll();
+        boosterConnecting = false;
         setBoosterConnected(false);
-        // Clear stale cards behind the overlay
-        boosterSupplies = [];
-        boosterByName = {};
-        document.getElementById('booster-cards').innerHTML = '';
     });
-    // Initial state: overlay visible, disconnect button hidden
+    // Initial state: overlay visible, header buttons hidden
     setBoosterConnected(false);
 }
 
@@ -1730,8 +1737,7 @@ function buildBoosterCard(idx, s) {
 }
 
 function boosterCardInnerHtml(s) {
-    const connCls = s.connected ? 'conn-ok' : 'conn-err';
-    const connTxt = s.connected ? 'Connected' : 'Offline';
+    const connBadge = boosterConnBadgeHtml(s);
     const vsetVal = s.vset != null ? s.vset.toFixed(2) : '';
     const isetVal = s.iset != null ? s.iset.toFixed(3) : '';
     return `
@@ -1740,7 +1746,7 @@ function boosterCardInnerHtml(s) {
     <div class="booster-card-name">${escHtml(s.name)}</div>
     <div class="booster-card-ip">${escHtml(s.ip)}</div>
   </div>
-  <span class="booster-conn-badge ${connCls}">${connTxt}</span>
+  <span class="booster-conn-badge" data-field="conn-badge">${connBadge}</span>
 </div>
 <div class="booster-readout">
   <span class="booster-lbl">VMon</span>
@@ -1775,18 +1781,19 @@ function boosterCardInnerHtml(s) {
     <button class="booster-btn b-btn-off" data-off>OFF</button>
   </div>
 </div>
-<div class="booster-error ${s.error?'visible':''}" data-field="error">${escHtml(s.error||'')}</div>`;
+<div class="booster-status" data-field="status">${boosterStatusHtml(s)}</div>`;
 }
 
 function updateBoosterCard(card, idx, s) {
     const wantCls = 'booster-card ' + boosterCardClass(s);
     if (card.className !== wantCls) card.className = wantCls;
 
-    const badge = card.querySelector('.booster-conn-badge');
-    const connCls = s.connected ? 'conn-ok' : 'conn-err';
-    const connTxt = s.connected ? 'Connected' : 'Offline';
-    if (badge.className !== 'booster-conn-badge ' + connCls) badge.className = 'booster-conn-badge ' + connCls;
-    if (badge.textContent !== connTxt) badge.textContent = connTxt;
+    // Connection badge (top-right)
+    const badge = card.querySelector('[data-field="conn-badge"]');
+    if (badge) {
+        const wantBadge = boosterConnBadgeHtml(s);
+        if (badge.innerHTML !== wantBadge) badge.innerHTML = wantBadge;
+    }
 
     function sf(field, text) {
         const el = card.querySelector(`[data-field="${field}"]`);
@@ -1802,13 +1809,15 @@ function updateBoosterCard(card, idx, s) {
     sf('iset', s.iset != null ? s.iset.toFixed(3) + ' A' : '—');
     sh('mode', boosterModeBadge(s.mode));
     sh('pwr',  boosterPwrBadge(s));
-    const errEl = card.querySelector('[data-field="error"]');
-    if (errEl) {
-        if (errEl.textContent !== (s.error||'')) errEl.textContent = s.error||'';
-        const wantVis = s.error ? 'booster-error visible' : 'booster-error';
-        if (errEl.className !== wantVis) errEl.className = wantVis;
+
+    // Status line (bottom)
+    const statusEl = card.querySelector('[data-field="status"]');
+    if (statusEl) {
+        const wantStatus = boosterStatusHtml(s);
+        if (statusEl.innerHTML !== wantStatus) statusEl.innerHTML = wantStatus;
     }
-    // Expert mode guard — SetV input and button only
+
+    // Expert mode guard
     const vsetEl = card.querySelector('[data-vset-input]');
     const setVEl = card.querySelector('[data-set-v]');
     if (vsetEl) { vsetEl.disabled = !expertMode; vsetEl.style.opacity = expertMode ? '1' : '0.35'; }
@@ -1851,9 +1860,26 @@ function wireBoosterCard(card, idx) {
 }
 
 function boosterCardClass(s) {
+    if (boosterConnecting && !s.connected) return '';  // neutral during connecting
     if (!s.connected || s.error) return 'card-fault';
     if (s.on && s.mode === 'CC')  return 'card-warn';
     if (s.on)                      return 'card-on';
+    return '';
+}
+
+function boosterConnBadgeHtml(s) {
+    if (boosterConnecting && !s.connected && !s.error)
+        return '<span class="conn-connecting">Connecting…</span>';
+    if (s.connected) return '<span class="conn-ok">Connected</span>';
+    if (s.error)     return '<span class="conn-err">Error</span>';
+    return '<span class="conn-off">Offline</span>';
+}
+
+function boosterStatusHtml(s) {
+    if (boosterConnecting && !s.connected && !s.error)
+        return '<span class="bst-connecting">Connecting…</span>';
+    if (s.error) return '<span class="bst-error">' + escHtml(s.error) + '</span>';
+    if (s.connected) return '<span class="bst-ok">Connected</span>';
     return '';
 }
 
@@ -1864,6 +1890,7 @@ function boosterModeBadge(mode) {
 }
 
 function boosterPwrBadge(s) {
+    if (boosterConnecting && !s.connected) return '<span class="st-off">—</span>';
     if (!s.connected) return '<span class="st-off">OFFLINE</span>';
     return s.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>';
 }
