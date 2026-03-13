@@ -70,12 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 boosterSupplies = JSON.parse(jsonStr);
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
                 boosterDirty = true;
-                // Track connection state from the data itself:
-                // If ANY supply reports connected, we're connected.
-                // If all show disconnected (after disconnectAll), we're disconnected.
-                const anyConn = boosterSupplies.some(s => s.connected);
-                if (anyConn && !boosterConnected) setBoosterConnected(true);
-                else if (!anyConn && boosterConnected && boosterSupplies.length > 0) setBoosterConnected(false);
             });
             // Don't call readAll or connectAll here — boosters start disconnected.
             // The user must click "Connect" in the Booster HV tab.
@@ -1663,6 +1657,19 @@ function initBoosterTab() {
     // Connect button (inside overlay)
     document.getElementById('btn-booster-connect').addEventListener('click', () => {
         if (!boosterMonitor) return;
+        // Immediately hide overlay so the user sees card status (including
+        // connection errors) once the first snapshot arrives.
+        setBoosterConnected(true);
+        boosterMonitor.connectAll();
+    });
+    // Retry button (in header bar) — disconnect then immediately reconnect
+    document.getElementById('btn-booster-retry').addEventListener('click', () => {
+        if (!boosterMonitor) return;
+        boosterMonitor.disconnectAll();
+        // Clear old cards so fresh state builds from scratch
+        boosterSupplies = [];
+        boosterByName = {};
+        document.getElementById('booster-cards').innerHTML = '';
         boosterMonitor.connectAll();
     });
     // Disconnect button (in header bar)
@@ -1672,6 +1679,11 @@ function initBoosterTab() {
                       'This will free the TCP connections so other\n' +
                       'monitor instances can access the supplies.')) return;
         boosterMonitor.disconnectAll();
+        setBoosterConnected(false);
+        // Clear stale cards behind the overlay
+        boosterSupplies = [];
+        boosterByName = {};
+        document.getElementById('booster-cards').innerHTML = '';
     });
     // Initial state: overlay visible, disconnect button hidden
     setBoosterConnected(false);
@@ -1681,13 +1693,16 @@ function setBoosterConnected(connected) {
     boosterConnected = connected;
     const overlay    = document.getElementById('booster-overlay');
     const disconnBtn = document.getElementById('btn-booster-disconnect');
+    const retryBtn   = document.getElementById('btn-booster-retry');
     if (!overlay || !disconnBtn) return;
     if (connected) {
         overlay.classList.add('hidden');
         disconnBtn.style.display = '';
+        if (retryBtn) retryBtn.style.display = '';
     } else {
         overlay.classList.remove('hidden');
         disconnBtn.style.display = 'none';
+        if (retryBtn) retryBtn.style.display = 'none';
     }
 }
 

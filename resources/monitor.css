@@ -810,3 +810,21 @@ footer #last-update::before {
     background: var(--red);
     color: #fff;
 }
+
+/* Retry button in booster header */
+.booster-retry-btn {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--amber-dim);
+    background: var(--amber-dim);
+    color: var(--amber);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.booster-retry-btn:hover {
+    background: var(--amber);
+    color: #000;
+}
