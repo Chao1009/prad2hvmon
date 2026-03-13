@@ -70,8 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
             boosterMonitor.boosterUpdated.connect(jsonStr => {
                 boosterSupplies = JSON.parse(jsonStr);
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
-                // Real poll data arrived — clear the "connecting" state
-                if (boosterConnecting) boosterConnecting = false;
+                // Clear "connecting" state only when a real connection attempt
+                // has completed — at least one supply connected or errored.
+                // The disconnect snapshot (all disconnected, no errors) must NOT
+                // clear this flag, otherwise Retry shows a brief "Offline" flash.
+                if (boosterConnecting) {
+                    const attemptDone = boosterSupplies.some(s => s.connected || s.error);
+                    if (attemptDone) boosterConnecting = false;
+                }
                 boosterDirty = true;
             });
             // Fetch static supply definitions (name, ip) to build cards now.
