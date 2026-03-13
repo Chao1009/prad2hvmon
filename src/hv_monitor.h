@@ -355,9 +355,17 @@ public slots:
                                   Q_ARG(float,   current));
     }
 
+    // ── JS-callable: request a detached window for a tab ───────────────
+    void openDetachedView(const QString &tabId)
+    {
+        emit detachRequested(tabId);
+    }
+
 signals:
     // Forwarded to JS via QWebChannel.
     void channelsUpdated(const QString &jsonData);
+    // Emitted when JS requests a detached window.
+    void detachRequested(const QString &tabId);
 
 private slots:
     // Receives snapshot string from worker thread (queued → GUI thread).

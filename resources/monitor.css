@@ -107,6 +107,30 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .tab-btn:hover { color: var(--text); background: var(--bg-card-alt); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-card-alt); }
 
+/* Pop-out button inside tab labels */
+.tab-detach-btn {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 3px;
+    font-size: 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity var(--transition), color var(--transition);
+    vertical-align: middle;
+    line-height: 1;
+}
+.tab-btn:hover .tab-detach-btn,
+.tab-btn.active .tab-detach-btn { opacity: 1; }
+.tab-detach-btn:hover { color: var(--accent); }
+
+/* Detached window: hide chrome, tab content fills the remaining space */
+body.detached header,
+body.detached #tab-bar,
+body.detached footer  { display: none !important; }
+
 .tab-content { display: none; overflow: hidden; min-height: 0; grid-row: 3; grid-column: 1; }
 .tab-content.active { display: flex; flex-direction: column; overflow: hidden; min-height: 0; overflow-y: auto; }
 

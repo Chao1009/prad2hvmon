@@ -146,6 +146,15 @@ document.addEventListener('DOMContentLoaded', () => {
     initGeoMap();
     initBoosterTab();
 
+    // Detached-window mode: if launched with ?tab=<id>, auto-switch to that
+    // tab and mark <body> so CSS hides header/tab-bar/footer.
+    const _detachTab = new URLSearchParams(location.search).get('tab');
+    if (_detachTab) {
+        document.body.classList.add('detached');
+        const btn = document.querySelector(`.tab-btn[data-tab="${_detachTab}"]`);
+        if (btn) btn.click();
+    }
+
     // Render loop — driven by requestAnimationFrame so it never stacks,
     // skips hidden tabs automatically, and self-throttles to display rate.
     // renderIntervalMs caps how often we actually re-render, so we don't
@@ -156,9 +165,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderLoop(ts) {
         // Re-render if CAEN data changed, or if booster data changed and the
         // geo tab is active (booster blocks are drawn on the geo canvas).
-        const geoActive = document.querySelector('.tab-content.active')?.id === 'geo-tab';
+        const activeTabId = document.querySelector('.tab-content.active')?.id;
+        const geoActive     = activeTabId === 'geo-tab';
+        const boosterActive = activeTabId === 'booster-tab';
         const shouldRender = (dataDirty && allChannels.length > 0)
-                           || (boosterDirty && geoActive);
+                           || (boosterDirty && (geoActive || boosterActive));
         if (shouldRender && (ts - lastRenderTs) >= renderIntervalMs) {
             renderActiveTab();
             lastRenderTs = ts;
@@ -220,6 +231,21 @@ function initTabs() {
                 resetGeoView();
             }
         });
+    });
+
+    // Add ⤢ pop-out buttons to detachable tabs (geo and booster)
+    ['geo-tab', 'booster-tab'].forEach(tabId => {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+        if (!btn) return;
+        const pop = document.createElement('button');
+        pop.className = 'tab-detach-btn';
+        pop.title = 'Open in separate window';
+        pop.textContent = '⤢';
+        pop.addEventListener('click', e => {
+            e.stopPropagation();   // don't also switch the tab
+            if (hvMonitor) hvMonitor.openDetachedView(tabId);
+        });
+        btn.appendChild(pop);
     });
 }
 

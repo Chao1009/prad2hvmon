@@ -26,6 +26,9 @@
 #include <QPixmap>
 #include <QDateTime>
 #include <QStandardPaths>
+#include <QUrlQuery>
+#include <QPointer>
+#include <memory>
 
 #include <ConfigParser.h>
 #include <ConfigOption.h>
@@ -331,6 +334,45 @@ int main(int argc, char *argv[])
         }
         view.setUrl(QUrl::fromLocalFile(QDir(htmlPath).absolutePath()));
         view.show();
+
+        // Detached windows — one per detachable tab.
+        // QPointers let us detect if a window is still open and raise it
+        // instead of creating a duplicate.  Both share the same QWebChannel
+        // so they receive the same live data without any extra polling.
+        struct DetachedViews {
+            QPointer<QWebEngineView> geo;
+            QPointer<QWebEngineView> booster;
+        };
+        auto detached = std::make_shared<DetachedViews>();
+
+        QObject::connect(&monitor, &HVMonitor::detachRequested,
+                         &view,
+                         [&channel, htmlPath, detached](const QString &tabId)
+        {
+            QPointer<QWebEngineView> &slot =
+                (tabId == QLatin1String("geo-tab")) ? detached->geo
+                                                    : detached->booster;
+            if (slot && slot->isVisible()) {
+                slot->raise();
+                slot->activateWindow();
+                return;
+            }
+            auto *dv = new QWebEngineView();
+            dv->setAttribute(Qt::WA_DeleteOnClose);
+            dv->setWindowTitle(
+                tabId == QLatin1String("geo-tab")
+                    ? QStringLiteral("HyCal Geometry — PRad-II HV Monitor")
+                    : QStringLiteral("Booster HV — PRad-II HV Monitor"));
+            dv->resize(1100, 800);
+            dv->page()->setWebChannel(&channel);
+            QUrl url = QUrl::fromLocalFile(QDir(htmlPath).absolutePath());
+            QUrlQuery q;
+            q.addQueryItem(QStringLiteral("tab"), tabId);
+            url.setQuery(q);
+            dv->setUrl(url);
+            dv->show();
+            slot = dv;
+        });
 
         // Screenshot: Ctrl+S saves a timestamped PNG to the user's Pictures
         // folder (falls back to the current directory if unavailable).
