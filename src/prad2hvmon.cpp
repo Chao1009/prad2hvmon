@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <QApplication>
+#include <QEvent>
 #include <QThread>
 #include <QWebEngineView>
 #include <QWebChannel>
@@ -333,7 +334,22 @@ int main(int argc, char *argv[])
             return -1;
         }
         view.setUrl(QUrl::fromLocalFile(QDir(htmlPath).absolutePath()));
+        // Don't let detached windows keep the app alive after the main window closes.
+        // We quit explicitly when the main view receives its close event.
+        app.setQuitOnLastWindowClosed(false);
         view.show();
+
+        // Quit app when main window is closed (detached windows must not keep it alive)
+        struct CloseWatcher : QObject {
+            QApplication *app_;
+            explicit CloseWatcher(QApplication *a, QObject *parent)
+                : QObject(parent), app_(a) {}
+            bool eventFilter(QObject *, QEvent *e) override {
+                if (e->type() == QEvent::Close) { app_->quit(); }
+                return false;   // don't consume the event
+            }
+        };
+        view.installEventFilter(new CloseWatcher(&app, &view));
 
         // Detached windows — one per detachable tab.
         // QPointers let us detect if a window is still open and raise it
@@ -379,8 +395,8 @@ int main(int argc, char *argv[])
             slot = dv;
         });
 
-        // Close detached windows when the main window closes
-        QObject::connect(&view, &QObject::destroyed, [detached]() {
+        // Close detached windows when main window closes (app quits)
+        QObject::connect(&app, &QApplication::aboutToQuit, [detached]() {
             if (detached->geo)     detached->geo->close();
             if (detached->booster) detached->booster->close();
         });
