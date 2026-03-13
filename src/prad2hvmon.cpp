@@ -21,6 +21,11 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QShortcut>
+#include <QKeySequence>
+#include <QPixmap>
+#include <QDateTime>
+#include <QStandardPaths>
 
 #include <ConfigParser.h>
 #include <ConfigOption.h>
@@ -326,6 +331,21 @@ int main(int argc, char *argv[])
         }
         view.setUrl(QUrl::fromLocalFile(QDir(htmlPath).absolutePath()));
         view.show();
+
+        // Screenshot: Ctrl+S saves a timestamped PNG to the user's Pictures
+        // folder (falls back to the current directory if unavailable).
+        auto *screenshotShortcut = new QShortcut(QKeySequence("Ctrl+S"), &view);
+        QObject::connect(screenshotShortcut, &QShortcut::activated, [&view]() {
+            const QString dir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+            const QString ts  = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+            const QString path = (dir.isEmpty() ? QString(".") : dir)
+                                 + "/prad2hvmon_" + ts + ".png";
+            const QPixmap px = view.grab();
+            if (px.save(path))
+                qInfo("Screenshot saved: %s", qPrintable(path));
+            else
+                qWarning("Screenshot failed: %s", qPrintable(path));
+        });
 
         // Start worker threads, then kick off polling via queued calls
         workerThread.start();
