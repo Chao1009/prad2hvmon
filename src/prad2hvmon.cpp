@@ -379,6 +379,12 @@ int main(int argc, char *argv[])
             slot = dv;
         });
 
+        // Close detached windows when the main window closes
+        QObject::connect(&view, &QObject::destroyed, [detached]() {
+            if (detached->geo)     detached->geo->close();
+            if (detached->booster) detached->booster->close();
+        });
+
         // Screenshot: Ctrl+S saves a timestamped PNG to the user's Pictures
         // folder (falls back to the current directory if unavailable).
         auto *screenshotShortcut = new QShortcut(QKeySequence("Ctrl+S"), &view);
