@@ -35,7 +35,7 @@ The HyCal calorimeter consists of ~1200 detector modules (PbWO4 crystals and PbG
 - Controls per card: VSet and ISet inputs (expert mode required), ON/OFF buttons (always available).
 - Supply definitions are loaded from `hycal_modules.json` entries with `"t": "booster"`.
 
-![Channel geo view](docs/screenshots/boosterpannel.png)
+![Channel geo view](docs/screenshots/boosterpanel.png)
 
 ## Get Started
 
