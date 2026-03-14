@@ -153,11 +153,11 @@ function _computeModuleColor(mod, mode) {
 
     if (mode === 'status') {
         if (!ch) return '#222';
-        if (statusClass(ch.status) === 'status-err')  return '#f56565';
-        if (!ch.on)                                    return '#4a5568';
-        if (isSettled(ch) && ch.vmon != null && ch.vset != null && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold)
-                                                       return '#eab308';
-        return '#2dd4a0';
+        const cc = classifyChannel(ch);
+        if (cc.isFault)  return '#f56565';   // red
+        if (cc.isWarn)   return '#eab308';   // amber (suppressed or ΔV)
+        if (!ch.on)      return '#4a5568';   // dim grey
+        return '#2dd4a0';                     // green
     }
 
     if (!ch) return '#222';

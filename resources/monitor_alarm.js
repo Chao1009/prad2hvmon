@@ -68,7 +68,7 @@ function stopAlarmTone() { /* beeps stop themselves */ }
 
 // Called after every poll to evaluate alarm state
 function evaluateAlarm() {
-    const chFaults = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
+    const chFaults = allChannels.filter(c => classifyChannel(c).isFault).length;
     const bdFaults = allBoards.filter(bd => {
         const abbr = bd.bdstatus ? bd.bdstatus.split('|')[0] : '';
         return abbr !== 'OK' && abbr !== '';

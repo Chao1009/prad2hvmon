@@ -122,8 +122,8 @@ function renderTable() {
     if (filterStatus === 'on')      data = data.filter(c => c.on);
     else if (filterStatus === 'off')data = data.filter(c => !c.on);
     else if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
-    else if (filterStatus === 'warn')    data = data.filter(c => isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold);
-    else if (filterStatus === 'fault')   data = data.filter(c => statusClass(c.status) === 'status-err');
+    else if (filterStatus === 'warn')    data = data.filter(c => classifyChannel(c).isWarn);
+    else if (filterStatus === 'fault')   data = data.filter(c => classifyChannel(c).isFault);
     if (filterCrate) data = data.filter(c => c.crate === filterCrate);
     if (searchText) {
         const colonIdx = searchText.indexOf(':');
@@ -170,13 +170,10 @@ function renderTable() {
         const key = ch.crate + '|' + ch.slot + '|' + ch.channel;
         const diff   = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
         const dcls   = !ch.on ? 'diff-ok' : (diff == null || diff < DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
-        const sc     = statusClass(ch.status);
-        const isWarn = isSettled(ch) && ch.vmon != null && ch.vset != null && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
-        const dotCls = sc === 'status-err' ? 'fault' : isWarn ? 'warn' : ch.on ? 'on' : 'off';
+        const cc     = classifyChannel(ch);
+        const dotCls = cc.dot;
         const pwrCls = ch.on ? 'on' : 'off';
         const prim   = isPrimary(ch);
-        const stAbbr   = ch.status ? ch.status.split('|')[0] : '';
-        const stDetail = ch.status ? ch.status.split('|')[1] : '';
 
         let tr = existingRows.get(key);
         if (!tr) {
@@ -324,8 +321,9 @@ function renderTable() {
     for (const c of allChannels) {
         if (isPrimary(c)) primCnt++;
         if (c.on) onCnt++;
-        if (isSettled(c) && c.vmon != null && c.vset != null && Math.abs(c.vmon - c.vset) > DV.warn_threshold) warns++;
-        if (statusClass(c.status) === 'status-err') faults++;
+        const cc = classifyChannel(c);
+        if (cc.isWarn)  warns++;
+        if (cc.isFault) faults++;
     }
     document.getElementById('s-total').textContent   = total;
     document.getElementById('s-primary').textContent = primCnt;

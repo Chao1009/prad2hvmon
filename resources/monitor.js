@@ -309,72 +309,99 @@ function initTabs() {
 }
 
 
-function statusClass(s) {
-    if (!s) return 'status-ok';
-    const abbrs = s.split('|')[0];
-    // fault if any token is not one of the working-state abbreviations
-    const working = new Set(['OFF', 'ON', 'RUP', 'RDN']);
-    const isOffOnly = abbrs === 'OFF';
-    const hasFault = abbrs.split(' ').some(t => !working.has(t));
-    if (hasFault)   return 'status-err';
-    if (isOffOnly)  return 'status-ok';
-    return 'status-work';   // ON, RUP, RDN
-}
+// ═════════════════════════════════════════════════════════════════════
+//  Unified channel status classification
+// ═════════════════════════════════════════════════════════════════════
+// classifyChannel(ch) is the SINGLE source of truth for all status
+// decisions across table, geo, alarm, and summary.
+//
+// Returns: {
+//   level:     'fault' | 'suppressed' | 'warn' | 'on' | 'ramp' | 'off'
+//   cssClass:  'status-err' | 'status-warn' | 'status-work' | 'status-ok'
+//   dot:       'fault' | 'warn' | 'on' | 'off'
+//   isFault:   bool    — triggers alarm, red tab dots, red count
+//   isWarn:    bool    — ΔV warning or suppressed errors (amber)
+//   isSettled: bool    — fully ON, not ramping (eligible for ΔV check)
+//   faultTokens:     string[]  — unsuppressed error abbreviations
+//   suppressedTokens: string[] — suppressed error abbreviations (without ~)
+//   dvWarn:    bool    — ΔV exceeds threshold
+//   badgesHtml: string — pre-rendered status badges HTML
+// }
 
-// A channel is "settled" (eligible for ΔV warning) only when fully ON —
-// not while ramping up (RUP), ramping down (RDN), or off (OFF).
-function isSettled(ch) {
-    if (!ch.status) return false;
-    const tokens = ch.status.split('|')[0].trim().split(/\s+/);
-    return tokens.length > 0 && tokens.every(t => t === 'ON');
-}
+const _working = new Set(['OFF', 'ON', 'RUP', 'RDN']);
 
-function dotClass(ch) {
-    if (statusClass(ch.status) === 'status-err') return 'fault';
-    if (isSettled(ch) && ch.vmon != null && ch.vset != null &&
-        Math.abs(ch.vmon - ch.vset) > DV.warn_threshold) return 'warn';
-    return ch.on ? 'on' : 'off';
-}
-
-// ── Status display helpers ───────────────────────────────────────────
-// statusBadgesHtml(ch)  — RUP/RDN (green) | fault tokens (red) | ΔV (amber)
-//   Returns '' for a clean ON/OFF channel.
-//   Used identically by the table Status column, tooltip, and popup.
-// pwrHtml(ch)           — ON (green) or OFF (dim).
-//   Used by the tooltip and popup Pwr row; table has its own Pwr column.
-
-function statusBadgesHtml(ch) {
+function classifyChannel(ch) {
     const abbr   = ch.status ? ch.status.split('|')[0].trim() : '';
     const detail = ch.status ? (ch.status.split('|')[1] || '').trim() : '';
-    const sc     = statusClass(ch.status);
-    const isWarn = isSettled(ch) && ch.vmon != null && ch.vset != null
+    const tokens = abbr ? abbr.split(/\s+/).filter(t => t !== '') : [];
+
+    // Separate token categories
+    const faultTokens     = tokens.filter(t => !_working.has(t) && !t.startsWith('~'));
+    const suppressedTokens = tokens.filter(t => t.startsWith('~')).map(t => t.slice(1));
+    const isRamping       = tokens.includes('RUP') || tokens.includes('RDN');
+    const isOn            = tokens.includes('ON') || ch.on;
+    const isSettled        = tokens.length > 0 && tokens.every(t => t === 'ON' || t.startsWith('~'));
+
+    // ΔV warning (only when settled)
+    const dvWarn = isSettled && ch.vmon != null && ch.vset != null
                    && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
 
+    // Determine level (priority: fault > suppressed > dvWarn > ramp > on > off)
+    const hasFault      = faultTokens.length > 0;
+    const hasSuppressed = suppressedTokens.length > 0;
+
+    let level, cssClass, dot;
+    if (hasFault) {
+        level = 'fault'; cssClass = 'status-err'; dot = 'fault';
+    } else if (hasSuppressed) {
+        level = 'suppressed'; cssClass = 'status-warn'; dot = 'warn';
+    } else if (dvWarn) {
+        level = 'warn'; cssClass = 'status-work'; dot = 'warn';
+    } else if (isRamping) {
+        level = 'ramp'; cssClass = 'status-work'; dot = 'on';
+    } else if (isOn) {
+        level = 'on'; cssClass = 'status-work'; dot = 'on';
+    } else {
+        level = 'off'; cssClass = 'status-ok'; dot = 'off';
+    }
+
+    // Build badges HTML
     const badges = [];
-
-    // Ramp states — meaningful independent of power context
-    if (abbr === 'RUP' || abbr === 'RDN') {
-        badges.push(`<span class="st-ramp">${abbr}</span>`);
+    if (isRamping) {
+        const rampDir = tokens.includes('RUP') ? 'RUP' : 'RDN';
+        badges.push(`<span class="st-ramp">${rampDir}</span>`);
     }
-
-    // Fault tokens — strip pure power-state tokens, keep the rest
-    if (sc === 'status-err') {
-        const faultTokens = abbr.split(/\s+/).filter(
-            t => t !== 'ON' && t !== 'OFF' && t !== 'RUP' && t !== 'RDN' && t !== '');
-        if (faultTokens.length > 0) {
-            const tip = detail ? ` title="${detail}"` : '';
-            badges.push(`<span class="st-fault"${tip}>${faultTokens.join('\u2009')}</span>`);
-        } else if (abbr && abbr !== 'ON' && abbr !== 'OFF' && abbr !== 'RUP' && abbr !== 'RDN') {
-            const tip = detail ? ` title="${detail}"` : '';
-            badges.push(`<span class="st-fault"${tip}>${abbr}</span>`);
-        }
+    if (faultTokens.length > 0) {
+        const tip = detail ? ` title="${detail}"` : '';
+        badges.push(`<span class="st-fault"${tip}>${faultTokens.join('\u2009')}</span>`);
     }
+    if (suppressedTokens.length > 0) {
+        const display = suppressedTokens.join('\u2009');
+        badges.push(`<span class="st-warn" title="Suppressed: ${display}">${display}</span>`);
+    }
+    if (dvWarn) badges.push('<span class="st-warn">\u0394V</span>');
 
-    // ΔV warning
-    if (isWarn) badges.push('<span class="st-warn">\u0394V</span>');
+    const badgesHtml = badges.length ? `<span class="st-badges">${badges.join(' ')}</span>` : '';
 
-    return badges.length ? `<span class="st-badges">${badges.join(' ')}</span>` : '';
+    return {
+        level, cssClass, dot,
+        isFault: hasFault,
+        isWarn: hasSuppressed || dvWarn,
+        isSettled,
+        faultTokens, suppressedTokens,
+        dvWarn, badgesHtml
+    };
 }
+
+// ── Convenience wrappers (for backward compat with callers) ──────────
+// These are thin wrappers; new code should use classifyChannel() directly.
+function statusClass(s) {
+    // Accepts a status string directly (not a channel object)
+    return classifyChannel({status: s, on: false, vmon: null, vset: null}).cssClass;
+}
+function isSettled(ch) { return classifyChannel(ch).isSettled; }
+function dotClass(ch)  { return classifyChannel(ch).dot; }
+function statusBadgesHtml(ch) { return classifyChannel(ch).badgesHtml; }
 
 // Power state badge for tooltip / popup Pwr row
 function pwrHtml(ch) {
