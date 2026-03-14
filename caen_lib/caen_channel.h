@@ -61,7 +61,7 @@ public:
     void SetSVMax(const float &v);
     void SetName(const std::string &n);
     void SetLimit(const float &l);
-    void SetStatus(unsigned int s) { status = s; }
+    void SetStatus(unsigned int s) { status = s | (status & (1u << OVL_BIT)); }
     void SetSupportsCurrentIO(bool v) { supportsCurrentIO = v; }
     void SetSupportsSVMax(bool v) { supportsSVMax = v; }
 
@@ -103,6 +103,11 @@ public:
     CAEN_Board *GetMother() {return mother;}
     unsigned int GetStatus() const { return status; }
     std::string GetStatusString() const;
+    float GetLimit() const { return limit; }
+
+    // Software-only status bit for VMon over configurable limit.
+    // Bit 16 is unused by CAEN hardware (which uses bits 0–15).
+    static constexpr unsigned int OVL_BIT = 16;
 };
 
 class CAEN_Board

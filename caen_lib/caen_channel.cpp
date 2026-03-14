@@ -137,7 +137,8 @@ void CAEN_Channel::CheckStatus()
     int err = CAENHV_GetChParam(handle, slot, "Status", 1, &channel, &status_);
     CAEN_ShowError("HV Channel Read Status", err);
     if (err == CAENHV_OK) {
-    	status = status_;
+        // Preserve software-only bits (OVL) across hardware status updates
+        status = status_ | (status & (1u << OVL_BIT));
         CAEN_ShowChError(name, status_);
     }
 }
@@ -162,6 +163,7 @@ std::string CAEN_Channel::GetStatusString() const
         { 13, "OVP",  "overvoltage protection" },
         { 14, "PWRF", "power fail"             },
         { 15, "TEMP", "temperature error"      },
+        { static_cast<int>(OVL_BIT), "OVL", "VMon over software limit" },
     };
 
     std::string abbrs, detail;
@@ -193,11 +195,15 @@ void CAEN_Channel::ReadVoltage()
     err = CAENHV_GetChParam(handle, slot, "V0Set", 1, &channel, &Vset);
     CAEN_ShowError("HV Channel Read Voltage Set", err);
 
-    if(Vset > limit) {
-        cerr << "HV Channel ERROR: Current voltage for channel " << name
-             << " is " << Vset
-             << " V, which exceeds the limit " << limit << " V"
-             << endl;
+    // Software over-limit check: set/clear the OVL bit based on VMon vs limit.
+    // Only flag when the channel is on — off channels read ~0 V.
+    if (on_off && Vmon > limit) {
+        if (!(status & (1u << OVL_BIT)))   // newly over limit — log once
+            cerr << "Channel " << name << " VMon " << Vmon
+                 << " V exceeds software limit " << limit << " V!" << endl;
+        status |= (1u << OVL_BIT);
+    } else {
+        status &= ~(1u << OVL_BIT);
     }
 
     // Read software voltage maximum (SVMax) — may not exist on all boards
@@ -231,11 +237,15 @@ void CAEN_Channel::UpdateVoltage(const bool &pw, const float &vm, const float &v
     Vmon = vm;
     Vset = vs;
 
-    if(Vset > limit) {
-        cerr << "HV Channel ERROR: Current voltage for channel " << name
-             << " is " << Vset
-             << " V, which exceeds the limit " << limit << " V"
-             << endl;
+    // Software over-limit check: set/clear the OVL bit based on VMon vs limit.
+    // Only flag when the channel is on — off channels read ~0 V.
+    if (on_off && Vmon > limit) {
+        if (!(status & (1u << OVL_BIT)))   // newly over limit — log once
+            cerr << "Channel " << name << " VMon " << Vmon
+                 << " V exceeds software limit " << limit << " V!" << endl;
+        status |= (1u << OVL_BIT);
+    } else {
+        status &= ~(1u << OVL_BIT);
     }
 }
 
