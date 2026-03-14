@@ -9,6 +9,7 @@
 #include "caen_channel.h"
 #include <cstring>
 #include <algorithm>
+#include <iomanip>
 
 using namespace std;
 using namespace CAENHV;
@@ -352,11 +353,6 @@ void CAEN_Board::DiscoverChParams()
         ch_param_info_.push_back(pi);
     }
     free(nameList);
-
-    cout << "  Discovered " << ch_param_info_.size()
-         << " channel params for " << model << " slot " << slot << ":";
-    for (const auto &pi : ch_param_info_) cout << " " << pi.name;
-    cout << endl;
 }
 
 void CAEN_Board::DiscoverBdParams()
@@ -397,11 +393,6 @@ void CAEN_Board::DiscoverBdParams()
         bd_param_info_.push_back(pi);
     }
     free(nameList);
-
-    cout << "  Discovered " << bd_param_info_.size()
-         << " board params for " << model << " slot " << slot << ":";
-    for (const auto &pi : bd_param_info_) cout << " " << pi.name;
-    cout << endl;
 }
 
 // ── ReadBoardMap (init: discover + first read) ───────────────────────────────
@@ -677,10 +668,39 @@ void CAEN_Crate::ReadCrateMap()
 
 void CAEN_Crate::PrintCrateMap()
 {
-    cout << "Slot map is:" << endl;
-    for (int i = 0; i < MAX_SLOTS; ++i) {
-        if (slot_map[i] >= 0)
-            cout << slot_map[i] << ": " << i << endl;
+    if (boardList.empty()) { cout << "  (no boards)" << endl; return; }
+
+    // Build compact param name strings, track which are repeated
+    string prevBdParams, prevChParams, prevModel;
+
+    cout << "  Slot  Model    Ch  Ser   FW    Board Params         Channel Params" << endl;
+    for (auto *bd : boardList) {
+        string bdp, chp;
+        for (const auto &pi : bd->GetBdParamInfo()) {
+            if (!bdp.empty()) bdp += ' ';
+            bdp += pi.name;
+        }
+        for (const auto &pi : bd->GetChParamInfo()) {
+            if (!chp.empty()) chp += ' ';
+            chp += pi.name;
+        }
+
+        bool sameModel = (bd->GetModel() == prevModel);
+        bool sameBd    = sameModel && (bdp == prevBdParams);
+        bool sameCh    = sameModel && (chp == prevChParams);
+
+        cout << "  " << std::setw(4) << bd->GetSlot()
+             << "  " << std::setw(7) << std::left << bd->GetModel() << std::right
+             << "  " << std::setw(2) << bd->GetSize()
+             << "  " << std::setw(4) << bd->GetSerialNum()
+             << "  " << std::setw(4) << bd->GetFirmware()
+             << "  " << std::setw(20) << std::left << (sameBd ? "\"" : bdp) << std::right
+             << "  " << (sameCh ? "\"" : chp)
+             << endl;
+
+        prevModel = bd->GetModel();
+        prevBdParams = bdp;
+        prevChParams = chp;
     }
 }
 
