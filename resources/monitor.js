@@ -941,12 +941,18 @@ function renderBoardTable() {
         const stAbbr   = bd.bdstatus ? bd.bdstatus.split('|')[0] : '';
         const stDetail = bd.bdstatus ? bd.bdstatus.split('|')[1] : '';
         const isOk     = stAbbr === 'OK';
-        const stCls    = isOk ? 'bd-ok' : 'bd-fault';
 
-        // Temperature warning: flag above 45°C
+        // Temperature coloring:
+        //   red:   any board with temperature-related status flags (UNDRT, OVERT, TCAL)
+        //   amber: outside 5–40 °C range
+        //   green: 5–40 °C normal range
         const tempVal  = bd.temp;
         const tempTxt  = fmt(tempVal, 1);
-        const tempCls  = (tempVal != null && tempVal > 45) ? 'bd-temp-warn' : 'bd-temp-ok';
+        const hasTempError = stAbbr && (stAbbr.includes('UNDRT') || stAbbr.includes('OVERT') || stAbbr.includes('TCAL'));
+        const tempCls  = hasTempError ? 'bd-temp-err'
+                       : (tempVal == null)  ? 'bd-temp-ok'
+                       : (tempVal >= 5 && tempVal <= 40) ? 'bd-temp-ok'
+                       : 'bd-temp-warn';
 
         let tr = existingRows.get(key);
         if (!tr) {

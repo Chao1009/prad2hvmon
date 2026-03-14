@@ -305,8 +305,9 @@ tr.primary-row td {
 #board-table th:nth-child(9),#board-table td:nth-child(9){width:19%}
 .bd-ok   { color:var(--green); }
 .bd-fault { color:var(--red); }
+.bd-temp-ok   { color:var(--green); }
 .bd-temp-warn { color:var(--amber); }
-.bd-temp-ok   { color:var(--text); }
+.bd-temp-err  { color:var(--red); font-weight:600; }
 
 /* ─── Bulk power buttons ──────────────────────────────────────────── */
 .bulk-pwr-group { display:flex; gap:4px; margin-left:8px; }
