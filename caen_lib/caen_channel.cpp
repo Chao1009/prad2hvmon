@@ -79,7 +79,7 @@ void CAEN_Channel::SetName(const string &n)
 // should NOT be treated as unsupported — they are real hardware errors.
 static inline bool isUnsupportedParam(int err)
 {
-    return (err == 0xe || err == 0x1b || err == -5);
+    return (err == 0xe || err == 0x16 || err == 0x1b || err == -5);
 }
 
 void CAEN_Channel::SetCurrent(const float &i)
@@ -200,6 +200,17 @@ void CAEN_Channel::ReadVoltage()
              << endl;
     }
 
+    // Read software voltage maximum (SVMax) — may not exist on all boards
+    if (supportsSVMax) {
+        err = CAENHV_GetChParam(handle, slot, "SVMax", 1, &channel, &SVMax);
+        if (isUnsupportedParam(err)) {
+            supportsSVMax = false;
+            SVMax = NAN;
+        } else {
+            CAEN_ShowError("HV Channel Read SVMax", err);
+        }
+    }
+
     if (!supportsCurrentIO) return;
 
     err = CAENHV_GetChParam(handle, slot, "IMon", 1, &channel, &Imon);
@@ -212,14 +223,6 @@ void CAEN_Channel::ReadVoltage()
     // IMon and I0Set are a pair — if IMon is supported, I0Set must be too
     err = CAENHV_GetChParam(handle, slot, "I0Set", 1, &channel, &Iset);
     CAEN_ShowError("HV Channel Read Current Set", err);
-
-    // Read software voltage maximum (SVMax) — may not exist on all boards
-    err = CAENHV_GetChParam(handle, slot, "SVMax", 1, &channel, &SVMax);
-    if (isUnsupportedParam(err)) {
-        SVMax = NAN;
-    } else {
-        CAEN_ShowError("HV Channel Read SVMax", err);
-    }
 }
 
 void CAEN_Channel::UpdateVoltage(const bool &pw, const float &vm, const float &vs)
@@ -321,6 +324,7 @@ void CAEN_Board::ReadBoardMap()
         auto *ch = new CAEN_Channel(this, k, ch_name, pwON[k], monVals[k], setVals[k]);
         ch->UpdateCurrent(imonVals[k], isetVals[k]);
         if (!boardSupportsCurrentIO) ch->SetSupportsCurrentIO(false);
+        if (!boardSupportsSVMax) ch->SetSupportsSVMax(false);
         ch->SetSVMaxDirect(svmaxVals[k]);
         channelList.push_back(ch);
     }
@@ -376,8 +380,8 @@ void CAEN_Board::ReadVoltage()
     }
 
     float svmaxVals[nChan];
-    // SVMax support is detected once during ReadBoardMap; NAN means unsupported
-    const bool boardSupportsSVMax = channelList.empty() || !std::isnan(channelList.at(0)->GetSVMax());
+    // Use the explicit flag set during ReadBoardMap, not NAN sentinel
+    const bool boardSupportsSVMax = channelList.empty() || channelList.at(0)->SupportsSVMax();
     if (boardSupportsSVMax) {
         err = CAENHV_GetChParam(handle, slot, "SVMax", nChan, list, svmaxVals);
         if (isUnsupportedParam(err)) {

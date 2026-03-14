@@ -30,6 +30,7 @@ private:
     float limit;
     unsigned int status;
     bool supportsCurrentIO;
+    bool supportsSVMax;
 
     static std::vector<std::string> error_ignore_list;
 
@@ -38,18 +39,18 @@ public:
     CAEN_Channel(CAEN_Board *m)
     : mother(m), channel(-1), name(""), on_off(false), Vmon(0), Vset(0),
       Imon(NAN), Iset(NAN), SVMax(NAN), limit(CAEN_VoltageLimit(name)), status(0),
-      supportsCurrentIO(true)
+      supportsCurrentIO(true), supportsSVMax(true)
     {}
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n)
     : mother(m), channel(c), name(n), on_off(false), Vmon(0), Vset(0),
       Imon(NAN), Iset(NAN), SVMax(NAN), limit(CAEN_VoltageLimit(name)), status(0),
-      supportsCurrentIO(true)
+      supportsCurrentIO(true), supportsSVMax(true)
     {}
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n,
                  const bool &o, const float &vm, const float vs)
     : mother(m), channel(c), name(n), on_off(o), Vmon(vm), Vset(vs),
       Imon(NAN), Iset(NAN), SVMax(NAN), limit(CAEN_VoltageLimit(name)), status(0),
-      supportsCurrentIO(true)
+      supportsCurrentIO(true), supportsSVMax(true)
     {}
 
     virtual ~CAEN_Channel();
@@ -62,6 +63,7 @@ public:
     void SetLimit(const float &l);
     void SetStatus(unsigned int s) { status = s; }
     void SetSupportsCurrentIO(bool v) { supportsCurrentIO = v; }
+    void SetSupportsSVMax(bool v) { supportsSVMax = v; }
 
     static void SetErrorIgnoreList(const std::vector<std::string> &names);
     static const std::vector<std::string> &GetErrorIgnoreList();
@@ -78,6 +80,7 @@ public:
     float GetSVMax() const { return SVMax; }
     void SetSVMaxDirect(float v) { SVMax = v; }
     bool SupportsCurrentIO() const { return supportsCurrentIO; }
+    bool SupportsSVMax() const { return supportsSVMax; }
     const bool &IsTurnedOn() {return on_off;}
     const unsigned short &GetChannel() {return channel;}
     CAEN_Board *GetMother() {return mother;}
