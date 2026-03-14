@@ -15,11 +15,6 @@ function initTableUI() {
         searchText = e.target.value.trim().toLowerCase();
         dataDirty = true; renderTable();
     });
-    document.getElementById('poll-slider').addEventListener('input', e => {
-        const sec = parseFloat(e.target.value);
-        document.getElementById('poll-val').textContent = sec.toFixed(1);
-        if (hvMonitor) hvMonitor.setPollInterval(Math.round(sec * 1000));
-    });
     document.querySelectorAll('#summary-strip .summary-item').forEach(item => {
         item.addEventListener('click', () => {
             document.querySelectorAll('#summary-strip .summary-item').forEach(s => s.classList.remove('active-filter'));

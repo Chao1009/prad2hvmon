@@ -176,18 +176,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (cfg.colorRange) Object.assign(CR, cfg.colorRange);
                     if (cfg.geoView)    Object.assign(GV, cfg.geoView);
                     if (cfg.intervals) {
-                        // Apply render interval
                         if (cfg.intervals.renderMs) {
                             renderIntervalMs = cfg.intervals.renderMs;
-                        }
-                        // Apply poll interval
-                        if (cfg.intervals.pollMs) {
-                            const sec = cfg.intervals.pollMs / 1000;
-                            const ps = document.getElementById('poll-slider');
-                            if (sec > parseFloat(ps.max)) ps.max = Math.ceil(sec);
-                            ps.value = sec;
-                            document.getElementById('poll-val').textContent = sec.toFixed(1);
-                            if (hvMonitor) hvMonitor.setPollInterval(cfg.intervals.pollMs);
                         }
                     }
                     console.log('GUI config loaded — DV:', DV, 'CR:', CR, 'GV:', GV);

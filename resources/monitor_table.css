@@ -44,14 +44,6 @@
 }
 .chip:hover { color:var(--text); border-color:var(--border-hi); }
 .chip.active { background:var(--accent-dim); border-color:var(--accent); color:var(--accent); }
-#poll-label { font-size:10.5px; color:var(--text-dim); font-family:var(--mono); }
-#poll-slider {
-    -webkit-appearance:none; width:80px; height:4px; background:var(--border);
-    border-radius:2px; outline:none; cursor:pointer;
-}
-#poll-slider::-webkit-slider-thumb {
-    -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:var(--accent); cursor:pointer;
-}
 
 /* ─── Channel Table ───────────────────────────────────────────────── */
 #table-wrap { overflow-y:auto; overflow-x:hidden; flex:1; min-height:0; }
