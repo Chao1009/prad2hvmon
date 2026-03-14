@@ -278,6 +278,20 @@ string CAEN_Board::GetBdStatusString() const
 
 // ── Parameter Discovery ──────────────────────────────────────────────────────
 
+// Helper: check if a string looks like a valid CAEN param name
+// (non-empty, all printable ASCII, no longer than MAX_PARAM_NAME)
+static bool isValidParamName(const char *s)
+{
+    if (!s || !*s) return false;
+    int len = 0;
+    for (const char *p = s; *p; ++p, ++len) {
+        if (len >= MAX_PARAM_NAME) return false;
+        unsigned char c = static_cast<unsigned char>(*p);
+        if (c < 0x20 || c > 0x7e) return false;   // non-printable
+    }
+    return len > 0;
+}
+
 void CAEN_Board::DiscoverChParams()
 {
     ch_param_info_.clear();
@@ -295,25 +309,44 @@ void CAEN_Board::DiscoverChParams()
         return;
     }
 
-    // nameList is a sequence of null-terminated strings, parNum entries
-    const char *p = nameList;
-    for (int i = 0; i < parNum && *p; ++i) {
-        ParamInfo pi;
-        pi.name = string(p);
+    // The CAEN library returns param names in a buffer.  The exact format
+    // (fixed-width vs variable-length null-terminated) varies across library
+    // versions.  We try both: first fixed-width (MAX_PARAM_NAME per entry),
+    // then fall back to sequential null-terminated if that produces garbage.
+    auto tryParse = [&](bool fixedWidth) -> std::vector<ParamInfo> {
+        std::vector<ParamInfo> result;
+        const char *p = nameList;
+        for (int i = 0; i < parNum; ++i) {
+            if (!isValidParamName(p)) break;
+            ParamInfo pi;
+            pi.name = string(p);
 
-        CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Type", &pi.type);
-        CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Mode", &pi.mode);
+            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Type", &pi.type);
+            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Mode", &pi.mode);
 
-        if (pi.isFloat()) {
-            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Minval", &pi.minval);
-            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Maxval", &pi.maxval);
-            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Unit",   &pi.unit);
-            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Exp",    &pi.exp);
+            if (pi.isFloat()) {
+                CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Minval", &pi.minval);
+                CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Maxval", &pi.maxval);
+                CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Unit",   &pi.unit);
+                CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Exp",    &pi.exp);
+            }
+            result.push_back(pi);
+
+            if (fixedWidth)
+                p += MAX_PARAM_NAME;
+            else
+                p += pi.name.size() + 1;
         }
+        return result;
+    };
 
-        ch_param_info_.push_back(pi);
-        p += pi.name.size() + 1;
-    }
+    // Try fixed-width first (more common in practice)
+    auto fixed = tryParse(true);
+    auto variable = tryParse(false);
+
+    // Pick whichever found more valid params
+    ch_param_info_ = (fixed.size() >= variable.size()) ? std::move(fixed) : std::move(variable);
+
     free(nameList);
 
     cout << "  Discovered " << ch_param_info_.size()
@@ -336,24 +369,41 @@ void CAEN_Board::DiscoverBdParams()
         return;
     }
 
-    const char *p = nameList;
-    while (*p) {
-        ParamInfo pi;
-        pi.name = string(p);
+    // Same dual-parse strategy as channel params
+    auto tryParse = [&](bool fixedWidth, int maxEntries) -> std::vector<ParamInfo> {
+        std::vector<ParamInfo> result;
+        const char *p = nameList;
+        for (int i = 0; i < maxEntries; ++i) {
+            if (!isValidParamName(p)) break;
+            ParamInfo pi;
+            pi.name = string(p);
 
-        CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Type", &pi.type);
-        CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Mode", &pi.mode);
+            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Type", &pi.type);
+            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Mode", &pi.mode);
 
-        if (pi.isFloat()) {
-            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Minval", &pi.minval);
-            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Maxval", &pi.maxval);
-            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Unit",   &pi.unit);
-            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Exp",    &pi.exp);
+            if (pi.isFloat()) {
+                CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Minval", &pi.minval);
+                CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Maxval", &pi.maxval);
+                CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Unit",   &pi.unit);
+                CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Exp",    &pi.exp);
+            }
+            result.push_back(pi);
+
+            if (fixedWidth)
+                p += MAX_PARAM_NAME;
+            else
+                p += pi.name.size() + 1;
         }
+        return result;
+    };
 
-        bd_param_info_.push_back(pi);
-        p += pi.name.size() + 1;
-    }
+    // Board params don't return a count, so use a generous upper bound
+    const int maxBdParams = 64;
+    auto fixed = tryParse(true, maxBdParams);
+    auto variable = tryParse(false, maxBdParams);
+
+    bd_param_info_ = (fixed.size() >= variable.size()) ? std::move(fixed) : std::move(variable);
+
     free(nameList);
 
     cout << "  Discovered " << bd_param_info_.size()
