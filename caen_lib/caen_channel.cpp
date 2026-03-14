@@ -800,20 +800,66 @@ void CAEN_ShowError(const string &prefix, const int &err, const bool &ShowSucces
 }
 
 
+// ── Configurable voltage limits ──────────────────────────────────────────────
+static std::vector<CAEN_Channel::VoltageLimitRule> voltage_limit_rules;
+
+void CAEN_Channel::SetVoltageLimit(const string &pattern, float limit)
+{
+    // Replace existing rule with the same pattern, if any
+    for (auto &rule : voltage_limit_rules) {
+        if (rule.pattern == pattern) {
+            rule.limit = limit;
+            return;
+        }
+    }
+    voltage_limit_rules.push_back({pattern, limit});
+}
+
+void CAEN_Channel::ClearVoltageLimits()
+{
+    voltage_limit_rules.clear();
+}
+
+const std::vector<CAEN_Channel::VoltageLimitRule> &CAEN_Channel::GetVoltageLimitRules()
+{
+    return voltage_limit_rules;
+}
+
+// Match a channel name against a pattern.
+// Supported forms:
+//   "G235"   — exact match
+//   "G*"     — prefix match (trailing '*' only)
+//   "*"      — matches everything (catch-all default)
+static bool matchPattern(const string &pattern, const string &name)
+{
+    if (pattern.empty()) return false;
+    if (pattern == "*") return true;
+    if (pattern.back() == '*')
+        return name.compare(0, pattern.size() - 1, pattern, 0, pattern.size() - 1) == 0;
+    return name == pattern;
+}
+
 float CAEN_VoltageLimit(const string &name)
 {
+    // Check user-configured rules first (order matters — first match wins)
+    for (const auto &rule : voltage_limit_rules) {
+        if (matchPattern(rule.pattern, name))
+            return rule.limit;
+    }
+
+    // Built-in defaults (backward-compatible fallback)
     // Lead Glass
-    if(name[0] == 'G') return 1950;
+    if(!name.empty() && name[0] == 'G') return 1950;
     // Lead Tungstate
-    if(name[0] == 'W') return 1450;
+    if(!name.empty() && name[0] == 'W') return 1450;
     // LMS Reference PMT
-    if(name[0] == 'L') return 2000;
+    if(!name.empty() && name[0] == 'L') return 2000;
     // Scintillator
-    if(name[0] == 'S') return 2000;
+    if(!name.empty() && name[0] == 'S') return 2000;
     // Primary Channel
-    if(name[0] == 'P') return 3000;
+    if(!name.empty() && name[0] == 'P') return 3000;
     // PrimEx Veto Counter Channels
-    if(name[0] == 'H') return 2000;
+    if(!name.empty() && name[0] == 'H') return 2000;
 
     // not configured
     return 1500;

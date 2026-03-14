@@ -103,6 +103,62 @@ load_error_ignore_list(const QString &path)
     return list;
 }
 
+// ── Load voltage limits from JSON ───────────────────────────────────────────
+// File format:
+//   {
+//     "limits": [
+//       { "pattern": "G*",    "voltage": 1950 },
+//       { "pattern": "W*",    "voltage": 1450 },
+//       { "pattern": "G235",  "voltage": 1800 },
+//       { "pattern": "*",     "voltage": 1500 }
+//     ]
+//   }
+//
+// Rules are evaluated in order — first matching pattern wins.
+// Patterns: "G*" matches any name starting with "G"; "G235" is exact;
+// "*" matches everything (use as a catch-all default at the end).
+static int load_voltage_limits(const QString &path, bool user_specified = false)
+{
+    if (path.isEmpty()) return 0;
+
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // Only warn if the user explicitly specified the file via -l
+        if (user_specified) {
+            std::cerr << "WARNING: cannot open voltage-limits file: "
+                      << path.toStdString() << "\n";
+        }
+        return 0;
+    }
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (doc.isNull()) {
+        std::cerr << "WARNING: invalid JSON in voltage-limits file: "
+                  << err.errorString().toStdString() << "\n";
+        return 0;
+    }
+
+    CAEN_Channel::ClearVoltageLimits();
+
+    int count = 0;
+    for (const auto &val : doc.object()["limits"].toArray()) {
+        QJsonObject obj = val.toObject();
+        std::string pattern = obj["pattern"].toString().toStdString();
+        double voltage = obj["voltage"].toDouble(0);
+        if (pattern.empty() || voltage <= 0) {
+            std::cerr << "WARNING: skipping invalid voltage-limit rule in "
+                      << path.toStdString() << "\n";
+            continue;
+        }
+        CAEN_Channel::SetVoltageLimit(pattern, static_cast<float>(voltage));
+        ++count;
+    }
+
+    std::cout << fmt::format("Loaded {} voltage-limit rule(s) from {}\n",
+                             count, path.toStdString());
+    return count;
+}
+
 
 static bool init_crates_console(const std::vector<std::pair<std::string, std::string>> &crate_list,
                                 std::vector<CAEN_Crate*> &crates,
@@ -124,6 +180,7 @@ int main(int argc, char *argv[])
     co.AddOpts(ConfigOption::arg_require, 'c', "crates");
     co.AddOpts(ConfigOption::arg_require, 'f', "file");
     co.AddOpts(ConfigOption::arg_require, 'i', "ignore");
+    co.AddOpts(ConfigOption::arg_require, 'l', "limits");
     co.AddOpts(ConfigOption::arg_require, 's', "save");
     co.AddOpts(ConfigOption::arg_require, 'm', "module-geo");
     co.AddOpts(ConfigOption::help_message, 'h', "help");
@@ -133,6 +190,7 @@ int main(int argc, char *argv[])
     co.SetDesc('c', "path to crates JSON file (default: auto-discover).");
     co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
     co.SetDesc('i', "path to error-ignore JSON file (default: auto-discover).");
+    co.SetDesc('l', "path to voltage-limits JSON file (default: auto-discover).");
     co.SetDesc('s', "path to save channel readings (read mode, optional).");
     co.SetDesc('m', "path to module geometry JSON file (GUI mode).");
     co.SetDesc('h', "show help messages.");
@@ -142,13 +200,14 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    std::string setting_file, save_file, module_geo_file, crate_config_file, ignore_file;
+    std::string setting_file, save_file, module_geo_file, crate_config_file, ignore_file, limits_file;
 
     for (auto &opt : co.GetOptions()) {
         switch (opt.mark) {
         case 'c': crate_config_file = opt.var.String(); break;
         case 'f': setting_file      = opt.var.String(); break;
         case 'i': ignore_file       = opt.var.String(); break;
+        case 'l': limits_file       = opt.var.String(); break;
         case 's': save_file         = opt.var.String(); break;
         case 'm': module_geo_file   = opt.var.String(); break;
         }
@@ -189,6 +248,20 @@ int main(int argc, char *argv[])
                 std::string(DATABASE_DIR) + "/error_ignore.json");
         }
         CAEN_Channel::SetErrorIgnoreList(load_error_ignore_list(ignoreConfigPath));
+    }
+
+    // ── Load and apply voltage limits ───────────────────────────────────
+    {
+        QString limitsConfigPath;
+        bool limitsUserSpecified = false;
+        if (!limits_file.empty()) {
+            limitsConfigPath = QString::fromStdString(limits_file);
+            limitsUserSpecified = true;
+        } else {
+            limitsConfigPath = QString::fromStdString(
+                std::string(DATABASE_DIR) + "/voltage_limits.json");
+        }
+        load_voltage_limits(limitsConfigPath, limitsUserSpecified);
     }
 
     // ── GUI mode ────────────────────────────────────────────────────────

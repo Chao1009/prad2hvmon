@@ -1,0 +1,11 @@
+{
+    "limits": [
+        { "pattern": "G*",       "voltage": 1950 },
+        { "pattern": "W*",       "voltage": 1450 },
+        { "pattern": "P*",       "voltage": 3000 },
+        { "pattern": "L*",       "voltage": 2000 },
+        { "pattern": "S*",       "voltage": 2000 },
+        { "pattern": "H*",       "voltage": 2000 },
+        { "pattern": "*",        "voltage": 1500 }
+    ]
+}

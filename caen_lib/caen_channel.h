@@ -68,6 +68,23 @@ public:
     static void SetErrorIgnoreList(const std::vector<std::string> &names);
     static const std::vector<std::string> &GetErrorIgnoreList();
 
+    // ── Configurable voltage limits ──────────────────────────────────────
+    // Rules are evaluated in order; the first matching pattern wins.
+    // Patterns support trailing wildcard: "G*" matches any name starting
+    // with "G".  An exact name like "G235" matches only that channel.
+    // Call SetVoltageLimit() to add or replace a rule (duplicate patterns
+    // are replaced, not appended).
+    // Rules must be loaded before crate initialization (initCrates /
+    // ReadCrateMap), since CAEN_VoltageLimit() is called during channel
+    // construction.
+    struct VoltageLimitRule {
+        std::string pattern;   // e.g. "G*", "W*", "G235"
+        float       limit;
+    };
+    static void SetVoltageLimit(const std::string &pattern, float limit);
+    static void ClearVoltageLimits();
+    static const std::vector<VoltageLimitRule> &GetVoltageLimitRules();
+
     void ReadVoltage();
     void CheckStatus();
     void UpdateVoltage(const bool &pw, const float &vm, const float &vs);
