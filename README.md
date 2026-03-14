@@ -29,15 +29,37 @@ The HyCal calorimeter consists of ~1200 detector modules (PbWO4 crystals and PbG
 
 ![Channel geo view](docs/screenshots/geoview.png)
 
+### Board Status Tab
+- Dedicated tab showing per-board hardware information for every slot across all connected crates.
+- Columns: Crate, Slot, Model, Ch (channel count), Serial, FW (firmware version), HVMax (V), Temp (°C), and Status.
+- Temperature is color-coded: green for the normal 5–40 °C range, amber outside that range, red when temperature-related status flags (UNDRT, OVERT, TCAL) are present.
+- Board status shows OK in green or the fault abbreviation in red (with a tooltip for the detail string).
+- A red fault dot appears on the Board Status tab button whenever any board reports a non-OK status.
+
 ### Booster HV Panel
 - Dedicated tab for TDK-Lambda GEN booster power supplies, communicated with via SCPI over TCP.
+- **Connection is manual.** On launch the booster tab shows a "Connect to Boosters" overlay. Clicking the button opens TCP connections and starts polling. This avoids locking out other monitor instances by default.
+- Once connected, the header bar provides a **Retry** button (disconnect then immediately reconnect) and a **Disconnect** button (release TCP connections so other instances can use them).
 - Per-supply cards show: connection status, VMon, VSet, IMon, ISet, operating mode (CV/CC), and output state.
 - Controls per card: VSet and ISet inputs (expert mode required), ON/OFF buttons (always available).
 - Supply definitions are loaded from `hycal_modules.json` entries with `"t": "booster"`.
 
-> **⚠️ Single-connection limit:** Each TDK-Lambda GEN supply only accepts one TCP connection at a time. If multiple instances of the monitor are running simultaneously, only the first instance to connect will communicate successfully with the boosters. All subsequent instances will receive a **connection refused** error for those supplies and will show them as disconnected in the booster panel. Ensure any previously running monitor instance is closed before starting a new one if booster control or readback is needed.
+> **⚠️ Single-connection limit:** Each TDK-Lambda GEN supply only accepts one TCP connection at a time. If multiple instances of the monitor are running simultaneously, only the first instance to connect will communicate successfully with the boosters. Because connection is now opt-in, you can safely run multiple monitor instances for read-only HV monitoring and only connect to boosters from the one instance that needs it.
 
 ![Channel geo view](docs/screenshots/boosterpanel.png)
+
+### Audible Fault Alarm
+- A two-tone beep plays once per poll cycle whenever any channel, board, or booster reports a fault or error.
+- The alarm button in the header shows the current state: 🔔 (no faults), ⚠ with fault labels (active), or 🔇 (muted).
+- Clicking the alarm button toggles mute. The alarm automatically un-mutes when new faults appear or when all faults clear.
+- Red fault indicator dots appear on the Channel Table, Board Status, and Booster HV tab buttons to show which subsystem has active faults.
+
+### Fault Logger
+- All fault transitions (channel, board, and booster) are logged to daily rotating files in `<DATABASE_DIR>/fault_log/`.
+- Each line is tab-separated: `timestamp  APPEAR|DISAPPEAR  type  name  status`.
+- A fault is any non-empty status containing tokens other than the normal operating states (ON, OFF, RUP, RDN).
+- The logger is thread-safe and shared between the HV poller and booster poller threads.
+- Files rotate automatically at midnight (one file per day, named `YYYY-MM-DD.log`).
 
 ## Get Started
 
@@ -245,6 +267,13 @@ The application uses a C++ backend with a web frontend connected via Qt WebChann
                                               │  setAllPower()           │
                                               │  setPollInterval()       │
                                               │  channelsUpdated ───────►│
+                                              │  boardSnapshotReady ────►│
+                                              └──────────┬───────────────┘
+                                                         │
+                                              ┌──────────┴───────────────┐
+                                              │  FileFaultLogger         │
+                                              │  (thread-safe, shared)   │
+                                              │  → fault_log/YYYY-MM-DD  │
                                               └──────────┬───────────────┘
                                                          │
 ┌──────────────────────┐     QWebChannel                 │ JSON
@@ -252,6 +281,7 @@ The application uses a C++ backend with a web frontend connected via Qt WebChann
 │   Booster Supplies   │                   │   BoosterMonitor            │
 └──────────────────────┘                   │   (QObject, GUI thread)     │
                                            │                             │
+                                           │  connectAll() / disconn…() │
                                            │  readAll()                  │
                                            │  setVoltage(idx, V)         │
                                            │  setCurrent(idx, A)         │
@@ -266,16 +296,20 @@ The application uses a C++ backend with a web frontend connected via Qt WebChann
                                               │   (JS frontend)          │
                                               │                          │
                                               │  Channel Table           │
+                                              │  Board Status Tab        │
                                               │  HyCal Geometry Map      │
                                               │  Booster HV Panel        │
+                                              │  Audible Fault Alarm     │
                                               │  Expert Mode Controls    │
                                               │  Module Popups           │
                                               └──────────────────────────┘
 ```
 
-`HVMonitor` and `BoosterMonitor` both live on the GUI thread and are registered with `QWebChannel`. Each bridges to a dedicated worker (`HVPoller` / `BoosterPoller`) running on its own `QThread`. Both pollers fire an immediate poll when started so the GUI populates at launch without waiting for the first timer tick, then continue on their configured intervals.
+`HVMonitor` and `BoosterMonitor` both live on the GUI thread and are registered with `QWebChannel`. Each bridges to a dedicated worker (`HVPoller` / `BoosterPoller`) running on its own `QThread`. The HV poller fires an immediate poll when started so the GUI populates at launch without waiting for the first timer tick, then continues on its configured interval. The booster poller is **not started automatically** — it begins polling only when the user clicks "Connect to Boosters" in the GUI, avoiding accidental TCP lock-out of other monitor instances.
 
-The JS frontend maintains a separate fast render loop (default 200 ms) that redraws the table and geometry map from cached data independently of the poll cadence, keeping the UI responsive. Expert mode is a client-side toggle that gates all write operations — VSet and ISet inputs are disabled and dimmed when expert mode is off; power ON/OFF remains available at all times.
+Both pollers feed a shared `FileFaultLogger` (thread-safe) via a `FaultTracker` that detects fault transitions (appear/disappear) across poll cycles. The HV poller emits both a channel snapshot (`snapshotReady`) and a board-level snapshot (`boardSnapshotReady`) each cycle. The booster poller logs `DISAPPEAR` events for any active faults when disconnected.
+
+The JS frontend maintains a separate fast render loop (default 200 ms) that redraws the table, board status, and geometry map from cached data independently of the poll cadence, keeping the UI responsive. An audible alarm (Web Audio API two-tone beep) fires once per poll cycle while any channel, board, or booster fault is active; the user can mute it via the header button, and it re-arms automatically when faults clear or new faults appear. Expert mode is a client-side toggle that gates all write operations — VSet and ISet inputs are disabled and dimmed when expert mode is off; power ON/OFF remains available at all times.
 
 ## Channel Types
 
