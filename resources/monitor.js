@@ -950,7 +950,7 @@ function renderBoardTable() {
         const tempTxt  = fmt(tempVal, 1);
         const hasTempError = stAbbr && (stAbbr.includes('UNDRT') || stAbbr.includes('OVERT') || stAbbr.includes('TCAL'));
         const tempCls  = hasTempError ? 'bd-temp-err'
-                       : (tempVal == null)  ? 'bd-temp-ok'
+                       : (tempVal == null || isNaN(tempVal)) ? 'bd-temp-ok'
                        : (tempVal >= 5 && tempVal <= 40) ? 'bd-temp-ok'
                        : 'bd-temp-warn';
 
