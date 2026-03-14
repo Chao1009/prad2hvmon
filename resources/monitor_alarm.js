@@ -66,6 +66,10 @@ function playAlarmBeep() {
 // Legacy helpers — stopAlarmTone is now a no-op since beeps are self-contained
 function stopAlarmTone() { /* beeps stop themselves */ }
 
+// Throttle: at most one beep per this many ms
+const ALARM_BEEP_INTERVAL_MS = 2000;
+let _lastBeepTime = 0;
+
 // Called after every poll to evaluate alarm state
 function evaluateAlarm() {
     const chFaults = allChannels.filter(c => classifyChannel(c).isFault).length;
@@ -83,14 +87,19 @@ function evaluateAlarm() {
     if (hasFaults && !wasActive) {
         // Faults just appeared — un-mute so the user hears the first beep
         alarmMuted = false;
+        _lastBeepTime = 0;  // force immediate beep on new fault
     } else if (!hasFaults && wasActive) {
         // All faults cleared — re-arm
         alarmMuted = false;
     }
 
-    // Play a single beep this poll cycle if faults exist and not muted
+    // Play a beep if faults exist, not muted, and enough time has passed
     if (alarmActive && !alarmMuted) {
-        playAlarmBeep();
+        const now = performance.now();
+        if (now - _lastBeepTime >= ALARM_BEEP_INTERVAL_MS) {
+            playAlarmBeep();
+            _lastBeepTime = now;
+        }
     }
 
     // Store fault counts for button text and tab dots
