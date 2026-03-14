@@ -1,179 +1,147 @@
 # PRad-II HV Monitor
 
-Real-time high-voltage monitoring and control for the PRad-II HyCal calorimeter (~1200 channels). Communicates with CAEN SY1527 mainframes (TCP/IP) and TDK-Lambda GEN booster supplies (SCPI/TCP). Dashboard served via Qt WebEngine.
-
-## Modes
-
-| Mode | Usage | Description |
-|------|-------|-------------|
-| `gui` | `./prad2hvmon [gui]` | Interactive dashboard (default) |
-| `read` | `./prad2hvmon read [-s file.json]` | Save all writable params to JSON |
-| `write` | `./prad2hvmon write -f file.json` | Restore writable params from JSON |
-| `convert` | `./prad2hvmon convert -f old.txt -s new.json` | Convert old text format → JSON |
-| `hv_params` | `./prad2hvmon hv_params` | Print discovered board/channel param info |
-
-### Common Options
-
-| Option | Description |
-|--------|-------------|
-| `-c <file>` | Crates JSON config (default: auto-discover) |
-| `-f <file>` | Input settings file (write/convert modes) |
-| `-s <file>` | Output file (read/convert modes) |
-| `-l <file>` | Voltage limits JSON (default: auto-discover) |
-| `-i <file>` | Error-ignore JSON (default: auto-discover) |
-| `-m <file>` | Module geometry JSON (GUI mode) |
-
-## Quick Start (Hall B)
-
-```bash
-ssh clasrun@clonpc19
-cd ~/prad2_daq/prad2hvmon/build
-./bin/prad2hvmon                          # GUI mode
-./bin/prad2hvmon read -s snapshot.json    # save settings
-./bin/prad2hvmon write -f snapshot.json   # restore settings
-```
-
-## Building
-
-Requires C++17, CMake 3.11+, Qt 5 (Core, Widgets, WebEngineWidgets, WebChannel), CAENHVWrapper (`libcaenhvwrapper.so` in `caen_lib/`), and fmt (auto-fetched).
-
-```bash
-mkdir build && cd build
-cmake .. -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
-make -j$(nproc)
-```
-
-## GUI Features
-
-**Channel Table** — Live-updating sortable table with VMon, VSet, ΔV, IMon, ISet, SVMax, status. Summary strip with filter chips (Total/Primary/ON/OFF/Warn/Fault). Inline VSet editing, power toggle, bulk ON/OFF. Expert mode gates write operations.
-
-**HyCal Geometry Map** — 2D canvas of all detector modules at physical positions. Color by VMon, VSet, |ΔV|, or Status. Click to open draggable live-update popups. Tooltip shows VMon/VSet, IMon/ISet, DAQ info, status.
-
-**Board Status Tab** — Per-board info: model, serial, firmware, HVMax, temperature (color-coded), status. Red dot on tab when any board has faults.
-
-**Booster HV Panel** — TDK-Lambda GEN supplies via SCPI/TCP. Manual connect (avoids locking out other instances). Per-supply cards with VSet/ISet controls, ON/OFF, CV/CC mode display. Retry/Disconnect buttons in header.
-
-**Alarm & Fault Logger** — Audible two-tone beep on faults, mute toggle, auto-re-arm. Daily rotating fault log files in `database/fault_log/`.
-
-**Screenshots** — Press Ctrl+S to save a timestamped PNG.
-
-## Settings File Format (JSON)
-
-The `read` and `write` modes use a JSON format that captures all writable parameters discovered from the hardware:
-
-```json
-{
-    "format": "prad2hvmon_settings_v1",
-    "timestamp": "2026-03-14 15:30:42",
-    "channels": [
-        {
-            "crate": "PRadHV_1",
-            "slot": 0,
-            "channel": 1,
-            "name": "G235",
-            "params": {
-                "V0Set": 1500.0,
-                "I0Set": 25.0,
-                "SVMax": 2000.0,
-                "RUp": 50.0,
-                "RDWn": 50.0,
-                "Pw": 1,
-                "PDwn": 0
-            }
-        }
-    ]
-}
-```
-
-The `params` object includes only writable parameters — which ones appear depends on the board model (auto-discovered at init). Monitor-only params (VMon, IMon, Status) are not saved.
-
-The `write` command validates each param against the board's discovered capabilities before restoring. Params that don't exist on the actual hardware are skipped with a warning.
-
-Use `convert` to migrate old whitespace-format settings files (only V0Set will be populated, since the old format only stored VSet).
-
-## Generic Parameter System
-
-Parameters are auto-discovered from each CAEN board at init time via `CAENHV_GetChParamInfo`/`GetBdParamInfo`. No hard-coded parameter names in the data model — the system adapts to any board type. Use `hv_params` mode to inspect what each board supports:
-
-```
-═══ PRadHV_1 slot 0 — Model A1932 (49 ch, serial 3, fw 258) ═══
-
-  Board parameters:
-    BdStatus          BDSTATUS    RD
-    Temp              NUMERIC     RD  [5.0 .. 65.0] °C
-
-  Channel parameters (ch 0):
-    V0Set             NUMERIC     RW  [0.0 .. 3100.0] V
-    I0Set             NUMERIC     RW  [0.0 .. 30.0] mA
-    V1Set             NUMERIC     RW  [0.0 .. 3100.0] V
-    I1Set             NUMERIC     RW  [0.0 .. 30.0] mA
-    RUp               NUMERIC     RW  [1.0 .. 500.0] V/s
-    RDWn              NUMERIC     RW  [1.0 .. 500.0] V/s
-    SVMax             NUMERIC     RW  [0.0 .. 3100.0] V
-    VMon              NUMERIC     RD  [0.0 .. 3100.0] V
-    IMon              NUMERIC     RD  [0.0 .. 30.0] mA
-    Status            CHSTATUS    RD
-    Pw                ONOFF       RW
-    PDwn              ONOFF       RW
-```
-
-Polling reads all discovered params generically. When a bulk read fails (e.g. PRIMARY channel doesn't support SVMax), it probes each channel once to build a fallback list, then uses a reduced bulk read on subsequent cycles.
-
-## Configuration Files
-
-All config files live in `database/`. The application auto-discovers them relative to the binary.
-
-**`crates.json`** — CAEN SY1527 addresses. Array of `{"name": "...", "ip": "..."}`.
-
-**`gui_config.json`** — Window size, ΔV thresholds, color ranges, poll/render intervals.
-
-**`hycal_modules.json`** — Module geometry (`"t": "PbGlass"/"PbWO4"/"LMS"` with x/y/sx/sy) and booster definitions (`"t": "booster"` with ip/port).
-
-**`daq_map.json`** — Optional. Maps module names to DAQ readout addresses (shown in geo tooltips).
-
-**`voltage_limits.json`** — Optional. Pattern-based voltage limit overrides. First match wins. Supports trailing wildcards (`"G*"`, `"*"`). When VMon exceeds the limit on an active channel, an `OVL` software fault is raised.
-
-**`error_ignore.json`** — Optional. Per-channel error suppression with wildcard support. Suppressed errors show as amber warnings instead of red faults (no alarm, no red tab dots, still visible in table/geo). Format:
-```json
-{"ignore": [
-    {"name": "W984", "errors": ["OV"]},
-    {"name": "W*",   "errors": ["OV", "UV"]},
-    {"name": "G29",  "errors": ["OV", "UV", "OC", "EXT", "MAXV", "DIS", "ITRP", "CAL", "UNPLG", "OVP", "PWRF", "TEMP", "OVL"]}
-]}
-```
-
-## Channel Types & Default Limits
-
-| Pattern | Type | Limit | Description |
-|---------|------|-------|-------------|
-| `G*` | PbGlass | 1950 V | Lead glass modules |
-| `W*` | PbWO4 | 1450 V | Lead tungstate crystals |
-| `PRIMARY*` | Primary | 3000 V | Board-level control (ch 0, A1932) |
-| `L*` | LMS | 2000 V | Light monitoring PMTs |
-| `S*` | Scintillator | 2000 V | Scintillator counters |
-| `H*` | Veto | 2000 V | PrimEx veto counters |
-
-Override via `database/voltage_limits.json`. Unrecognised prefixes default to 1500 V.
+Real-time high-voltage monitoring and control for the PRad-II HyCal calorimeter (~1200 channels). A daemon (`prad2hvd`) connects to CAEN SY1527 mainframes and TDK-Lambda GEN booster supplies, polls continuously, logs faults, and serves live data to any number of browser or Qt clients via WebSocket.
 
 ## Architecture
 
 ```
-CAEN SY1527 ◄── TCP/IP ──► HVPoller (worker thread)
-                                │ ReadAllParams() → generic param map
-                                │ FaultTracker → FileFaultLogger
-                                ▼
-                           HVMonitor (GUI thread, QWebChannel)
-                                │ snapshotReady / boardSnapshotReady
-                                ▼
-TDK-Lambda GEN ◄─ SCPI/TCP ─► BoosterPoller (worker thread)
-                                │
-                           BoosterMonitor (GUI thread, QWebChannel)
-                                │ boosterUpdated
-                                ▼
-                           monitor.html/js/css (Qt WebEngine)
+┌──────────────┐     ┌──────────────┐
+│ CAEN SY1527  │     │ TDK-Lambda   │
+│ HV Crates    │     │ Boosters     │
+└──────┬───────┘     └──────┬───────┘
+       │ TCP/IP             │ SCPI/TCP
+       ▼                    ▼
+┌─────────────────────────────────────┐
+│          prad2hvd (daemon)          │
+│                                     │
+│  HVPoller thread ── poll + classify │
+│  BoosterPoller thread ── poll       │
+│  FaultTracker ── daily log files    │
+│  WebSocket server ── JSON push      │
+└──────────────┬──────────────────────┘
+               │ ws://host:8765
+       ┌───────┼───────┐
+       ▼       ▼       ▼
+    Browser  Qt GUI   Scripts
+    client   client   (wscat)
 ```
 
-HVPoller owns all CAEN objects on a dedicated thread. HVMonitor bridges to the JS frontend via QWebChannel with cached JSON snapshots. The JS frontend runs a fast render loop (200ms) independently of the poll cadence.
+The daemon owns all hardware connections and makes all status decisions (fault, warning, ΔV threshold). Clients are pure displays — they read `level`, `dv_warn`, and other fields from the daemon's JSON and render them. No classification logic runs on the client.
+
+## Quick Start
+
+```bash
+# Build (daemon only, no Qt needed)
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+
+# Start daemon
+./bin/prad2hvd
+
+# Serve the web dashboard (separate terminal)
+cd resources
+python3 -m http.server 8080
+
+# Open in browser
+# http://localhost:8080/monitor.html
+```
+
+### Build with Qt GUI client (optional)
+
+```bash
+cmake .. -DBUILD_GUI=ON -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
+make -j$(nproc)
+
+# Run Qt client
+./bin/prad2hvmon -H localhost -p 8765
+```
+
+## Daemon (`prad2hvd`)
+
+Headless process that polls hardware, classifies channel status, logs faults, and broadcasts JSON snapshots over WebSocket.
+
+| Option | Description |
+|--------|-------------|
+| `-c <file>` | Crates JSON (default: `database/crates.json`) |
+| `-m <file>` | Module geometry JSON (default: `database/hycal_modules.json`) |
+| `-g <file>` | GUI config JSON (default: `database/gui_config.json`) |
+| `-d <file>` | DAQ map JSON (default: `database/daq_map.json`) |
+| `-i <file>` | Error-ignore JSON (default: `database/error_ignore.json`) |
+| `-l <file>` | Voltage limits JSON (default: `database/voltage_limits.json`) |
+| `-w <file>` | ΔV warning rules JSON (default: `database/dv_warn.json`) |
+| `-p <port>` | WebSocket port (default: 8765) |
+| `-t <ms>` | Poll interval in ms (default: 3000) |
+
+Stop with `Ctrl+C`. Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected.
+
+## Qt GUI Client (`prad2hvmon`)
+
+Optional thin client — a `QWebEngineView` window that loads `monitor.html` and connects to the daemon via WebSocket. No hardware access, no QWebChannel.
+
+| Option | Description |
+|--------|-------------|
+| `-H <host>` | Daemon hostname (default: localhost) |
+| `-p <port>` | Daemon WebSocket port (default: 8765) |
+| `-r <dir>` | Resources directory (default: auto-discover) |
+| `--width <px>` | Window width (default: 1400) |
+| `--height <px>` | Window height (default: 900) |
+
+`Ctrl+S` saves a timestamped PNG screenshot.
+
+## Web Client
+
+Serve the `resources/` directory with any HTTP server. The dashboard connects to `ws://<hostname>:8765` automatically (hostname from the page URL, port overridable via `?port=NNNN`).
+
+Multiple clients can connect simultaneously. All receive the same live data.
+
+## Dashboard Features
+
+- **Channel Table** — Sortable, filterable, live-updating. Inline VSet/ISet/SVMax/Name editing in expert mode (apply button appears only when value changes; Enter or click to apply). Bulk ON/OFF. Summary strip with fault/warning counts.
+- **Board Status** — Per-board temperature, HVMax, firmware, status.
+- **HyCal Geometry Map** — 2D canvas at physical positions. Color by VMon, VSet, |ΔV|, or Status. Click for draggable live popups with controls.
+- **Booster HV Panel** — TDK-Lambda GEN supply cards with readback, VSet/ISet controls, ON/OFF. Connect/Disconnect/Retry buttons.
+- **Alarm** — Audible two-tone beep every 2s on faults. Mute toggle, auto-re-arm when faults clear.
+
+## Configuration Files
+
+All in `database/`. The daemon reads them at startup and serves relevant ones to clients.
+
+| File | Used by | Purpose |
+|------|---------|---------|
+| `crates.json` | Daemon | CAEN crate addresses `[{"name":"...","ip":"..."}]` |
+| `hycal_modules.json` | Daemon + Client | Module geometry and booster definitions |
+| `gui_config.json` | Client | Display thresholds, color ranges, render interval |
+| `daq_map.json` | Client | DAQ readout addresses (geo tooltips) |
+| `voltage_limits.json` | Daemon | Per-pattern voltage limits (OVL fault) |
+| `error_ignore.json` | Daemon | Per-channel error suppression |
+| `dv_warn.json` | Daemon | Per-pattern ΔV warning thresholds |
+
+### `dv_warn.json` example
+
+```json
+{
+    "default": 2.0,
+    "rules": [
+        { "pattern": "W*",       "max_dv": 2.0 },
+        { "pattern": "G*",       "max_dv": 3.0 },
+        { "pattern": "PRIMARY*", "max_dv": 5.0 },
+        { "pattern": "*",        "max_dv": 2.0 }
+    ]
+}
+```
+
+First matching pattern wins. Same wildcard scheme as `voltage_limits.json` and `error_ignore.json`.
+
+## Dependencies
+
+**Daemon** (pure C++17, no Qt):
+- CMake 3.14+, C++17 compiler
+- `libcaenhvwrapper.so` (in `caen_lib/`)
+- Auto-fetched: nlohmann/json, fmt, websocketpp, standalone Asio
+
+**Qt GUI client** (optional):
+- Qt 5 (Widgets, WebEngineWidgets)
 
 ## Author
 
