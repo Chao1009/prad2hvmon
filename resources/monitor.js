@@ -32,8 +32,6 @@ let boosterSeenClean  = false;  // true after seeing a "clean" disconnect snapsh
 let alarmMuted    = false;   // true when the user clicks the mute button
 let alarmActive   = false;   // true while at least one fault/error exists
 let alarmCtx      = null;    // AudioContext, created on first interaction
-let alarmOsc      = null;    // currently playing OscillatorNode (null if silent)
-let alarmGain     = null;    // GainNode for the beep envelope
 
 // Geometry map state
 let geoTransform = { x: 0, y: 0, scale: 1 };
@@ -776,8 +774,8 @@ function _markInteracted() {
     document.removeEventListener('click',   _markInteracted);
     document.removeEventListener('keydown', _markInteracted);
     document.removeEventListener('pointerdown', _markInteracted);
-    // If an alarm was waiting for a gesture, start it now
-    if (alarmActive && !alarmMuted && !alarmOsc) startAlarmTone();
+    // If an alarm was waiting for a gesture, beep now
+    if (alarmActive && !alarmMuted) playAlarmBeep();
 }
 document.addEventListener('click',   _markInteracted, { once: false });
 document.addEventListener('keydown', _markInteracted, { once: false });
@@ -793,90 +791,70 @@ function ensureAlarmCtx() {
     return true;
 }
 
-function startAlarmTone() {
-    if (alarmOsc) return;              // already playing
-    // If no user gesture yet, we can't create the AudioContext.
-    // The _markInteracted handler will call startAlarmTone() once the
-    // user interacts, so the alarm starts as soon as allowed.
-    if (!ensureAlarmCtx()) return;     // button still shows alarming state visually
+// Play a single two-tone beep.  Called once per poll cycle while faults exist.
+// Each call creates a short-lived oscillator that stops itself after ~350 ms,
+// so there is no continuous tone and no cleanup needed between polls.
+function playAlarmBeep() {
+    if (!ensureAlarmCtx()) return;     // no user gesture yet
 
-    // Two-tone pattern: 880 Hz for 120 ms, silence 80 ms, 660 Hz 120 ms,
-    // silence 680 ms → repeats every ~1 s.  Uses a looping buffer approach
-    // via two alternating oscillators scheduled in a loop, but for simplicity
-    // we use a single oscillator + gain LFO trick:
-    //   - oscillator at 880 Hz
-    //   - a gain node pulsed on/off by a ScriptProcessor / setInterval
-
-    alarmGain = alarmCtx.createGain();
-    alarmGain.gain.value = 0;
-    alarmGain.connect(alarmCtx.destination);
-
-    alarmOsc = alarmCtx.createOscillator();
-    alarmOsc.type = 'square';
-    alarmOsc.frequency.value = 880;
-    alarmOsc.connect(alarmGain);
-    alarmOsc.start();
-
-    // Pulse pattern via gain scheduling (repeats every 1 s)
-    scheduleAlarmPulse();
-    alarmOsc._pulseTimer = setInterval(scheduleAlarmPulse, 1000);
-}
-
-function scheduleAlarmPulse() {
-    if (!alarmGain || !alarmCtx) return;
     const t = alarmCtx.currentTime;
-    alarmGain.gain.cancelScheduledValues(t);
-    alarmGain.gain.setValueAtTime(0, t);
+
+    const gain = alarmCtx.createGain();
+    gain.gain.setValueAtTime(0, t);
+    gain.connect(alarmCtx.destination);
+
+    const osc = alarmCtx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, t);
+    osc.connect(gain);
+
     // beep 1: 880 Hz, 120 ms
-    alarmGain.gain.setValueAtTime(0.25, t + 0.01);
-    alarmGain.gain.setValueAtTime(0, t + 0.13);
-    // beep 2: slightly lower
-    if (alarmOsc) {
-        alarmOsc.frequency.setValueAtTime(880, t);
-        alarmOsc.frequency.setValueAtTime(660, t + 0.21);
-        alarmOsc.frequency.setValueAtTime(880, t + 0.33);
-    }
-    alarmGain.gain.setValueAtTime(0.25, t + 0.21);
-    alarmGain.gain.setValueAtTime(0, t + 0.33);
+    gain.gain.setValueAtTime(0.25, t + 0.01);
+    gain.gain.setValueAtTime(0, t + 0.13);
+
+    // beep 2: 660 Hz, 120 ms (after 80 ms silence)
+    osc.frequency.setValueAtTime(660, t + 0.21);
+    gain.gain.setValueAtTime(0.25, t + 0.21);
+    gain.gain.setValueAtTime(0, t + 0.33);
+
+    osc.start(t);
+    osc.stop(t + 0.4);   // auto-cleanup after the beep finishes
+
+    // Disconnect nodes after playback to free resources
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
 }
 
-function stopAlarmTone() {
-    if (!alarmOsc) return;
-    clearInterval(alarmOsc._pulseTimer);
-    alarmOsc.stop();
-    alarmOsc.disconnect();
-    alarmOsc = null;
-    if (alarmGain) { alarmGain.disconnect(); alarmGain = null; }
-}
+// Legacy helpers — stopAlarmTone is now a no-op since beeps are self-contained
+function stopAlarmTone() { /* beeps stop themselves */ }
 
 // Called after every poll to evaluate alarm state
 function evaluateAlarm() {
-    // Count HV hardware faults (OVC, OVV, etc.) — only these trigger the alarm.
-    // Booster connection errors are excluded: they are typically transient TCP
-    // issues (single-client lock-out) and not detector-safety events.
     const hvFaults = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
     const hasFaults = hvFaults > 0;
 
-    if (hasFaults && !alarmActive) {
-        // Faults just appeared — start alarm (un-mute for new faults)
-        alarmActive = true;
-        alarmMuted  = false;
-        updateMuteButton();
-        startAlarmTone();
-    } else if (!hasFaults && alarmActive) {
-        // All faults cleared — stop alarm and re-arm
-        alarmActive = false;
-        alarmMuted  = false;
-        updateMuteButton();
-        stopAlarmTone();
+    const wasActive = alarmActive;
+    alarmActive = hasFaults;
+
+    if (hasFaults && !wasActive) {
+        // Faults just appeared — un-mute so the user hears the first beep
+        alarmMuted = false;
+    } else if (!hasFaults && wasActive) {
+        // All faults cleared — re-arm
+        alarmMuted = false;
     }
-    // If muted, tone is already stopped (toggleMute handles it)
+
+    // Play a single beep this poll cycle if faults exist and not muted
+    if (alarmActive && !alarmMuted) {
+        playAlarmBeep();
+    }
+
+    updateMuteButton();
 }
 
 function toggleMute() {
     alarmMuted = !alarmMuted;
-    if (alarmMuted) stopAlarmTone();
-    else if (alarmActive) startAlarmTone();
+    // When un-muting, play one beep as confirmation if faults are active
+    if (!alarmMuted && alarmActive) playAlarmBeep();
     updateMuteButton();
 }
 
