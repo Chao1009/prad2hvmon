@@ -290,8 +290,8 @@ function initTabs() {
         });
     });
 
-    // Add ⤢ pop-out buttons to detachable tabs (geo and booster)
-    ['geo-tab', 'booster-tab'].forEach(tabId => {
+    // Add ⤢ pop-out buttons to detachable tabs (board, geo, and booster)
+    ['board-tab', 'geo-tab', 'booster-tab'].forEach(tabId => {
         const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
         if (!btn) return;
         const pop = document.createElement('button');

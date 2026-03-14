@@ -282,7 +282,7 @@ tr.primary-row td {
 }
 
 /* ─── Board Status table ─────────────────────────────────────────── */
-#board-tab { display:flex; flex-direction:column; }
+#board-tab.active { display:flex; flex-direction:column; }
 #board-table-wrap { overflow-y:auto; flex:1; min-height:0; }
 #board-table { width:100%; border-collapse:collapse; table-layout:fixed; }
 #board-table thead { position:sticky; top:0; z-index:2; }

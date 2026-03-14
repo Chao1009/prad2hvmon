@@ -408,6 +408,7 @@ int main(int argc, char *argv[])
         // QPointers let us detect if a window is still open and raise it
         // instead of creating a duplicate.
         struct DetachedViews {
+            QPointer<QWebEngineView> board;
             QPointer<QWebEngineView> geo;
             QPointer<QWebEngineView> booster;
         };
@@ -418,8 +419,9 @@ int main(int argc, char *argv[])
                          [&monitor, &bMonitor, htmlPath, detached](const QString &tabId)
         {
             QPointer<QWebEngineView> &slot =
-                (tabId == QLatin1String("geo-tab")) ? detached->geo
-                                                    : detached->booster;
+                (tabId == QLatin1String("board-tab"))   ? detached->board
+                : (tabId == QLatin1String("geo-tab"))   ? detached->geo
+                                                        : detached->booster;
             if (slot && slot->isVisible()) {
                 slot->raise();
                 slot->activateWindow();
@@ -428,7 +430,9 @@ int main(int argc, char *argv[])
             auto *dv = new QWebEngineView();
             dv->setAttribute(Qt::WA_DeleteOnClose);
             dv->setWindowTitle(
-                tabId == QLatin1String("geo-tab")
+                tabId == QLatin1String("board-tab")
+                    ? QStringLiteral("Board Status — PRad-II HV Monitor")
+                : tabId == QLatin1String("geo-tab")
                     ? QStringLiteral("HyCal Geometry — PRad-II HV Monitor")
                     : QStringLiteral("Booster HV — PRad-II HV Monitor"));
             dv->resize(1100, 800);
@@ -450,6 +454,7 @@ int main(int argc, char *argv[])
 
         // Close detached windows when main window closes (app quits)
         QObject::connect(&app, &QApplication::aboutToQuit, [detached]() {
+            if (detached->board)   detached->board->close();
             if (detached->geo)     detached->geo->close();
             if (detached->booster) detached->booster->close();
         });

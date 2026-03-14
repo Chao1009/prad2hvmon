@@ -343,15 +343,15 @@ void CAEN_Board::ReadBoardParams()
 
     err = CAENHV_GetBdParam(handle, 1, slotList, "HVMax", &val);
     if (err == CAENHV_OK) hvMax = val;
-    else CAEN_ShowError("HV Board Read HVMax", err);
+    else if (!isUnsupportedParam(err)) CAEN_ShowError("HV Board Read HVMax", err);
 
     err = CAENHV_GetBdParam(handle, 1, slotList, "Temp", &val);
     if (err == CAENHV_OK) temp = val;
-    else CAEN_ShowError("HV Board Read Temp", err);
+    else if (!isUnsupportedParam(err)) CAEN_ShowError("HV Board Read Temp", err);
 
     err = CAENHV_GetBdParam(handle, 1, slotList, "BdStatus", &uval);
     if (err == CAENHV_OK) bdStatus = uval;
-    else CAEN_ShowError("HV Board Read BdStatus", err);
+    else if (!isUnsupportedParam(err)) CAEN_ShowError("HV Board Read BdStatus", err);
 }
 
 std::string CAEN_Board::GetBdStatusString() const
