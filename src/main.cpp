@@ -17,8 +17,11 @@
 // Author: Chao Peng — Argonne National Laboratory
 // ─────────────────────────────────────────────────────────────────────────────
 
-#include "hv_daemon.h"
+// Include ws_server.h BEFORE hv_daemon.h — websocketpp's internal md5.hpp
+// defines/undefines a SET macro that collides with caenhvwrapper.h's #define SET 1.
+// By including websocketpp first, its SET is fully consumed before CAEN's appears.
 #include "ws_server.h"
+#include "hv_daemon.h"
 #include "file_fault_logger.h"
 
 #include <nlohmann/json.hpp>
