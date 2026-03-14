@@ -393,16 +393,6 @@ function classifyChannel(ch) {
     };
 }
 
-// ── Convenience wrappers (for backward compat with callers) ──────────
-// These are thin wrappers; new code should use classifyChannel() directly.
-function statusClass(s) {
-    // Accepts a status string directly (not a channel object)
-    return classifyChannel({status: s, on: false, vmon: null, vset: null}).cssClass;
-}
-function isSettled(ch) { return classifyChannel(ch).isSettled; }
-function dotClass(ch)  { return classifyChannel(ch).dot; }
-function statusBadgesHtml(ch) { return classifyChannel(ch).badgesHtml; }
-
 // Power state badge for tooltip / popup Pwr row
 function pwrHtml(ch) {
     const abbr = ch.status ? ch.status.split('|')[0].trim() : '';

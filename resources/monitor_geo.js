@@ -453,7 +453,7 @@ function updateGeoHover(e) {
             if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${pwrHtml(ch)}</span></div>`;
-            const ttSt = statusBadgesHtml(ch);
+            const ttSt = classifyChannel(ch).badgesHtml;
             if (ttSt) html += `<div class="tt-row"><span class="tt-label">Status</span><span class="tt-val">${ttSt}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
@@ -569,7 +569,7 @@ function openModPopup(mod) {
                 html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
             }
             html += `<span class="plbl">Pwr</span><span class="pval">${pwrHtml(c)}</span>`;
-            const ppSt = statusBadgesHtml(c);
+            const ppSt = classifyChannel(c).badgesHtml;
             if (ppSt) html += `<span class="plbl">Status</span><span class="pval">${ppSt}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
             isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';

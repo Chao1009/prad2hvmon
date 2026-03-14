@@ -244,7 +244,7 @@ function renderTable() {
 
             // td12: status badges (no ON/OFF — Pwr column covers power state)
             const td12 = document.createElement('td');
-            td12.innerHTML = statusBadgesHtml(ch);
+            td12.innerHTML = cc.badgesHtml;
             tr.appendChild(td12);
 
             // td13: power button
@@ -281,7 +281,7 @@ function renderTable() {
             if (tr.cells[10].textContent !== imonTxt) tr.cells[10].textContent = imonTxt;
 
             // status badges (td12)
-            const stHtml = statusBadgesHtml(ch);
+            const stHtml = cc.badgesHtml;
             if (tr.cells[12].innerHTML !== stHtml) tr.cells[12].innerHTML = stHtml;
 
             // power button (td13)
