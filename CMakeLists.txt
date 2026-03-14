@@ -105,12 +105,12 @@ install(FILES
     resources/monitor.html
     resources/monitor.css
     resources/monitor.js
-    resources/hycal_modules.json
-    resources/gui_config.json
-    resources/crates.json
-    resources/daq_map.json
         DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)
 
 install(FILES
+    database/crates.json
+    database/hycal_modules.json
+    database/gui_config.json
+    database/daq_map.json
     database/error_ignore.json
         DESTINATION ${CMAKE_INSTALL_PREFIX}/database)

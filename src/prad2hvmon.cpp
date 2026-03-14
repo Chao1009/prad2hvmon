@@ -223,7 +223,7 @@ int main(int argc, char *argv[])
         crateConfigPath = QString::fromStdString(crate_config_file);
     } else {
         crateConfigPath = QString::fromStdString(
-            std::string(RESOURCE_DIR) + "/crates.json");
+            std::string(DATABASE_DIR) + "/crates.json");
     }
     if (!QFile::exists(crateConfigPath)) {
         std::cerr << "ERROR: cannot find crates.json at "
@@ -277,9 +277,9 @@ int main(int argc, char *argv[])
         } else {
             // Auto-discover next to monitor.html
             QStringList geoCandidates = {
-                QCoreApplication::applicationDirPath() + "/../resources/hycal_modules.json",
-                QCoreApplication::applicationDirPath() + "/../../resources/hycal_modules.json",
-                QString::fromStdString(std::string(RESOURCE_DIR) + "/hycal_modules.json"),
+                QCoreApplication::applicationDirPath() + "/../database/hycal_modules.json",
+                QCoreApplication::applicationDirPath() + "/../../database/hycal_modules.json",
+                QString::fromStdString(std::string(DATABASE_DIR) + "/hycal_modules.json"),
             };
             for (const auto &p : geoCandidates) {
                 if (QFile::exists(p)) { moduleGeoPath = QDir(p).absolutePath(); break; }
@@ -292,9 +292,9 @@ int main(int argc, char *argv[])
         QString guiConfigPath;
         {
             QStringList candidates = {
-                QCoreApplication::applicationDirPath() + "/../resources/gui_config.json",
-                QCoreApplication::applicationDirPath() + "/../../resources/gui_config.json",
-                QString::fromStdString(std::string(RESOURCE_DIR) + "/gui_config.json"),
+                QCoreApplication::applicationDirPath() + "/../database/gui_config.json",
+                QCoreApplication::applicationDirPath() + "/../../database/gui_config.json",
+                QString::fromStdString(std::string(DATABASE_DIR) + "/gui_config.json"),
             };
             for (const auto &p : candidates) {
                 if (QFile::exists(p)) { guiConfigPath = QDir(p).absolutePath(); break; }
@@ -307,9 +307,9 @@ int main(int argc, char *argv[])
         QString daqMapPath;
         {
             QStringList candidates = {
-                QCoreApplication::applicationDirPath() + "/../resources/daq_map.json",
-                QCoreApplication::applicationDirPath() + "/../../resources/daq_map.json",
-                QString::fromStdString(std::string(RESOURCE_DIR) + "/daq_map.json"),
+                QCoreApplication::applicationDirPath() + "/../database/daq_map.json",
+                QCoreApplication::applicationDirPath() + "/../../database/daq_map.json",
+                QString::fromStdString(std::string(DATABASE_DIR) + "/daq_map.json"),
             };
             for (const auto &p : candidates) {
                 if (QFile::exists(p)) { daqMapPath = QDir(p).absolutePath(); break; }

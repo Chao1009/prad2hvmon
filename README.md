@@ -131,14 +131,13 @@ If the Pictures folder is unavailable the file is saved to the current working d
 |--------|-------------|
 | `-c <file>` | Path to crates JSON config file (default: auto-discover) |
 | `-f <file>` | Path to channel voltage-setting file (write mode) |
-| `-l <file>` | Path to voltage-limits JSON file (default: auto-discover) |
 | `-s <file>` | Path to save channel readings (read mode) |
 | `-m <file>` | Path to module geometry JSON file (GUI mode) |
 | `-h` | Show help message |
 
 ## Configuration
 
-### Crate Addresses (`resources/crates.json`)
+### Crate Addresses (`database/crates.json`)
 
 Defines the CAEN SY1527 crates to connect to. Edit this file to add, remove, or re-address crates without recompiling:
 
@@ -154,7 +153,7 @@ Defines the CAEN SY1527 crates to connect to. Edit this file to add, remove, or 
 
 Each entry requires a `name` (used as the crate identifier throughout the system) and an `ip` (the TCP/IP address of the SY1527 mainframe).
 
-### GUI Configuration (`resources/gui_config.json`)
+### GUI Configuration (`database/gui_config.json`)
 
 Controls the initial window size, ΔV warning thresholds, geometry color scale ranges, and geometry canvas extent:
 
@@ -198,7 +197,7 @@ Controls the initial window size, ΔV warning thresholds, geometry color scale r
 | `intervals` | `pollMs` | CAEN hardware poll interval in ms (overridable via the Poll slider at runtime) |
 | `intervals` | `renderMs` | GUI render loop interval in ms |
 
-### Module Geometry (`resources/hycal_modules.json`)
+### Module Geometry (`database/hycal_modules.json`)
 
 A JSON array of module entries for detector modules:
 
@@ -227,35 +226,7 @@ The geometry map links each detector module to its live HV data by matching the 
 
 If no booster entries are found in `hycal_modules.json`, the application falls back to a `"booster"` array in `gui_config.json` (legacy path).
 
-### Voltage Limits (`database/voltage_limits.json`)
-
-Optional. Overrides the built-in per-channel voltage limits that `SetVoltage()` enforces. Rules are evaluated in order — the first matching pattern wins. If the file is absent, the hard-coded defaults are used (see Channel Types below).
-
-```json
-{
-    "limits": [
-        { "pattern": "G235",  "voltage": 1800 },
-        { "pattern": "G*",    "voltage": 1950 },
-        { "pattern": "W*",    "voltage": 1450 },
-        { "pattern": "P*",    "voltage": 3000 },
-        { "pattern": "L*",    "voltage": 2000 },
-        { "pattern": "S*",    "voltage": 2000 },
-        { "pattern": "H*",    "voltage": 2000 },
-        { "pattern": "*",     "voltage": 1500 }
-    ]
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `pattern` | Channel name or wildcard. `"G*"` matches any name starting with `G`. `"G235"` matches only that channel. `"*"` matches everything (catch-all). |
-| `voltage` | Maximum voltage (V) that `SetVoltage()` will allow for matching channels. |
-
-**Order matters.** Place specific channel overrides (e.g. `"G235"`) before broader wildcards (e.g. `"G*"`), and put the catch-all `"*"` last. The first matching rule determines the limit.
-
-Limits are loaded once at startup, before crate initialization, and applied to each channel as it is constructed during `ReadBoardMap()`. If the file does not exist, no warning is printed and the built-in defaults apply. Use `-l <file>` to specify a custom path.
-
-### DAQ Map (`resources/daq_map.json`)
+### DAQ Map (`database/daq_map.json`)
 
 Optional. Maps module names to their DAQ readout addresses (crate, slot, channel). When present, this information is shown in geometry tooltips and module popups alongside the HV data:
 
@@ -342,7 +313,7 @@ The JS frontend maintains a separate fast render loop (default 200 ms) that redr
 
 ## Channel Types
 
-| Name Pattern | Type | Default Limit | Description |
+| Name Pattern | Type | Voltage Limit | Description |
 |-------------|------|---------------|-------------|
 | `G*` | PbGlass | 1950 V | Lead glass calorimeter modules |
 | `W*` | PbWO4 | 1450 V | Lead tungstate crystal modules |
@@ -351,7 +322,7 @@ The JS frontend maintains a separate fast render loop (default 200 ms) that redr
 | `S*` / `SCIN*` | Scintillator | 2000 V | Scintillator counters |
 | `H*` | Veto | 2000 V | PrimEx veto counter channels |
 
-These defaults are built into `CAEN_VoltageLimit()` in `caen_lib/caen_channel.cpp` and apply when no matching rule is found in `voltage_limits.json`. Channels with unrecognised name prefixes default to 1500 V. To override any limit, add a rule to `database/voltage_limits.json` (see Configuration above).
+Voltage limits are enforced by `CAEN_VoltageLimit()` in `caen_lib/caen_channel.cpp`. Channels with unrecognised name prefixes default to 1500 V.
 
 ## Author
 
