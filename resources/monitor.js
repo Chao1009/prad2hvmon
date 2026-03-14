@@ -110,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 boosterDirty = true;
+                evaluateAlarm();
             });
             // Fetch static supply definitions (name, ip) to build cards now.
             // The cache is pre-populated by the C++ constructor with all supplies
@@ -137,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
         hvMonitor.boardsUpdated.connect(jsonStr => {
             allBoards = JSON.parse(jsonStr);
             boardDirty = true;
+            evaluateAlarm();
         });
 
         hvMonitor.readAll(jsonStr => {
@@ -873,8 +875,14 @@ function stopAlarmTone() { /* beeps stop themselves */ }
 
 // Called after every poll to evaluate alarm state
 function evaluateAlarm() {
-    const hvFaults = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
-    const hasFaults = hvFaults > 0;
+    const chFaults = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
+    const bdFaults = allBoards.filter(bd => {
+        const abbr = bd.bdstatus ? bd.bdstatus.split('|')[0] : '';
+        return abbr !== 'OK' && abbr !== '';
+    }).length;
+    const bstFaults = boosterSupplies.filter(s => !s.connected && s.error).length;
+
+    const hasFaults = chFaults > 0 || bdFaults > 0 || bstFaults > 0;
 
     const wasActive = alarmActive;
     alarmActive = hasFaults;
@@ -892,7 +900,11 @@ function evaluateAlarm() {
         playAlarmBeep();
     }
 
+    // Store fault counts for button text and tab dots
+    window._faultCounts = { ch: chFaults, bd: bdFaults, bst: bstFaults };
+
     updateMuteButton();
+    updateTabFaultDots();
 }
 
 function toggleMute() {
@@ -905,6 +917,7 @@ function toggleMute() {
 function updateMuteButton() {
     const btn = document.getElementById('btn-mute');
     if (!btn) return;
+    const fc = window._faultCounts || { ch: 0, bd: 0, bst: 0 };
     if (!alarmActive) {
         btn.classList.remove('alarming', 'muted');
         btn.textContent = '🔔 Alarm';
@@ -917,9 +930,26 @@ function updateMuteButton() {
     } else {
         btn.classList.add('alarming');
         btn.classList.remove('muted');
-        btn.textContent = '⚠ HV Fault';
+        // Build specific fault label
+        const parts = [];
+        if (fc.ch  > 0) parts.push('Ch Fault');
+        if (fc.bd  > 0) parts.push('Bd Fault');
+        if (fc.bst > 0) parts.push('Booster Err');
+        btn.textContent = '⚠ ' + (parts.length ? parts.join(' | ') : 'Fault');
         btn.title = 'Faults detected — click to silence';
     }
+}
+
+// Add/remove red fault dot on tab buttons
+function updateTabFaultDots() {
+    const fc = window._faultCounts || { ch: 0, bd: 0, bst: 0 };
+    const setDot = (tabId, hasFault) => {
+        const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
+        if (btn) btn.classList.toggle('has-fault', hasFault);
+    };
+    setDot('table-tab',   fc.ch  > 0);
+    setDot('board-tab',   fc.bd  > 0);
+    setDot('booster-tab', fc.bst > 0);
 }
 
 // ═════════════════════════════════════════════════════════════════════

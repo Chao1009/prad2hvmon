@@ -124,6 +124,20 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .tab-btn:hover { color: var(--text); background: var(--bg-card-alt); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-card-alt); }
 
+/* Red fault indicator dot on tab buttons */
+.tab-btn.has-fault { position: relative; }
+.tab-btn.has-fault::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 6px var(--red);
+}
+
 /* Pop-out button inside tab labels */
 .tab-detach-btn {
     display: inline-block;
