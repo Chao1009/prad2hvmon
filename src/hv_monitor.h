@@ -43,6 +43,7 @@
 #include <QJsonDocument>
 #include <caen_channel.h>
 #include <fmt/format.h>
+#include "fault_tracker.h"
 #include <vector>
 #include <map>
 #include <string>
@@ -80,6 +81,9 @@ public:
         }
         for (auto *c : crates_) delete c;
     }
+
+    // Call this BEFORE moveToThread — sets up fault logging.
+    void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
 
     // Call this BEFORE moveToThread – runs on the calling (main) thread,
     // which is fine because the worker thread hasn't started yet.
@@ -191,6 +195,13 @@ private slots:
             cr->CheckStatus();
             cr->ReadVoltage();
         }
+        // Track fault transitions across poll cycles
+        for (auto *cr : crates_)
+            for (auto *bd : cr->GetBoardList())
+                for (auto *ch : bd->GetChannelList())
+                    fault_tracker_.update(ch->GetName(), ch->GetStatusString());
+        fault_tracker_.endCycle();
+
         emit snapshotReady(buildSnapshot());
     }
 
@@ -238,6 +249,7 @@ private:
     std::vector<std::pair<std::string, std::string>> crate_defs_;
     std::vector<CAEN_Crate *> crates_;
     std::map<std::string, CAEN_Crate *> crate_map_;
+    FaultTracker fault_tracker_;
 };
 
 

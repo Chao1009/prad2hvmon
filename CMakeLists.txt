@@ -54,10 +54,13 @@ target_include_directories(caen_channel PUBLIC
     ${CAEN_LIB_DIR}
 )
 target_link_libraries(caen_channel PUBLIC caenhvwrapper)
+# fault_logger.h and fault_tracker.h are header-only in caen_lib;
+# no extra source files needed — they're found via the PUBLIC include dir.
 
 # ── Main executable ───────────────────────────────────────────────────────────
 add_executable(prad2hvmon
     src/prad2hvmon.cpp
+    src/file_fault_logger.cpp
     src/hv_monitor.h      # listed so AUTOMOC processes the Q_OBJECT macro
     src/booster_monitor.h  # likewise – BoosterPoller & BoosterMonitor Q_OBJECTs
 )
@@ -82,6 +85,7 @@ target_link_libraries(prad2hvmon PRIVATE
     Qt5::WebChannel
     Qt5::Network       # QTcpSocket (BoosterPoller)
     fmt::fmt
+    stdc++fs           # std::filesystem (GCC < 9 / Clang < 9)
 )
 
 # Qt WebEngine requires a GUI application type on some platforms

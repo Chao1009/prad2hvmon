@@ -38,6 +38,7 @@
 
 #include "hv_monitor.h"
 #include "booster_monitor.h"
+#include "file_fault_logger.h"
 
 #include <iostream>
 #include <fstream>
@@ -322,6 +323,14 @@ int main(int argc, char *argv[])
                          "add entries with \"t\":\"booster\" and \"ip\" to hycal_modules.json\n";
         BoosterPoller  *bPoller  = new BoosterPoller(boosterDefs);
         BoosterMonitor  bMonitor(bPoller);
+
+        // ── Fault logger (shared by both pollers, thread-safe) ───────────
+        FileFaultLogger faultLogger(
+            std::string(DATABASE_DIR) + "/fault_log");
+        poller->setFaultLogger(&faultLogger);
+        bPoller->setFaultLogger(&faultLogger);
+        std::cout << "Fault logger: " << std::string(DATABASE_DIR)
+                  << "/fault_log/\n";
 
         // ── Worker thread ────────────────────────────────────
         QThread workerThread;

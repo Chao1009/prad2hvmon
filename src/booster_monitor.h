@@ -40,6 +40,7 @@
 #include <cmath>
 
 #include "booster_supply.h"
+#include "fault_tracker.h"
 
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -70,6 +71,9 @@ public:
         if (timer_) { timer_->stop(); delete timer_; }
         for (auto *s : supplies_) delete s;
     }
+
+    // Call BEFORE moveToThread — sets up fault logging.
+    void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
 
 public slots:
     void startPolling()
@@ -143,6 +147,12 @@ private slots:
     void doPoll()
     {
         for (auto *s : supplies_) s->poll();
+        // Track fault transitions — a booster "fault" is any non-empty error
+        for (auto *s : supplies_) {
+            std::string status = s->connected ? "" : s->error.toStdString();
+            fault_tracker_.update(s->name.toStdString(), status);
+        }
+        fault_tracker_.endCycle();
         emit snapshotReady(buildSnapshot());
     }
 
@@ -178,6 +188,7 @@ private:
     QTimer *timer_ = nullptr;
     int     poll_interval_ms_;
     std::vector<BoosterSupply*> supplies_;
+    FaultTracker fault_tracker_;
 };
 
 
