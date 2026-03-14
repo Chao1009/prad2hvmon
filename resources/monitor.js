@@ -70,12 +70,13 @@ let GV = {
 };
 
 // ═════════════════════════════════════════════════════════════════════
-//  QWebChannel bootstrap
+//  Bootstrap (works with QWebChannel inside Qt OR WebSocket to daemon)
 // ═════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-    new QWebChannel(qt.webChannelTransport, channel => {
-        hvMonitor = channel.objects.hvMonitor;
-        boosterMonitor = channel.objects.boosterMonitor;
+
+    function bootstrap(hv, booster) {
+        hvMonitor = hv;
+        boosterMonitor = booster;
         if (boosterMonitor) {
             boosterMonitor.boosterUpdated.connect(jsonStr => {
                 boosterSupplies = JSON.parse(jsonStr);
@@ -195,7 +196,27 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('loading').classList.add('hidden');
             setPillConnected(true);
         });
-    });
+    }
+
+    // ── Auto-detect transport ────────────────────────────────────────
+    if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
+        // Running inside QWebEngineView — use QWebChannel
+        new QWebChannel(qt.webChannelTransport, channel => {
+            bootstrap(channel.objects.hvMonitor, channel.objects.boosterMonitor);
+        });
+    } else if (typeof DaemonClient !== 'undefined') {
+        // Running in a browser — connect to daemon WebSocket
+        const wsHost = location.hostname || 'localhost';
+        const wsPort = new URLSearchParams(location.search).get('port') || '8765';
+        const client = new DaemonClient(`ws://${wsHost}:${wsPort}`);
+        client._listeners.onConnect.push(() => {
+            bootstrap(client.hvMonitor, client.boosterMonitor);
+        });
+        client._listeners.onDisconnect.push(() => setPillConnected(false));
+    } else {
+        console.error('No transport available — need QWebChannel or DaemonClient');
+        document.querySelector('#loading p').textContent = 'No connection available';
+    }
 
     initTableUI();
     initTabs();
@@ -342,27 +363,39 @@ function classifyChannel(ch) {
     const isOn            = tokens.includes('ON') || ch.on;
     const isSettled        = tokens.length > 0 && tokens.every(t => t === 'ON' || t.startsWith('~'));
 
-    // ΔV warning (only when settled)
-    const dvWarn = isSettled && ch.vmon != null && ch.vset != null
-                   && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold;
+    // ΔV warning: use daemon-provided dv_warn if available, else compute locally
+    const dvWarn = (ch.dv_warn !== undefined)
+        ? ch.dv_warn
+        : (isSettled && ch.vmon != null && ch.vset != null
+           && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold);
 
-    // Determine level (priority: fault > suppressed > dvWarn > ramp > on > off)
+    // Determine level: prefer daemon-provided, else compute locally
     const hasFault      = faultTokens.length > 0;
     const hasSuppressed = suppressedTokens.length > 0;
 
-    let level, cssClass, dot;
-    if (hasFault) {
-        level = 'fault'; cssClass = 'status-err'; dot = 'fault';
-    } else if (hasSuppressed) {
-        level = 'suppressed'; cssClass = 'status-warn'; dot = 'warn';
-    } else if (dvWarn) {
-        level = 'warn'; cssClass = 'status-work'; dot = 'warn';
-    } else if (isRamping) {
-        level = 'ramp'; cssClass = 'status-work'; dot = 'on';
-    } else if (isOn) {
-        level = 'on'; cssClass = 'status-work'; dot = 'on';
+    let level;
+    if (ch.level) {
+        // Daemon provides authoritative classification
+        level = ch.level;
     } else {
-        level = 'off'; cssClass = 'status-ok'; dot = 'off';
+        // Fallback (QWebChannel mode — daemon doesn't provide level)
+        if (hasFault)           level = 'fault';
+        else if (hasSuppressed) level = 'suppressed';
+        else if (dvWarn)        level = 'warn';
+        else if (isRamping)     level = 'ramp';
+        else if (isOn)          level = 'on';
+        else                    level = 'off';
+    }
+
+    // Derive CSS class and dot from level
+    let cssClass, dot;
+    switch (level) {
+        case 'fault':      cssClass = 'status-err';  dot = 'fault'; break;
+        case 'suppressed': cssClass = 'status-warn'; dot = 'warn';  break;
+        case 'warn':       cssClass = 'status-work'; dot = 'warn';  break;
+        case 'ramp':       cssClass = 'status-work'; dot = 'on';    break;
+        case 'on':         cssClass = 'status-work'; dot = 'on';    break;
+        default:           cssClass = 'status-ok';   dot = 'off';   break;
     }
 
     // Build badges HTML
