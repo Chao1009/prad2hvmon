@@ -1,6 +1,6 @@
 # PRad-II HV Monitor
 
-Real-time high-voltage monitoring and control for the PRad-II HyCal calorimeter (~1200 channels). A daemon (`prad2hvd`) connects to CAEN SY1527 mainframes and TDK-Lambda GEN booster supplies, polls continuously, logs faults, and serves live data to any number of browser or Qt clients via WebSocket.
+Real-time high-voltage monitoring and control for the PRad-II HyCal calorimeter (~1700 channels). A daemon (`prad2hvd`) connects to CAEN SY1527 mainframes and TDK-Lambda GEN booster supplies, polls continuously, logs faults, and serves live data to any number of browser or Qt clients via WebSocket.
 
 ## Architecture
 
