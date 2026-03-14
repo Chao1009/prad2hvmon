@@ -1,116 +1,111 @@
-cmake_minimum_required(VERSION 3.11)
-project(prad2hvmon)
+cmake_minimum_required(VERSION 3.14)
+project(prad2hvd LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# ── Output directories ────────────────────────────────────────────────────────
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-# ── Qt5 ───────────────────────────────────────────────────────────────────────
-# If Qt5 is not on the default path, point cmake to it:
-#   cmake .. -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
-find_package(Qt5 REQUIRED COMPONENTS
-    Core
-    Widgets
-    WebEngineWidgets   # QWebEngineView, QWebEnginePage, etc.
-    WebChannel         # C++ <-> JS bridge (QWebChannel)
-    Network            # QTcpSocket for Booster HV supplies
-)
+# ── DATABASE_DIR compile-time define ─────────────────────────────────────────
+# Points to the directory containing crates.json, hycal_modules.json, etc.
+# Override at cmake time:  cmake .. -DDATABASE_DIR=/path/to/database
+if(NOT DEFINED DATABASE_DIR)
+    set(DATABASE_DIR "${CMAKE_SOURCE_DIR}/../database")
+endif()
+get_filename_component(DATABASE_DIR "${DATABASE_DIR}" ABSOLUTE)
 
-# Required for Qt's code-generation tools (moc, uic, rcc)
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTOUIC ON)
-set(CMAKE_AUTORCC ON)
-
-# ── fmt ───────────────────────────────────────────────────────────────────────
+# ── FetchContent dependencies ────────────────────────────────────────────────
 include(FetchContent)
 
-FetchContent_Declare(
-  fmt
-  GIT_REPOSITORY https://github.com/fmtlib/fmt
-  GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
-FetchContent_MakeAvailable(fmt)
-
-# ── cfparser static library ──────────────────────────────────────────────────
-add_subdirectory(cfparser)
-
-# ── Third-party: CAENHVWrapper ────────────────────────────────────────────────
-set(CAEN_LIB_DIR ${CMAKE_SOURCE_DIR}/caen_lib)
-
-# Import the pre-built shared library so CMake knows about it
-add_library(caenhvwrapper SHARED IMPORTED)
-set_target_properties(caenhvwrapper PROPERTIES
-    IMPORTED_LOCATION ${CAEN_LIB_DIR}/libcaenhvwrapper.so
-    INTERFACE_INCLUDE_DIRECTORIES ${CAEN_LIB_DIR}
+# nlohmann/json (header-only)
+FetchContent_Declare(json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
 )
 
-# ── caen_channel static helper library ───────────────────────────────────────
-add_library(caen_channel STATIC
-    caen_lib/caen_channel.cpp
-)
-target_include_directories(caen_channel PUBLIC
-    ${CAEN_LIB_DIR}
-)
-target_link_libraries(caen_channel PUBLIC caenhvwrapper)
-# fault_logger.h and fault_tracker.h are header-only in caen_lib;
-# no extra source files needed — they're found via the PUBLIC include dir.
-
-# ── Main executable ───────────────────────────────────────────────────────────
-add_executable(prad2hvmon
-    src/prad2hvmon.cpp
-    src/file_fault_logger.cpp
-    src/hv_monitor.h      # listed so AUTOMOC processes the Q_OBJECT macro
-    src/booster_monitor.h  # likewise – BoosterPoller & BoosterMonitor Q_OBJECTs
-)
-target_include_directories(prad2hvmon PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CAEN_LIB_DIR}
+# fmt (already used in the original project)
+FetchContent_Declare(fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG        10.2.1
+    GIT_SHALLOW    TRUE
 )
 
-# Pass the resource directory so the binary can locate monitor.html at runtime
-target_compile_definitions(prad2hvmon PRIVATE
-    RESOURCE_DIR="${CMAKE_SOURCE_DIR}/resources"
-    DATABASE_DIR="${CMAKE_SOURCE_DIR}/database"
+# websocketpp (header-only)
+FetchContent_Declare(websocketpp
+    GIT_REPOSITORY https://github.com/zaphoyd/websocketpp.git
+    GIT_TAG        0.8.2
+    GIT_SHALLOW    TRUE
 )
 
-target_link_libraries(prad2hvmon PRIVATE
-    caen_channel
-    caenhvwrapper
-    cfparser
-    Qt5::Core
-    Qt5::Widgets
-    Qt5::WebEngineWidgets
-    Qt5::WebChannel
-    Qt5::Network       # QTcpSocket (BoosterPoller)
+# standalone Asio (header-only, no Boost)
+FetchContent_Declare(asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG        asio-1-30-2
+    GIT_SHALLOW    TRUE
+)
+
+FetchContent_MakeAvailable(json fmt websocketpp asio)
+
+# Asio doesn't provide a CMake target — create an interface library
+add_library(asio_standalone INTERFACE)
+target_include_directories(asio_standalone INTERFACE
+    ${asio_SOURCE_DIR}/asio/include
+)
+target_compile_definitions(asio_standalone INTERFACE
+    ASIO_STANDALONE
+)
+
+# websocketpp needs to find Asio headers
+add_library(websocketpp_lib INTERFACE)
+target_include_directories(websocketpp_lib INTERFACE
+    ${websocketpp_SOURCE_DIR}
+)
+target_link_libraries(websocketpp_lib INTERFACE asio_standalone)
+
+# ── CAEN HV wrapper library ─────────────────────────────────────────────────
+# The original project's caen_lib — we link against it.
+# Adjust CAEN_LIB_DIR if your caen_lib is elsewhere.
+if(NOT DEFINED CAEN_LIB_DIR)
+    set(CAEN_LIB_DIR "${CMAKE_SOURCE_DIR}/../caen_lib")
+endif()
+get_filename_component(CAEN_LIB_DIR "${CAEN_LIB_DIR}" ABSOLUTE)
+
+# CAEN sources (same files used by the original project)
+file(GLOB CAEN_SOURCES "${CAEN_LIB_DIR}/*.cpp")
+
+add_library(caen_lib STATIC ${CAEN_SOURCES})
+target_include_directories(caen_lib PUBLIC ${CAEN_LIB_DIR})
+# Link against the vendor shared library
+find_library(CAENHVWRAPPER_LIB caenhvwrapper
+    PATHS ${CAEN_LIB_DIR} /usr/lib /usr/local/lib
+)
+if(CAENHVWRAPPER_LIB)
+    target_link_libraries(caen_lib PUBLIC ${CAENHVWRAPPER_LIB})
+else()
+    message(WARNING "libcaenhvwrapper.so not found — link may fail")
+endif()
+
+# ── Daemon executable ────────────────────────────────────────────────────────
+add_executable(prad2hvd
+    src/main.cpp
+    # fault logger (pure C++, no Qt — reuse from original project)
+    ${CMAKE_SOURCE_DIR}/../src/file_fault_logger.cpp
+)
+
+target_include_directories(prad2hvd PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/../include        # fault_logger.h, fault_tracker.h
+)
+
+target_compile_definitions(prad2hvd PRIVATE
+    DATABASE_DIR="${DATABASE_DIR}"
+)
+
+target_link_libraries(prad2hvd PRIVATE
+    caen_lib
+    nlohmann_json::nlohmann_json
     fmt::fmt
-    stdc++fs           # std::filesystem (GCC < 9 / Clang < 9)
+    websocketpp_lib
+    asio_standalone
+    pthread
 )
-
-# Qt WebEngine requires a GUI application type on some platforms
-set_target_properties(prad2hvmon PROPERTIES
-    WIN32_EXECUTABLE OFF   # keep console output on Windows during dev
-)
-
-# ── RPATH: find libcaenhvwrapper.so at runtime ────────────────────────────────
-set_target_properties(prad2hvmon PROPERTIES
-    BUILD_RPATH   ${CAEN_LIB_DIR}
-    INSTALL_RPATH ${CAEN_LIB_DIR}
-    INSTALL_RPATH_USE_LINK_PATH ON
-)
-
-# ── Install the HTML dashboard alongside the binary ──────────────────────────
-install(FILES
-    resources/monitor.html
-    resources/monitor.css
-    resources/monitor.js
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/resources)
-
-install(FILES
-    database/crates.json
-    database/hycal_modules.json
-    database/gui_config.json
-    database/daq_map.json
-    database/error_ignore.json
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/database)

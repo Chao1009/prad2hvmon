@@ -1,0 +1,9 @@
+{
+    "default": 2.0,
+    "rules": [
+        { "pattern": "W*",       "max_dv": 3.0 },
+        { "pattern": "G*",       "max_dv": 3.0 },
+        { "pattern": "PRIMARY*", "max_dv": 5.0 },
+        { "pattern": "LMS*",     "max_dv": 1.0 }
+    ]
+}
