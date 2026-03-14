@@ -9,7 +9,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Points to the directory containing crates.json, hycal_modules.json, etc.
 # Override at cmake time:  cmake .. -DDATABASE_DIR=/path/to/database
 if(NOT DEFINED DATABASE_DIR)
-    set(DATABASE_DIR "${CMAKE_SOURCE_DIR}/../database")
+    set(DATABASE_DIR "${CMAKE_SOURCE_DIR}/database")
 endif()
 get_filename_component(DATABASE_DIR "${DATABASE_DIR}" ABSOLUTE)
 
@@ -63,38 +63,41 @@ target_include_directories(websocketpp_lib INTERFACE
 target_link_libraries(websocketpp_lib INTERFACE asio_standalone)
 
 # ── CAEN HV wrapper library ─────────────────────────────────────────────────
-# The original project's caen_lib — we link against it.
-# Adjust CAEN_LIB_DIR if your caen_lib is elsewhere.
-if(NOT DEFINED CAEN_LIB_DIR)
-    set(CAEN_LIB_DIR "${CMAKE_SOURCE_DIR}/../caen_lib")
-endif()
-get_filename_component(CAEN_LIB_DIR "${CAEN_LIB_DIR}" ABSOLUTE)
+set(CAEN_LIB_DIR "${CMAKE_SOURCE_DIR}/caen_lib")
 
-# CAEN sources (same files used by the original project)
-file(GLOB CAEN_SOURCES "${CAEN_LIB_DIR}/*.cpp")
-
-add_library(caen_lib STATIC ${CAEN_SOURCES})
+add_library(caen_lib STATIC
+    ${CAEN_LIB_DIR}/caen_channel.cpp
+)
 target_include_directories(caen_lib PUBLIC ${CAEN_LIB_DIR})
+
 # Link against the vendor shared library
 find_library(CAENHVWRAPPER_LIB caenhvwrapper
     PATHS ${CAEN_LIB_DIR} /usr/lib /usr/local/lib
+    NO_DEFAULT_PATH
 )
+if(NOT CAENHVWRAPPER_LIB)
+    # Fallback: use the .so directly from caen_lib/
+    if(EXISTS "${CAEN_LIB_DIR}/libcaenhvwrapper.so")
+        set(CAENHVWRAPPER_LIB "${CAEN_LIB_DIR}/libcaenhvwrapper.so")
+        message(STATUS "Using libcaenhvwrapper.so from ${CAEN_LIB_DIR}")
+    else()
+        message(WARNING "libcaenhvwrapper.so not found — link may fail")
+    endif()
+endif()
 if(CAENHVWRAPPER_LIB)
     target_link_libraries(caen_lib PUBLIC ${CAENHVWRAPPER_LIB})
-else()
-    message(WARNING "libcaenhvwrapper.so not found — link may fail")
 endif()
 
 # ── Daemon executable ────────────────────────────────────────────────────────
 add_executable(prad2hvd
     src/main.cpp
-    # fault logger (pure C++, no Qt — reuse from original project)
-    ${CMAKE_SOURCE_DIR}/../src/file_fault_logger.cpp
+    src/file_fault_logger.cpp
 )
 
 target_include_directories(prad2hvd PRIVATE
     ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/../include        # fault_logger.h, fault_tracker.h
+    ${CMAKE_SOURCE_DIR}/src
+    ${CAEN_LIB_DIR}
 )
 
 target_compile_definitions(prad2hvd PRIVATE
