@@ -470,23 +470,56 @@ void CAEN_Board::ReadAllParams()
     for (const auto &pi : ch_param_info_) {
         if (!pi.isReadable()) continue;
 
+        // Check if a previous cycle already determined this param needs
+        // per-channel reads (e.g. PRIMARY channel doesn't support SVMax).
+        bool needsPerChannel = ch_param_needs_perchannel_.count(pi.name) > 0;
+
         if (pi.isFloat()) {
-            float vals[nChan];
-            int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
-            if (err == CAENHV_OK) {
-                for (int k = 0; k < nChan; ++k)
-                    channelList[k]->SetParamDirect(pi.name, vals[k]);
-            } else if (!CAEN_IsUnsupportedParam(err)) {
-                CAEN_ShowError("HV Board Read " + pi.name, err);
+            bool bulkOK = false;
+            if (!needsPerChannel) {
+                float vals[nChan];
+                int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
+                if (err == CAENHV_OK) {
+                    for (int k = 0; k < nChan; ++k)
+                        channelList[k]->SetParamDirect(pi.name, vals[k]);
+                    bulkOK = true;
+                } else {
+                    // Mark this param for per-channel reads on future cycles
+                    ch_param_needs_perchannel_[pi.name] = true;
+                }
+            }
+            if (!bulkOK) {
+                // Per-channel fallback: handles boards where some channels
+                // (e.g. PRIMARY ch 0) don't support a param that others do.
+                for (int k = 0; k < nChan; ++k) {
+                    float val;
+                    unsigned short chk = k;
+                    int err2 = CAENHV_GetChParam(handle, slot, pi.name.c_str(), 1, &chk, &val);
+                    if (err2 == CAENHV_OK)
+                        channelList[k]->SetParamDirect(pi.name, val);
+                }
             }
         } else if (pi.isUInt()) {
-            unsigned int vals[nChan];
-            int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
-            if (err == CAENHV_OK) {
-                for (int k = 0; k < nChan; ++k)
-                    channelList[k]->SetParamDirect(pi.name, vals[k]);
-            } else if (!CAEN_IsUnsupportedParam(err)) {
-                CAEN_ShowError("HV Board Read " + pi.name, err);
+            bool bulkOK = false;
+            if (!needsPerChannel) {
+                unsigned int vals[nChan];
+                int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
+                if (err == CAENHV_OK) {
+                    for (int k = 0; k < nChan; ++k)
+                        channelList[k]->SetParamDirect(pi.name, vals[k]);
+                    bulkOK = true;
+                } else {
+                    ch_param_needs_perchannel_[pi.name] = true;
+                }
+            }
+            if (!bulkOK) {
+                for (int k = 0; k < nChan; ++k) {
+                    unsigned int val;
+                    unsigned short chk = k;
+                    int err2 = CAENHV_GetChParam(handle, slot, pi.name.c_str(), 1, &chk, &val);
+                    if (err2 == CAENHV_OK)
+                        channelList[k]->SetParamDirect(pi.name, val);
+                }
             }
         }
     }

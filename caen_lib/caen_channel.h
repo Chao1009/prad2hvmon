@@ -171,6 +171,10 @@ private:
     // Board-level parameter values (populated by ReadAllParams)
     std::unordered_map<std::string, ParamValue> bd_params_;
 
+    // Params where bulk read fails (e.g. PRIMARY ch doesn't support SVMax).
+    // These fall back to per-channel reads on every poll cycle.
+    std::unordered_map<std::string, bool> ch_param_needs_perchannel_;
+
 public:
     CAEN_Board(CAEN_Crate *mo)
         : mother(mo), slot(-1), nChan(0), serNum(0), fmwLSB(0), fmwMSB(0), primary(-1)
