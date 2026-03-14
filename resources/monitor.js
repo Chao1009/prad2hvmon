@@ -873,7 +873,7 @@ function updateMuteButton() {
     } else {
         btn.classList.add('alarming');
         btn.classList.remove('muted');
-        btn.textContent = '🔔 Alarm';
+        btn.textContent = '⚠ HV Fault';
         btn.title = 'Faults detected — click to silence';
     }
 }
