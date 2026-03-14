@@ -26,6 +26,7 @@ let boosterByName   = {};   // modName ('Booster1'…) → live booster data
 let boosterDirty    = false;
 let boosterConnected  = false;  // whether we have an active TCP connection to boosters
 let boosterConnecting = false;  // true between Connect click and first real poll result
+let boosterSeenClean  = false;  // true after seeing a "clean" disconnect snapshot (all disconnected, no errors)
 
 // Geometry map state
 let geoTransform = { x: 0, y: 0, scale: 1 };
@@ -70,15 +71,33 @@ document.addEventListener('DOMContentLoaded', () => {
             boosterMonitor.boosterUpdated.connect(jsonStr => {
                 boosterSupplies = JSON.parse(jsonStr);
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
-                // Clear "connecting" state only when a real connection attempt
-                // has completed — at least one supply connected or errored.
-                // The disconnect snapshot (all disconnected, no errors) must NOT
-                // clear this flag, otherwise Retry shows a brief "Offline" flash.
+                // Two-phase "connecting" detection for Retry robustness:
+                //
+                // On Retry, the worker thread queue may look like:
+                //   [stale doPoll] → [disconnectAll] → [connectAll → doPoll]
+                //
+                // Phase 1: wait for the "clean" disconnect snapshot (all disconnected,
+                //          no errors).  Stale poll snapshots (with errors from the
+                //          previous attempt) are ignored during this phase.
+                // Phase 2: wait for the first real poll result (connected or errored).
+                //          This is the outcome of our connectAll request.
+                //
+                // For initial Connect (no Retry), boosterSeenClean is pre-set to
+                // true so we skip Phase 1 and go straight to Phase 2.
                 if (boosterConnecting) {
-                    const attemptDone = boosterSupplies.some(s => s.connected || s.error);
-                    if (attemptDone) {
-                        boosterConnecting = false;
-                        updateBoosterHeaderButtons();
+                    if (!boosterSeenClean) {
+                        // Phase 1: look for the disconnect snapshot
+                        const isClean = boosterSupplies.every(s => !s.connected && !s.error);
+                        if (isClean) boosterSeenClean = true;
+                        // ignore stale poll snapshots (with errors) — don't clear boosterConnecting
+                    } else {
+                        // Phase 2: look for a real poll result
+                        const attemptDone = boosterSupplies.some(s => s.connected || s.error);
+                        if (attemptDone) {
+                            boosterConnecting = false;
+                            boosterSeenClean  = false;
+                            updateBoosterHeaderButtons();
+                        }
                     }
                 }
                 boosterDirty = true;
@@ -1676,6 +1695,7 @@ function initBoosterTab() {
     document.getElementById('btn-booster-connect').addEventListener('click', () => {
         if (!boosterMonitor) return;
         boosterConnecting = true;
+        boosterSeenClean  = true;   // no disconnect needed — skip Phase 1
         setBoosterConnected(true);
         updateBoosterHeaderButtons();
         // Force immediate re-render so cards show "Connecting…"
@@ -1686,11 +1706,14 @@ function initBoosterTab() {
     // Retry button (in header bar) — disconnect then immediately reconnect
     document.getElementById('btn-booster-retry').addEventListener('click', () => {
         if (!boosterMonitor || boosterConnecting) return;
-        boosterMonitor.disconnectAll();
         boosterConnecting = true;
+        boosterSeenClean  = false;  // wait for disconnect snapshot (Phase 1)
         updateBoosterHeaderButtons();
+        // Clear local errors so cards show "Connecting…" immediately
+        boosterSupplies.forEach(s => { s.connected = false; s.error = ''; });
         boosterDirty = true;
         renderBoosterCards();
+        boosterMonitor.disconnectAll();
         boosterMonitor.connectAll();
     });
     // Disconnect button (in header bar)
@@ -1885,7 +1908,7 @@ function wireBoosterCard(card, idx) {
 }
 
 function boosterCardClass(s) {
-    if (boosterConnecting && !s.connected) return '';  // neutral during connecting
+    if (boosterConnecting) return '';  // neutral during connecting
     if (!s.connected || s.error) return 'card-fault';
     if (s.on && s.mode === 'CC')  return 'card-warn';
     if (s.on)                      return 'card-on';
@@ -1893,7 +1916,7 @@ function boosterCardClass(s) {
 }
 
 function boosterConnBadgeHtml(s) {
-    if (boosterConnecting && !s.connected && !s.error)
+    if (boosterConnecting)
         return '<span class="conn-connecting">Connecting…</span>';
     if (s.connected) return '<span class="conn-ok">Connected</span>';
     if (s.error)     return '<span class="conn-err">Error</span>';
@@ -1901,7 +1924,7 @@ function boosterConnBadgeHtml(s) {
 }
 
 function boosterStatusHtml(s) {
-    if (boosterConnecting && !s.connected && !s.error)
+    if (boosterConnecting)
         return '<span class="bst-connecting">Connecting…</span>';
     if (s.error) return '<span class="bst-error">' + escHtml(s.error) + '</span>';
     if (s.connected) return '<span class="bst-ok">Connected</span>';
@@ -1915,7 +1938,7 @@ function boosterModeBadge(mode) {
 }
 
 function boosterPwrBadge(s) {
-    if (boosterConnecting && !s.connected) return '<span class="st-off">—</span>';
+    if (boosterConnecting) return '<span class="st-off">—</span>';
     if (!s.connected) return '<span class="st-off">OFFLINE</span>';
     return s.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>';
 }
