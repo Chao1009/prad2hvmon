@@ -100,25 +100,32 @@ private:
     unsigned char fmwLSB;
     unsigned char fmwMSB;
     int primary;
+    float hvMax;
+    float temp;
+    unsigned int bdStatus;
     std::vector<CAEN_Channel*> channelList;
 
 public:
     // constructor
     CAEN_Board(CAEN_Crate *mo)
-    : mother(mo), slot(-1), nChan(0), serNum(0), fmwLSB(0), fmwMSB(0), primary(-1)
+    : mother(mo), slot(-1), nChan(0), serNum(0), fmwLSB(0), fmwMSB(0), primary(-1),
+      hvMax(NAN), temp(NAN), bdStatus(0)
     {}
     CAEN_Board(CAEN_Crate *mo, std::string m, std::string d, unsigned short s, unsigned short n,
                unsigned short ser, unsigned char lsb, unsigned char msb)
-    : mother(mo), model(m), desc(d), slot(s), nChan(n), serNum(ser), fmwLSB(lsb), fmwMSB(msb), primary(-1)
+    : mother(mo), model(m), desc(d), slot(s), nChan(n), serNum(ser), fmwLSB(lsb), fmwMSB(msb), primary(-1),
+      hvMax(NAN), temp(NAN), bdStatus(0)
     {}
     CAEN_Board(CAEN_Crate *mo, char* m, char* d, unsigned short s, unsigned short n,
                unsigned short ser, unsigned char lsb, unsigned char msb)
-    : mother(mo), model(m), desc(d), slot(s), nChan(n), serNum(ser), fmwLSB(lsb), fmwMSB(msb), primary(-1)
+    : mother(mo), model(m), desc(d), slot(s), nChan(n), serNum(ser), fmwLSB(lsb), fmwMSB(msb), primary(-1),
+      hvMax(NAN), temp(NAN), bdStatus(0)
     {}
 
     virtual ~CAEN_Board();
 
     void ReadBoardMap();
+    void ReadBoardParams();
     void ReadVoltage();
     void CheckStatus();
     void SetPower(const bool &on_off);
@@ -136,6 +143,10 @@ public:
     const unsigned short &GetSerialNum() {return serNum;}
     unsigned short GetFirmware();
     const int &GetPrimaryChannelNumber() {return primary;}
+    float GetHVMax() const { return hvMax; }
+    float GetTemp() const { return temp; }
+    unsigned int GetBdStatus() const { return bdStatus; }
+    std::string GetBdStatusString() const;
  };
 
 class CAEN_Crate

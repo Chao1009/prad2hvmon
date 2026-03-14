@@ -333,6 +333,52 @@ void CAEN_Board::ReadBoardMap()
         primary = 0;
 }
 
+void CAEN_Board::ReadBoardParams()
+{
+    int handle = mother->GetHandle();
+    unsigned short slotList[1] = { slot };
+    float val;
+    unsigned int uval;
+    int err;
+
+    err = CAENHV_GetBdParam(handle, 1, slotList, "HVMax", &val);
+    if (err == CAENHV_OK) hvMax = val;
+    else CAEN_ShowError("HV Board Read HVMax", err);
+
+    err = CAENHV_GetBdParam(handle, 1, slotList, "Temp", &val);
+    if (err == CAENHV_OK) temp = val;
+    else CAEN_ShowError("HV Board Read Temp", err);
+
+    err = CAENHV_GetBdParam(handle, 1, slotList, "BdStatus", &uval);
+    if (err == CAENHV_OK) bdStatus = uval;
+    else CAEN_ShowError("HV Board Read BdStatus", err);
+}
+
+std::string CAEN_Board::GetBdStatusString() const
+{
+    if (bdStatus == 0) return "OK|normal";
+
+    static const struct { int bit; const char *abbr; const char *full; } flags[] = {
+        { 0, "PWRF",  "power-fail"              },
+        { 1, "FWCK",  "firmware checksum error"  },
+        { 2, "HVCAL", "HV calibration error"     },
+        { 3, "TCAL",  "temperature cal error"    },
+        { 4, "UNDRT", "under-temperature"        },
+        { 5, "OVERT", "over-temperature"         },
+    };
+
+    std::string abbrs, detail;
+    for (const auto &f : flags) {
+        if (bdStatus & (1u << f.bit)) {
+            if (!abbrs.empty())  abbrs  += ' ';
+            if (!detail.empty()) detail += ", ";
+            abbrs  += f.abbr;
+            detail += f.full;
+        }
+    }
+    return abbrs + '|' + detail;
+}
+
 void CAEN_Board::ReadVoltage()
 {
     int err;
@@ -609,6 +655,7 @@ void CAEN_Crate::ReadCrateMap()
 
             CAEN_Board *newBoard = new CAEN_Board(this, m, d, slot, NbofChList[slot], serNumList[slot], fmwMinList[slot], fmwMaxList[slot]);
             newBoard->ReadBoardMap();
+            newBoard->ReadBoardParams();
 
             slot_map[slot] = boardList.size();
             boardList.push_back(newBoard);
@@ -665,8 +712,10 @@ void CAEN_Crate::CheckStatus()
 
 void CAEN_Crate::ReadVoltage()
 {
-    for(auto &board : boardList)
+    for(auto &board : boardList) {
         board->ReadVoltage();
+        board->ReadBoardParams();
+    }
 }
 
 void CAEN_Crate::SetPower(const bool &on_off)

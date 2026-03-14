@@ -54,6 +54,7 @@
     <!-- Tab bar -->
     <div id="tab-bar">
         <button class="tab-btn active" data-tab="table-tab">Channel Table</button>
+        <button class="tab-btn" data-tab="board-tab">Board Status</button>
         <button class="tab-btn" data-tab="geo-tab">HyCal Geometry</button>
         <button class="tab-btn" data-tab="booster-tab">Booster HV</button>
     </div>
@@ -101,6 +102,26 @@
                     <th>Pwr</th>
                 </tr></thead>
                 <tbody id="ch-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ═══════════════ BOARD STATUS TAB ═══════════════ -->
+    <div class="tab-content" id="board-tab">
+        <div id="board-table-wrap">
+            <table id="board-table">
+                <thead><tr>
+                    <th>Crate</th>
+                    <th>Slot</th>
+                    <th>Model</th>
+                    <th>Ch</th>
+                    <th>Serial</th>
+                    <th>FW</th>
+                    <th>HVMax (V)</th>
+                    <th>Temp (°C)</th>
+                    <th>Status</th>
+                </tr></thead>
+                <tbody id="board-body"></tbody>
             </table>
         </div>
     </div>

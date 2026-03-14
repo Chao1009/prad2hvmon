@@ -194,6 +194,7 @@ public slots:
 signals:
     // Emitted on the worker thread; Qt queues delivery to the GUI thread.
     void snapshotReady(const QString &jsonData);
+    void boardSnapshotReady(const QString &jsonData);
 
 private slots:
     void doPoll()
@@ -210,6 +211,7 @@ private slots:
         fault_tracker_.endCycle();
 
         emit snapshotReady(buildSnapshot());
+        emit boardSnapshotReady(buildBoardSnapshot());
     }
 
 private:
@@ -252,6 +254,27 @@ private:
         return QString(QJsonDocument(arr).toJson(QJsonDocument::Compact));
     }
 
+    QString buildBoardSnapshot()
+    {
+        QJsonArray arr;
+        for (auto *cr : crates_) {
+            for (auto *bd : cr->GetBoardList()) {
+                QJsonObject o;
+                o["crate"]    = QString::fromStdString(cr->GetName());
+                o["slot"]     = bd->GetSlot();
+                o["model"]    = QString::fromStdString(bd->GetModel());
+                o["nChan"]    = bd->GetSize();
+                o["serial"]   = bd->GetSerialNum();
+                o["firmware"] = bd->GetFirmware();
+                o["hvmax"]    = std::isnan(bd->GetHVMax()) ? QJsonValue::Null : QJsonValue(static_cast<double>(bd->GetHVMax()));
+                o["temp"]     = std::isnan(bd->GetTemp())  ? QJsonValue::Null : QJsonValue(static_cast<double>(bd->GetTemp()));
+                o["bdstatus"] = QString::fromStdString(bd->GetBdStatusString());
+                arr.append(o);
+            }
+        }
+        return QString(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+    }
+
     QTimer *timer_ = nullptr;   // created in startPolling() on the worker thread
     int     poll_interval_ms_;
     std::vector<std::pair<std::string, std::string>> crate_defs_;
@@ -284,6 +307,9 @@ public:
         connect(poller_, &HVPoller::snapshotReady,
                 this,    &HVMonitor::onSnapshotReady,
                 Qt::QueuedConnection);
+        connect(poller_, &HVPoller::boardSnapshotReady,
+                this,    &HVMonitor::onBoardSnapshotReady,
+                Qt::QueuedConnection);
     }
 
 public slots:
@@ -314,6 +340,11 @@ public slots:
     QString readAll()
     {
         return cachedSnapshot_.isEmpty() ? QStringLiteral("[]") : cachedSnapshot_;
+    }
+
+    QString readBoards()
+    {
+        return cachedBoardSnapshot_.isEmpty() ? QStringLiteral("[]") : cachedBoardSnapshot_;
     }
 
     // ── JS-callable: static file reads (GUI thread, no hardware) ────────
@@ -396,6 +427,7 @@ public slots:
 signals:
     // Forwarded to JS via QWebChannel.
     void channelsUpdated(const QString &jsonData);
+    void boardsUpdated(const QString &jsonData);
     // Emitted when JS requests a detached window.
     void detachRequested(const QString &tabId);
 
@@ -405,6 +437,11 @@ private slots:
     {
         cachedSnapshot_ = json;
         emit channelsUpdated(json);
+    }
+    void onBoardSnapshotReady(const QString &json)
+    {
+        cachedBoardSnapshot_ = json;
+        emit boardsUpdated(json);
     }
 
 private:
@@ -421,6 +458,7 @@ private:
 
     HVPoller *poller_;
     QString   cachedSnapshot_;
+    QString   cachedBoardSnapshot_;
     QString   module_json_path_;
     QString   gui_config_path_;
     QString   daq_map_path_;

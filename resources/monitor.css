@@ -280,6 +280,34 @@ tr.primary-row td {
     margin-left: 6px;
     vertical-align: middle;
 }
+
+/* ─── Board Status table ─────────────────────────────────────────── */
+#board-tab { display:flex; flex-direction:column; }
+#board-table-wrap { overflow-y:auto; flex:1; min-height:0; }
+#board-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+#board-table thead { position:sticky; top:0; z-index:2; }
+#board-table thead th {
+    font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:0.1em;
+    color:var(--text-dim); background:var(--bg-card-alt); border-bottom:1px solid var(--border);
+    padding:8px 12px; text-align:left; white-space:nowrap;
+}
+#board-table tbody tr { border-bottom:1px solid var(--border); transition:background var(--transition); }
+#board-table tbody tr:hover { background:var(--bg-hover); }
+#board-table tbody td { font-family:var(--mono); font-size:12px; padding:6px 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#board-table th:nth-child(1),#board-table td:nth-child(1){width:14%}
+#board-table th:nth-child(2),#board-table td:nth-child(2){width:7%}
+#board-table th:nth-child(3),#board-table td:nth-child(3){width:12%}
+#board-table th:nth-child(4),#board-table td:nth-child(4){width:6%}
+#board-table th:nth-child(5),#board-table td:nth-child(5){width:10%}
+#board-table th:nth-child(6),#board-table td:nth-child(6){width:8%}
+#board-table th:nth-child(7),#board-table td:nth-child(7){width:12%;text-align:right}
+#board-table th:nth-child(8),#board-table td:nth-child(8){width:12%;text-align:right}
+#board-table th:nth-child(9),#board-table td:nth-child(9){width:19%}
+.bd-ok   { color:var(--green); }
+.bd-fault { color:var(--red); }
+.bd-temp-warn { color:var(--amber); }
+.bd-temp-ok   { color:var(--text); }
+
 /* ─── Bulk power buttons ──────────────────────────────────────────── */
 .bulk-pwr-group { display:flex; gap:4px; margin-left:8px; }
 .bulk-btn {
