@@ -43,6 +43,7 @@ function openBoosterPopup(mod) {
     vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
+    btnSetV.style.display = 'none';
     rowV.append(vsetInput, btnSetV);
 
     const rowI = document.createElement('div');
@@ -52,6 +53,7 @@ function openBoosterPopup(mod) {
     isetInput.placeholder = 'ISet (A)';
     const btnSetI = document.createElement('button');
     btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
+    btnSetI.style.display = 'none';
     rowI.append(isetInput, btnSetI);
 
     const rowPwr = document.createElement('div');
@@ -94,10 +96,14 @@ function openBoosterPopup(mod) {
                 html += `<span class="plbl">Mode</span><span class="pval">${modeBadge}</span>`;
                 html += `<span class="plbl">Pwr</span><span class="pval">${bs.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>'}</span>`;
                 if (bs.error) html += `<span class="plbl">Error</span><span class="pval" style="color:var(--red)">${escHtml(bs.error)}</span>`;
-                if (vsetInput.value === '' && bs.vset != null)
+                if (vsetInput.value === '' && bs.vset != null) {
                     vsetInput.value = bs.vset.toFixed(2);
-                if (isetInput.value === '' && bs.iset != null)
+                    vsetInput.dataset.orig = vsetInput.value;
+                }
+                if (isetInput.value === '' && bs.iset != null) {
                     isetInput.value = bs.iset.toFixed(3);
+                    isetInput.dataset.orig = isetInput.value;
+                }
             }
         } else {
             html += `<span class="plbl">Link</span><span class="pval" style="color:var(--text-dim)">waiting…</span>`;
@@ -124,6 +130,7 @@ function openBoosterPopup(mod) {
 
     header.querySelector('.popup-close').addEventListener('click', () => closeModPopup(mod.n));
 
+    btnSetV.addEventListener('mousedown', e => e.preventDefault());
     btnSetV.addEventListener('click', () => {
         if (!boosterMonitor || !expertMode) return;
         const v = parseFloat(vsetInput.value);
@@ -132,10 +139,22 @@ function openBoosterPopup(mod) {
         const idx = supplyIdx(); if (idx < 0) return;
         boosterMonitor.setVoltage(idx, v);
         const bs = boosterByName[mod.n]; if (bs) bs.vset = v;
+        vsetInput.dataset.orig = vsetInput.value;
+        btnSetV.style.display = 'none';
         boosterDirty = true; refresh();
     });
+    vsetInput.addEventListener('input', () => {
+        btnSetV.style.display = vsetInput.value !== (vsetInput.dataset.orig || '') ? '' : 'none';
+    });
     vsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetV.click(); });
+    vsetInput.addEventListener('blur', () => {
+        setTimeout(() => {
+            vsetInput.value = vsetInput.dataset.orig || '';
+            btnSetV.style.display = 'none';
+        }, 150);
+    });
 
+    btnSetI.addEventListener('mousedown', e => e.preventDefault());
     btnSetI.addEventListener('click', () => {
         if (!boosterMonitor || !expertMode) return;
         const v = parseFloat(isetInput.value);
@@ -144,9 +163,20 @@ function openBoosterPopup(mod) {
         const idx = supplyIdx(); if (idx < 0) return;
         boosterMonitor.setCurrent(idx, v);
         const bs = boosterByName[mod.n]; if (bs) bs.iset = v;
+        isetInput.dataset.orig = isetInput.value;
+        btnSetI.style.display = 'none';
         boosterDirty = true; refresh();
     });
+    isetInput.addEventListener('input', () => {
+        btnSetI.style.display = isetInput.value !== (isetInput.dataset.orig || '') ? '' : 'none';
+    });
     isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
+    isetInput.addEventListener('blur', () => {
+        setTimeout(() => {
+            isetInput.value = isetInput.dataset.orig || '';
+            btnSetI.style.display = 'none';
+        }, 150);
+    });
 
     btnOn.addEventListener('click', () => {
         if (!boosterMonitor) return;
@@ -314,17 +344,17 @@ function boosterCardInnerHtml(s) {
 <div class="booster-controls">
   <div class="booster-controls-vset">
     <input class="booster-vset-input" type="text" inputmode="decimal"
-           placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input
+           placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input data-orig="${escHtml(vsetVal)}"
            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
-    <button class="booster-btn b-btn-set" data-set-v
-            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set V</button>
+    <button class="booster-btn b-btn-set" data-set-v style="display:none"
+            ${!expertMode ? 'disabled' : ''}>Set V</button>
   </div>
   <div class="booster-controls-iset">
     <input class="booster-iset-input" type="text" inputmode="decimal"
-           placeholder="ISet (A)" value="${escHtml(isetVal)}" data-iset-input
+           placeholder="ISet (A)" value="${escHtml(isetVal)}" data-iset-input data-orig="${escHtml(isetVal)}"
            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
-    <button class="booster-btn b-btn-seti" data-set-i
-            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">Set I</button>
+    <button class="booster-btn b-btn-seti" data-set-i style="display:none"
+            ${!expertMode ? 'disabled' : ''}>Set I</button>
     <span class="booster-controls-spacer"></span>
     <button class="booster-btn b-btn-on"  data-on>ON</button>
     <button class="booster-btn b-btn-off" data-off>OFF</button>
@@ -378,33 +408,61 @@ function updateBoosterCard(card, idx, s) {
 }
 
 function wireBoosterCard(card, idx) {
-    card.querySelector('[data-set-v]').addEventListener('click', () => {
+    const vsetInp = card.querySelector('[data-vset-input]');
+    const setVBtn = card.querySelector('[data-set-v]');
+    const isetInp = card.querySelector('[data-iset-input]');
+    const setIBtn = card.querySelector('[data-set-i]');
+
+    // VSet: show button on dirty, apply on click/Enter, revert on blur
+    vsetInp.addEventListener('input', () => {
+        setVBtn.style.display = vsetInp.value !== (vsetInp.dataset.orig || '') ? '' : 'none';
+    });
+    vsetInp.addEventListener('keydown', e => { if (e.key === 'Enter') setVBtn.click(); });
+    vsetInp.addEventListener('blur', () => {
+        setTimeout(() => {
+            vsetInp.value = vsetInp.dataset.orig || '';
+            setVBtn.style.display = 'none';
+        }, 150);
+    });
+    setVBtn.addEventListener('mousedown', e => e.preventDefault());
+    setVBtn.addEventListener('click', () => {
         if (!boosterMonitor || !expertMode) return;
-        const inp = card.querySelector('[data-vset-input]');
-        const v = parseFloat(inp.value);
-        if (isNaN(v) || v < 0) { inp.style.borderColor = 'var(--red)'; return; }
-        inp.style.borderColor = '';
+        const v = parseFloat(vsetInp.value);
+        if (isNaN(v) || v < 0) { vsetInp.style.borderColor = 'var(--red)'; return; }
+        vsetInp.style.borderColor = '';
         boosterMonitor.setVoltage(idx, v);
+        vsetInp.dataset.orig = vsetInp.value;
+        setVBtn.style.display = 'none';
     });
-    card.querySelector('[data-set-i]').addEventListener('click', () => {
+
+    // ISet: same pattern
+    isetInp.addEventListener('input', () => {
+        setIBtn.style.display = isetInp.value !== (isetInp.dataset.orig || '') ? '' : 'none';
+    });
+    isetInp.addEventListener('keydown', e => { if (e.key === 'Enter') setIBtn.click(); });
+    isetInp.addEventListener('blur', () => {
+        setTimeout(() => {
+            isetInp.value = isetInp.dataset.orig || '';
+            setIBtn.style.display = 'none';
+        }, 150);
+    });
+    setIBtn.addEventListener('mousedown', e => e.preventDefault());
+    setIBtn.addEventListener('click', () => {
         if (!boosterMonitor || !expertMode) return;
-        const inp = card.querySelector('[data-iset-input]');
-        const v = parseFloat(inp.value);
-        if (isNaN(v) || v < 0) { inp.style.borderColor = 'var(--red)'; return; }
-        inp.style.borderColor = '';
+        const v = parseFloat(isetInp.value);
+        if (isNaN(v) || v < 0) { isetInp.style.borderColor = 'var(--red)'; return; }
+        isetInp.style.borderColor = '';
         boosterMonitor.setCurrent(idx, v);
+        isetInp.dataset.orig = isetInp.value;
+        setIBtn.style.display = 'none';
     });
+
+    // ON/OFF — unchanged
     card.querySelector('[data-on]').addEventListener('click', () => {
         if (boosterMonitor) boosterMonitor.setOutput(idx, true);
     });
     card.querySelector('[data-off]').addEventListener('click', () => {
         if (boosterMonitor) boosterMonitor.setOutput(idx, false);
-    });
-    card.querySelector('[data-vset-input]').addEventListener('keydown', e => {
-        if (e.key === 'Enter') card.querySelector('[data-set-v]').click();
-    });
-    card.querySelector('[data-iset-input]').addEventListener('keydown', e => {
-        if (e.key === 'Enter') card.querySelector('[data-set-i]').click();
     });
 }
 

@@ -525,6 +525,7 @@ function openModPopup(mod) {
     vsetInput.type = 'text'; vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
+    btnSetV.style.display = 'none';
     rowV.append(vsetInput, btnSetV);
 
     const rowI = document.createElement('div');
@@ -533,6 +534,7 @@ function openModPopup(mod) {
     isetInput.type = 'text'; isetInput.placeholder = 'ISet (µA)';
     const btnSetI = document.createElement('button');
     btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
+    btnSetI.style.display = 'none';
     rowI.append(isetInput, btnSetI);
 
     const rowPwr = document.createElement('div');
@@ -572,14 +574,18 @@ function openModPopup(mod) {
             const ppSt = classifyChannel(c).badgesHtml;
             if (ppSt) html += `<span class="plbl">Status</span><span class="pval">${ppSt}</span>`;
             vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
+            vsetInput.dataset.orig = vsetInput.value;
             isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
+            isetInput.dataset.orig = isetInput.value;
         } else {
             html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
             const daqC = daqByName[mod.n];
             const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
             html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
             vsetInput.value = '';
+            vsetInput.dataset.orig = '';
             isetInput.value = '';
+            isetInput.dataset.orig = '';
         }
         grid.innerHTML = html;
         const hasChannel = !!c;
@@ -605,19 +611,48 @@ function openModPopup(mod) {
     header.querySelector('.popup-close').addEventListener('click', () => closeModPopup(mod.n));
 
     // Action buttons
+    btnSetV.addEventListener('mousedown', e => e.preventDefault()); // keep focus on input
     btnSetV.addEventListener('click', () => {
         if (!hvMonitor || !expertMode) return;
         const c = chByName[mod.n]; if (!c) return;
         const v = parseFloat(vsetInput.value); if (isNaN(v)) return;
         hvMonitor.setChannelVoltage(c.crate, c.slot, c.channel, v);
-        c.vset = v; dataDirty = true; refresh();
+        c.vset = v; dataDirty = true;
+        vsetInput.dataset.orig = vsetInput.value;
+        btnSetV.style.display = 'none';
+        refresh();
     });
+    vsetInput.addEventListener('input', () => {
+        btnSetV.style.display = vsetInput.value !== (vsetInput.dataset.orig || '') ? '' : 'none';
+    });
+    vsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetV.click(); });
+    vsetInput.addEventListener('blur', () => {
+        setTimeout(() => {
+            vsetInput.value = vsetInput.dataset.orig || '';
+            btnSetV.style.display = 'none';
+        }, 150);
+    });
+
+    btnSetI.addEventListener('mousedown', e => e.preventDefault());
     btnSetI.addEventListener('click', () => {
         if (!hvMonitor || !expertMode) return;
         const c = chByName[mod.n]; if (!c || c.iSupported === false) return;
         const v = parseFloat(isetInput.value); if (isNaN(v) || v < 0) return;
         hvMonitor.setChannelCurrent(c.crate, c.slot, c.channel, v);
-        c.iset = v; dataDirty = true; refresh();
+        c.iset = v; dataDirty = true;
+        isetInput.dataset.orig = isetInput.value;
+        btnSetI.style.display = 'none';
+        refresh();
+    });
+    isetInput.addEventListener('input', () => {
+        btnSetI.style.display = isetInput.value !== (isetInput.dataset.orig || '') ? '' : 'none';
+    });
+    isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
+    isetInput.addEventListener('blur', () => {
+        setTimeout(() => {
+            isetInput.value = isetInput.dataset.orig || '';
+            btnSetI.style.display = 'none';
+        }, 150);
     });
     btnOn.addEventListener('click', () => {
         if (!hvMonitor) return;

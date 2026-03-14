@@ -176,12 +176,15 @@ tr.primary-row td {
     padding: 1px 4px; width: 70px; text-align: right; outline: none;
 }
 .vset-inline:focus { border-color: var(--accent); }
+.vset-inline.dirty { border-color: var(--amber); }
 .vset-apply {
     font-family: var(--mono); font-size: 9px; padding: 1px 5px;
     border-radius: 3px; border: 1px solid var(--accent-dim);
     background: var(--accent-dim); color: var(--accent);
     cursor: pointer; margin-left: 2px; transition: all var(--transition);
+    display: none;  /* hidden until input is dirty */
 }
+.vset-apply.visible { display: inline-block; }
 .vset-apply:hover { background: var(--accent); color: #fff; }
 .name-inline {
     font-family: var(--mono);

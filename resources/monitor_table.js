@@ -345,10 +345,14 @@ function buildNameCell(ch, prim) {
     const badge = prim ? '<span class="primary-badge">Primary</span>' : '';
     if (expertMode) {
         return `<input class="name-inline" type="text" maxlength="12" value="${ch.name||''}"
-                     onchange="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                     data-orig="${ch.name||''}"
+                     oninput="dirtyCheck(this)"
+                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
+                     onblur="revertInline(this)"
+                     data-apply="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                    ><button class="vset-apply"
-                     onclick="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                   >\u2713</button>${badge}`;
+                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
+                   >✓</button>${badge}`;
     }
     return (ch.name||'—') + badge;
 }
@@ -356,10 +360,14 @@ function buildNameCell(ch, prim) {
 function buildVsetCell(ch) {
     if (expertMode) {
         return `<input class="vset-inline" type="text" value="${fmt(ch.vset, 2)}"
-                     onchange="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                     data-orig="${fmt(ch.vset, 2)}"
+                     oninput="dirtyCheck(this)"
+                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
+                     onblur="revertInline(this)"
+                     data-apply="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                    ><button class="vset-apply"
-                     onclick="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                   >\u2713</button>`;
+                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
+                   >✓</button>`;
     }
     return `<span style="color:var(--text-dim)">${fmt(ch.vset, 2)}</span>`;
 }
@@ -368,10 +376,14 @@ function buildSvmaxCell(ch) {
     if (ch.svmax == null) return `<span style="color:var(--text-dim)">—</span>`;
     if (expertMode) {
         return `<input class="vset-inline" type="text" value="${fmt(ch.svmax, 2)}"
-                     onchange="inlineSetSVMax('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                     data-orig="${fmt(ch.svmax, 2)}"
+                     oninput="dirtyCheck(this)"
+                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
+                     onblur="revertInline(this)"
+                     data-apply="inlineSetSVMax('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                    ><button class="vset-apply"
-                     onclick="inlineSetSVMax('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                   >\u2713</button>`;
+                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
+                   >✓</button>`;
     }
     return `<span style="color:var(--text-dim)">${fmt(ch.svmax, 2)}</span>`;
 }
@@ -382,12 +394,48 @@ function buildIsetCell(ch) {
     }
     if (expertMode) {
         return `<input class="vset-inline" type="text" value="${fmt(ch.iset, 1)}"
-                     onchange="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                     data-orig="${fmt(ch.iset, 1)}"
+                     oninput="dirtyCheck(this)"
+                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
+                     onblur="revertInline(this)"
+                     data-apply="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
                    ><button class="vset-apply"
-                     onclick="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
-                   >\u2713</button>`;
+                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
+                   >✓</button>`;
     }
     return `<span style="color:var(--text-dim)">${fmt(ch.iset, 1)}</span>`;
+}
+
+// ── Inline edit helpers (show/hide ✓ button, apply on Enter) ─────
+function dirtyCheck(input) {
+    const btn = input.nextElementSibling;
+    if (!btn || !btn.classList.contains('vset-apply')) return;
+    const dirty = input.value !== input.dataset.orig;
+    btn.classList.toggle('visible', dirty);
+    input.classList.toggle('dirty', dirty);
+}
+
+function applyInline(input) {
+    if (!input || !input.dataset.apply) return;
+    const btn = input.nextElementSibling;
+    // Execute the apply action
+    new Function(input.dataset.apply)();
+    // Update orig to new value so it's no longer dirty
+    input.dataset.orig = input.value;
+    input.classList.remove('dirty');
+    if (btn && btn.classList.contains('vset-apply')) btn.classList.remove('visible');
+}
+
+function revertInline(input) {
+    // Delay slightly so mousedown on the ✓ button fires first
+    setTimeout(() => {
+        if (document.activeElement === input) return; // still focused (shouldn't happen)
+        const btn = input.nextElementSibling;
+        if (btn && btn.classList.contains('visible')) return; // button click in progress
+        input.value = input.dataset.orig || '';
+        input.classList.remove('dirty');
+        if (btn && btn.classList.contains('vset-apply')) btn.classList.remove('visible');
+    }, 150);
 }
 
 // shownRows / totalRows are passed in by renderTable to avoid re-filtering.
