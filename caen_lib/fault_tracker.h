@@ -17,14 +17,15 @@
 //   - Names not seen during the cycle are logged as DISAPPEAR in endCycle().
 //
 // What counts as a "fault":
-//   Any non-empty status string that is NOT one of the normal states.
-//   Normal states (not logged): "", "On", "Off", "Up", "RampUp", "RampDown"
-//   (case-insensitive comparison).
+//   Any non-empty status string containing at least one token that is NOT
+//   a normal operating state.  Normal tokens: ON, OFF, RUP, RDN.
+//   CAEN format: "TOKEN TOKEN...|Detail text"  (e.g. "ON OVC|Over Current").
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "fault_logger.h"
 
 #include <string>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
@@ -83,17 +84,36 @@ public:
     }
 
 private:
+    // Determine whether a status string represents a fault condition.
+    //
+    // CAEN status format:  "TOKEN TOKEN...|Detail text"
+    //   e.g. "ON", "OFF", "RUP", "RDN", "ON OVC|Over Current"
+    //
+    // Normal (non-fault) tokens: ON, OFF, RUP, RDN
+    // Anything else (OVC, OVV, UNV, TRIP, MAXV, KILL, ILK, ...) is a fault.
+    //
+    // A status is a fault if it contains at least one non-normal token.
+    // Empty status is not a fault.
     static bool isFault(const std::string &status)
     {
         if (status.empty()) return false;
-        // Normalise to lower-case for comparison
-        std::string s = status;
-        std::transform(s.begin(), s.end(), s.begin(),
-                       [](unsigned char c){ return std::tolower(c); });
-        // These are normal operating states — not faults
-        return s != "on" && s != "off" && s != "up"
-            && s != "rampup" && s != "rampdown"
-            && s != "ramp up" && s != "ramp down";
+
+        // Take only the abbreviation part (before '|' if present)
+        std::string abbr = status;
+        auto pipe = abbr.find('|');
+        if (pipe != std::string::npos) abbr = abbr.substr(0, pipe);
+
+        // Tokenise by spaces
+        std::istringstream iss(abbr);
+        std::string token;
+        while (iss >> token) {
+            // Normalise to upper-case
+            std::transform(token.begin(), token.end(), token.begin(),
+                           [](unsigned char c){ return std::toupper(c); });
+            if (token != "ON" && token != "OFF" && token != "RUP" && token != "RDN")
+                return true;   // at least one fault token
+        }
+        return false;  // all tokens are normal operating states
     }
 
     FaultLogger *logger_ = nullptr;

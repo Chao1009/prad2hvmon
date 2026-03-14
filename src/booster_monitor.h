@@ -112,6 +112,10 @@ public slots:
             s->on   = false;
             s->mode.clear();
         }
+        // Log DISAPPEAR for any active faults since polling has stopped
+        for (auto *s : supplies_)
+            fault_tracker_.update(s->name.toStdString(), "");
+        fault_tracker_.endCycle();
         // Emit one final snapshot so the UI sees "disconnected" state
         emit snapshotReady(buildSnapshot());
     }
