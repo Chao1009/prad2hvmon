@@ -2,9 +2,11 @@
 // prad2hvmon – PRad-II High-Voltage Monitor
 //
 // Modes:
-//   gui              – launch the Qt WebEngine dashboard  (default)
-//   read  [-s file]  – one-shot console read
-//   write -f file    – restore voltages from a settings file
+//   gui                    – launch the Qt WebEngine dashboard  (default)
+//   read  [-s file.json]   – read all writable params, save to JSON
+//   write -f file.json     – restore writable params from JSON
+//   convert -f old.txt -s new.json  – convert old text format to JSON
+//   hv_params              – print discovered board/channel param info
 //
 // Author: Chao Peng (Argonne National Laboratory)
 // Date:   03/09/2026
@@ -166,11 +168,12 @@ static bool init_crates_console(const std::vector<std::pair<std::string, std::st
                                 std::map<std::string, CAEN_Crate*> &crate_map);
 static void print_channels(const std::vector<CAEN_Crate*> &crates,
                            const std::string &save_path);
-static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
+static void write_channels(const std::vector<CAEN_Crate*> &crates,
+                           const std::map<std::string, CAEN_Crate*> &crate_map,
                            const std::string &setting_path);
+static void convert_old_to_json(const std::string &old_path,
+                                const std::string &json_path);
 static void dump_board_params(const std::vector<CAEN_Crate*> &crates);
-inline void write_lines(std::ostream &out,
-                        const std::vector<std::string> &lines);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  main
@@ -188,12 +191,12 @@ int main(int argc, char *argv[])
     co.AddOpts(ConfigOption::help_message, 'h', "help");
 
     // help messages
-    co.SetDesc("usage: %0 <mode> [gui, read, write, hv_params]");
+    co.SetDesc("usage: %0 <mode> [gui, read, write, convert, hv_params]");
     co.SetDesc('c', "path to crates JSON file (default: auto-discover).");
-    co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
+    co.SetDesc('f', "path to settings file (write: JSON to restore; convert: old text input).");
     co.SetDesc('i', "path to error-ignore JSON file (default: auto-discover).");
     co.SetDesc('l', "path to voltage-limits JSON file (default: auto-discover).");
-    co.SetDesc('s', "path to save channel readings (read mode, optional).");
+    co.SetDesc('s', "path to save output (read: JSON snapshot; convert: JSON output).");
     co.SetDesc('m', "path to module geometry JSON file (GUI mode).");
     co.SetDesc('h', "show help messages.");
 
@@ -580,7 +583,21 @@ int main(int argc, char *argv[])
         return ret;
     }
 
-    // ── Console modes (read / write) ────────────────────────────────────
+    // ── Convert mode (no hardware needed) ──────────────────────────────
+    if (mode == "convert") {
+        if (setting_file.empty()) {
+            std::cerr << "ERROR: convert mode requires -f <old_settings.txt>\n";
+            return -1;
+        }
+        if (save_file.empty()) {
+            std::cerr << "ERROR: convert mode requires -s <output.json>\n";
+            return -1;
+        }
+        convert_old_to_json(setting_file, save_file);
+        return 0;
+    }
+
+    // ── Console modes (read / write / hv_params) — need hardware ────────
     std::vector<CAEN_Crate*> crates;
     std::map<std::string, CAEN_Crate*> crate_map;
 
@@ -592,11 +609,17 @@ int main(int argc, char *argv[])
     if (mode == "read") {
         print_channels(crates, save_file);
     } else if (mode == "write") {
-        write_channels(crate_map, setting_file);
+        if (setting_file.empty()) {
+            std::cerr << "ERROR: write mode requires -f <settings.json>\n";
+            for (auto *c : crates) delete c;
+            return -1;
+        }
+        write_channels(crates, crate_map, setting_file);
     } else if (mode == "hv_params") {
         dump_board_params(crates);
     } else {
         std::cerr << "Unknown mode: " << mode << "\n";
+        for (auto *c : crates) delete c;
         return -1;
     }
 
@@ -639,47 +662,197 @@ static bool init_crates_console(const std::vector<std::pair<std::string, std::st
     return (ok == static_cast<int>(crates.size()));
 }
 
-inline void write_lines(std::ostream &out,
-                        const std::vector<std::string> &lines)
-{
-    for (const auto &l : lines) out << l << '\n';
-}
+// ── Read mode: save all writable params to JSON ─────────────────────────────
 
 static void print_channels(const std::vector<CAEN_Crate*> &crates,
                            const std::string &save_path)
 {
-    std::vector<std::string> lines;
-    lines.push_back(fmt::format("# {:10s} {:4s} {:8s} {:16s} {:8s} {:8s}",
-                                "crate", "slot", "channel",
-                                "name", "VMon", "VSet"));
-    for (auto *cr : crates) {
+    // Read current values from hardware
+    for (auto *cr : crates)
         cr->ReadAllParams();
+
+    QJsonObject root;
+    root["format"]    = "prad2hvmon_settings_v1";
+    root["timestamp"] = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+
+    QJsonArray channels;
+    int total = 0;
+
+    for (auto *cr : crates) {
         for (auto *bd : cr->GetBoardList()) {
+            const auto &paramInfo = bd->GetChParamInfo();
             for (auto *ch : bd->GetChannelList()) {
-                lines.push_back(
-                    fmt::format("{:12s} {:4d} {:8d} {:16s} {:8.2f} {:8.2f}",
-                                cr->GetName(), bd->GetSlot(),
-                                ch->GetChannel(), ch->GetName(),
-                                ch->GetVMon(), ch->GetVSet()));
+                QJsonObject entry;
+                entry["crate"]   = QString::fromStdString(cr->GetName());
+                entry["slot"]    = bd->GetSlot();
+                entry["channel"] = ch->GetChannel();
+                entry["name"]    = QString::fromStdString(ch->GetName());
+
+                QJsonObject params;
+                for (const auto &pi : paramInfo) {
+                    if (!pi.isWritable()) continue;
+
+                    if (pi.isFloat()) {
+                        float v = ch->GetFloat(pi.name);
+                        if (!std::isnan(v))
+                            params[QString::fromStdString(pi.name)] = v;
+                    } else if (pi.isUInt()) {
+                        if (ch->HasParam(pi.name))
+                            params[QString::fromStdString(pi.name)] = static_cast<int>(ch->GetUInt(pi.name));
+                    }
+                }
+                entry["params"] = params;
+                channels.append(entry);
+                ++total;
             }
         }
     }
-    write_lines(std::cout, lines);
+    root["channels"] = channels;
+
+    QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Indented);
+
+    // Always print summary to stdout
+    std::cout << fmt::format("Read {} channels from {} crate(s)\n", total, crates.size());
+
     if (!save_path.empty()) {
         std::ofstream f(save_path);
-        write_lines(f, lines);
+        f << json.constData();
+        std::cout << "Saved to " << save_path << "\n";
+    } else {
+        // No file specified — print to stdout
+        std::cout << json.constData() << std::endl;
     }
 }
 
-static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
+// ── Write mode: restore writable params from JSON ───────────────────────────
+
+static void write_channels(const std::vector<CAEN_Crate*> &crates,
+                           const std::map<std::string, CAEN_Crate*> &crate_map,
                            const std::string &setting_path)
 {
-    ConfigParser parser;
-    parser.ReadFile(setting_path);
+    QFile f(QString::fromStdString(setting_path));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        std::cerr << "ERROR: cannot open settings file: " << setting_path << "\n";
+        return;
+    }
+    QJsonParseError parseErr;
+    QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &parseErr);
+    if (doc.isNull()) {
+        std::cerr << "ERROR: invalid JSON: " << parseErr.errorString().toStdString() << "\n";
+        return;
+    }
 
-    std::string miss_crate;
-    int miss_slot = -1;
-    std::vector<std::string> missing;
+    QJsonObject root = doc.object();
+    QString format = root["format"].toString();
+    if (format != "prad2hvmon_settings_v1") {
+        std::cerr << "WARNING: unknown format '" << format.toStdString()
+                  << "', proceeding anyway\n";
+    }
+    std::cout << "Settings file timestamp: "
+              << root["timestamp"].toString().toStdString() << "\n";
+
+    QJsonArray channels = root["channels"].toArray();
+    int restored = 0, skipped = 0, errors = 0;
+
+    // Build a lookup: crate→board param info for writable-param validation
+    for (const auto &val : channels) {
+        QJsonObject entry = val.toObject();
+        std::string crate_name = entry["crate"].toString().toStdString();
+        int slot    = entry["slot"].toInt();
+        int channel = entry["channel"].toInt();
+        std::string ch_name = entry["name"].toString().toStdString();
+
+        auto cit = crate_map.find(crate_name);
+        if (cit == crate_map.end()) {
+            std::cerr << fmt::format("  SKIP {}/s{}/ch{} — crate not found\n",
+                                     crate_name, slot, channel);
+            ++skipped;
+            continue;
+        }
+        auto *board = cit->second->GetBoard(slot);
+        if (!board) {
+            std::cerr << fmt::format("  SKIP {}/s{}/ch{} — board not found\n",
+                                     crate_name, slot, channel);
+            ++skipped;
+            continue;
+        }
+        auto *ch = board->GetChannel(channel);
+        if (!ch) {
+            std::cerr << fmt::format("  SKIP {}/s{}/ch{} — channel not found\n",
+                                     crate_name, slot, channel);
+            ++skipped;
+            continue;
+        }
+
+        // Restore channel name if different
+        if (ch->GetName() != ch_name) {
+            ch->SetName(ch_name);
+            std::cout << fmt::format("  {}/s{}/ch{} name → {}\n",
+                                     crate_name, slot, channel, ch_name);
+        }
+
+        // Restore each writable param
+        QJsonObject params = entry["params"].toObject();
+        const auto &paramInfo = board->GetChParamInfo();
+
+        for (auto it = params.begin(); it != params.end(); ++it) {
+            std::string pname = it.key().toStdString();
+
+            // Find the param info to determine type
+            const ParamInfo *pi = nullptr;
+            for (const auto &info : paramInfo) {
+                if (info.name == pname && info.isWritable()) { pi = &info; break; }
+            }
+            if (!pi) {
+                std::cerr << fmt::format("  SKIP {}/s{}/ch{} param {} — not writable or not found\n",
+                                         crate_name, slot, channel, pname);
+                continue;
+            }
+
+            bool ok = false;
+            if (pi->isFloat()) {
+                float v = static_cast<float>(it.value().toDouble());
+                ok = ch->SetFloat(pname, v);
+                if (ok)
+                    std::cout << fmt::format("  {}/s{}/ch{} {} → {:.2f}\n",
+                                             crate_name, slot, channel, pname, v);
+            } else if (pi->isUInt()) {
+                unsigned int v = static_cast<unsigned int>(it.value().toInt());
+                ok = ch->SetUInt(pname, v);
+                if (ok)
+                    std::cout << fmt::format("  {}/s{}/ch{} {} → {}\n",
+                                             crate_name, slot, channel, pname, v);
+            }
+
+            if (ok) ++restored;
+            else    ++errors;
+        }
+    }
+
+    std::cout << fmt::format("\nDone — {} params restored, {} skipped, {} errors\n",
+                             restored, skipped, errors);
+}
+
+// ── Convert old text format to new JSON ─────────────────────────────────────
+// Old format:
+//   #      crate    slot channel            name      VMon      VSet
+//       PRadHV_1       0       0      PRIMARY1_0    1490.8      1500
+//
+// Produces JSON with V0Set only (the old format only had VSet).
+
+static void convert_old_to_json(const std::string &old_path,
+                                const std::string &json_path)
+{
+    ConfigParser parser;
+    parser.ReadFile(old_path);
+
+    QJsonObject root;
+    root["format"]    = "prad2hvmon_settings_v1";
+    root["timestamp"] = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+    root["converted_from"] = QString::fromStdString(old_path);
+
+    QJsonArray channels;
+    int count = 0;
 
     while (parser.ParseLine()) {
         std::string crate_name, ch_name;
@@ -691,33 +864,31 @@ static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
             parser >> crate_name >> slot >> channel >> ch_name >> VSet;
         else if (parser.NbofElements() == 6)
             parser >> crate_name >> slot >> channel >> ch_name >> VMon >> VSet;
-
-        auto *crate = crate_map.at(crate_name);
-        auto *board = crate->GetBoard(slot);
-        if (!board) {
-            if (crate_name == miss_crate && slot == miss_slot) continue;
-            missing.push_back(
-                fmt::format("skipped crate: {:8s} slot: {:4d}, board not found!",
-                            crate_name, slot));
-            miss_crate = crate_name;
-            miss_slot  = slot;
+        else
             continue;
-        }
-        auto *ch = board->GetChannel(channel);
-        if (ch) {
-            ch->SetName(ch_name);
-            ch->SetVoltage(VSet);
-            std::cout << fmt::format(
-                "crate: {:8s} slot: {:4d} ch: {:4d} → {:12s} {:8.2f} V\n",
-                crate_name, slot, channel, ch_name, VSet);
-        } else {
-            std::cout << fmt::format(
-                "crate: {:8s} slot: {:4d} ch: {:4d} not found!\n",
-                crate_name, slot, channel);
-        }
+
+        QJsonObject entry;
+        entry["crate"]   = QString::fromStdString(crate_name);
+        entry["slot"]    = slot;
+        entry["channel"] = channel;
+        entry["name"]    = QString::fromStdString(ch_name);
+
+        QJsonObject params;
+        params["V0Set"] = VSet;
+        entry["params"] = params;
+
+        channels.append(entry);
+        ++count;
     }
-    for (const auto &m : missing) std::cout << m << '\n';
-    std::cout << "Restored HV settings from " << setting_path << '\n';
+
+    root["channels"] = channels;
+
+    QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    std::ofstream f(json_path);
+    f << json.constData();
+
+    std::cout << fmt::format("Converted {} channels from '{}' → '{}'\n",
+                             count, old_path, json_path);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
