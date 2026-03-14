@@ -28,6 +28,13 @@ let boosterConnected  = false;  // whether we have an active TCP connection to b
 let boosterConnecting = false;  // true between Connect click and first real poll result
 let boosterSeenClean  = false;  // true after seeing a "clean" disconnect snapshot (all disconnected, no errors)
 
+// ── Audible alarm state ──────────────────────────────────────────────
+let alarmMuted    = false;   // true when the user clicks the mute button
+let alarmActive   = false;   // true while at least one fault/error exists
+let alarmCtx      = null;    // AudioContext, created on first interaction
+let alarmOsc      = null;    // currently playing OscillatorNode (null if silent)
+let alarmGain     = null;    // GainNode for the beep envelope
+
 // Geometry map state
 let geoTransform = { x: 0, y: 0, scale: 1 };
 let geoDrag      = null;
@@ -120,6 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const crateKey = [...new Set(allChannels.map(c => c.crate))].sort().join('|');
             if (crateKey !== window._crateKey) { window._crateKey = crateKey; populateCrateChips(); }
             dataDirty = true;
+            evaluateAlarm();
             // refreshAllPopups() is now called from renderActiveTab() when dirty,
             // so we don't rebuild popup DOM on every data tick outside the render loop.
         });
@@ -343,6 +351,12 @@ function initTableUI() {
         hvMonitor.setAllPower(false);
         allChannels.forEach(ch => { ch.on = false; });
         dataDirty = true; renderActiveTab();
+    });
+
+    // ── Alarm mute button ──────────────────────────────────────────────
+    document.getElementById('btn-mute').addEventListener('click', () => {
+        ensureAlarmCtx();   // AudioContext requires user gesture
+        toggleMute();
     });
 
     // ── Expert mode toggle ──────────────────────────────────────────────
@@ -745,6 +759,140 @@ function setPillConnected(ok) {
     const text = document.getElementById('conn-text');
     if (ok) { pill.classList.remove('disconnected'); text.textContent = 'live'; }
     else    { pill.classList.add('disconnected');    text.textContent = 'disconnected'; }
+}
+
+// ═════════════════════════════════════════════════════════════════════
+//  Audible fault alarm (Web Audio API)
+// ═════════════════════════════════════════════════════════════════════
+// Produces a repeating two-tone "beep-beep" pattern while any HV
+// channel reports a hardware fault or any booster supply has an error.
+// The user can silence the alarm via the 🔇 button; it stays muted
+// until all faults clear, then re-arms automatically.
+
+function ensureAlarmCtx() {
+    if (alarmCtx) return;
+    alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function startAlarmTone() {
+    if (alarmOsc) return;              // already playing
+    // AudioContext requires a prior user gesture.  If the user hasn't
+    // clicked anything yet, ensureAlarmCtx will create a *suspended*
+    // context.  We still try — the tone will start playing once the
+    // user interacts (resume() in toggleMute or any click).
+    ensureAlarmCtx();
+    if (alarmCtx.state === 'suspended') {
+        // Can't play yet — register a one-shot resume on next user gesture
+        const resume = () => {
+            if (alarmCtx && alarmCtx.state === 'suspended') alarmCtx.resume();
+            // Re-trigger tone if alarm is still active and not muted
+            if (alarmActive && !alarmMuted && !alarmOsc) startAlarmTone();
+            document.removeEventListener('click', resume);
+            document.removeEventListener('keydown', resume);
+        };
+        document.addEventListener('click', resume, { once: true });
+        document.addEventListener('keydown', resume, { once: true });
+        return;   // button still shows alarming state visually
+    }
+
+    // Two-tone pattern: 880 Hz for 120 ms, silence 80 ms, 660 Hz 120 ms,
+    // silence 680 ms → repeats every ~1 s.  Uses a looping buffer approach
+    // via two alternating oscillators scheduled in a loop, but for simplicity
+    // we use a single oscillator + gain LFO trick:
+    //   - oscillator at 880 Hz
+    //   - a gain node pulsed on/off by a ScriptProcessor / setInterval
+
+    alarmGain = alarmCtx.createGain();
+    alarmGain.gain.value = 0;
+    alarmGain.connect(alarmCtx.destination);
+
+    alarmOsc = alarmCtx.createOscillator();
+    alarmOsc.type = 'square';
+    alarmOsc.frequency.value = 880;
+    alarmOsc.connect(alarmGain);
+    alarmOsc.start();
+
+    // Pulse pattern via gain scheduling (repeats every 1 s)
+    scheduleAlarmPulse();
+    alarmOsc._pulseTimer = setInterval(scheduleAlarmPulse, 1000);
+}
+
+function scheduleAlarmPulse() {
+    if (!alarmGain || !alarmCtx) return;
+    const t = alarmCtx.currentTime;
+    alarmGain.gain.cancelScheduledValues(t);
+    alarmGain.gain.setValueAtTime(0, t);
+    // beep 1: 880 Hz, 120 ms
+    alarmGain.gain.setValueAtTime(0.25, t + 0.01);
+    alarmGain.gain.setValueAtTime(0, t + 0.13);
+    // beep 2: slightly lower
+    if (alarmOsc) {
+        alarmOsc.frequency.setValueAtTime(880, t);
+        alarmOsc.frequency.setValueAtTime(660, t + 0.21);
+        alarmOsc.frequency.setValueAtTime(880, t + 0.33);
+    }
+    alarmGain.gain.setValueAtTime(0.25, t + 0.21);
+    alarmGain.gain.setValueAtTime(0, t + 0.33);
+}
+
+function stopAlarmTone() {
+    if (!alarmOsc) return;
+    clearInterval(alarmOsc._pulseTimer);
+    alarmOsc.stop();
+    alarmOsc.disconnect();
+    alarmOsc = null;
+    if (alarmGain) { alarmGain.disconnect(); alarmGain = null; }
+}
+
+// Called after every poll to evaluate alarm state
+function evaluateAlarm() {
+    // Count HV hardware faults (OVC, OVV, etc.) — only these trigger the alarm.
+    // Booster connection errors are excluded: they are typically transient TCP
+    // issues (single-client lock-out) and not detector-safety events.
+    const hvFaults = allChannels.filter(c => statusClass(c.status) === 'status-err').length;
+    const hasFaults = hvFaults > 0;
+
+    if (hasFaults && !alarmActive) {
+        // Faults just appeared — start alarm (un-mute for new faults)
+        alarmActive = true;
+        alarmMuted  = false;
+        updateMuteButton();
+        startAlarmTone();
+    } else if (!hasFaults && alarmActive) {
+        // All faults cleared — stop alarm and re-arm
+        alarmActive = false;
+        alarmMuted  = false;
+        updateMuteButton();
+        stopAlarmTone();
+    }
+    // If muted, tone is already stopped (toggleMute handles it)
+}
+
+function toggleMute() {
+    alarmMuted = !alarmMuted;
+    if (alarmMuted) stopAlarmTone();
+    else if (alarmActive) startAlarmTone();
+    updateMuteButton();
+}
+
+function updateMuteButton() {
+    const btn = document.getElementById('btn-mute');
+    if (!btn) return;
+    if (!alarmActive) {
+        btn.classList.remove('alarming', 'muted');
+        btn.textContent = '🔔 Alarm';
+        btn.title = 'No active faults';
+    } else if (alarmMuted) {
+        btn.classList.remove('alarming');
+        btn.classList.add('muted');
+        btn.textContent = '🔇 Muted';
+        btn.title = 'Alarm silenced — click to unmute';
+    } else {
+        btn.classList.add('alarming');
+        btn.classList.remove('muted');
+        btn.textContent = '🔔 Alarm';
+        btn.title = 'Faults detected — click to silence';
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════
