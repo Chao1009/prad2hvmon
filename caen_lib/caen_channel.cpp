@@ -295,9 +295,11 @@ void CAEN_Board::DiscoverChParams()
         return;
     }
 
-    for (int i = 0; i < parNum; ++i) {
+    // nameList is a sequence of null-terminated strings, parNum entries
+    const char *p = nameList;
+    for (int i = 0; i < parNum && *p; ++i) {
         ParamInfo pi;
-        pi.name = string(nameList + i * (MAX_PARAM_NAME + 1));
+        pi.name = string(p);
 
         CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Type", &pi.type);
         CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Mode", &pi.mode);
@@ -310,6 +312,7 @@ void CAEN_Board::DiscoverChParams()
         }
 
         ch_param_info_.push_back(pi);
+        p += pi.name.size() + 1;
     }
     free(nameList);
 
