@@ -50,9 +50,11 @@ let chByName = {};
 // DAQ connection map lookup by module name (loaded from daq_map.json)
 let daqByName = {};
 
-// ΔV thresholds (overridden by gui_config.json)
+// ΔV display thresholds for table cell coloring (overridden by gui_config.json)
+// NOTE: status classification (fault/warn/ok) is determined by the daemon,
+// not by these thresholds.  These only control the green/amber/red text color
+// of the ΔV column in the channel table.
 let DV = {
-    warn_threshold: 2.0,
     table_ok:       0.5,
     table_warn:     2.0,
 };
@@ -198,25 +200,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Auto-detect transport ────────────────────────────────────────
-    if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
-        // Running inside QWebEngineView — use QWebChannel
-        new QWebChannel(qt.webChannelTransport, channel => {
-            bootstrap(channel.objects.hvMonitor, channel.objects.boosterMonitor);
-        });
-    } else if (typeof DaemonClient !== 'undefined') {
-        // Running in a browser — connect to daemon WebSocket
-        const wsHost = location.hostname || 'localhost';
-        const wsPort = new URLSearchParams(location.search).get('port') || '8765';
-        const client = new DaemonClient(`ws://${wsHost}:${wsPort}`);
-        client._listeners.onConnect.push(() => {
-            bootstrap(client.hvMonitor, client.boosterMonitor);
-        });
-        client._listeners.onDisconnect.push(() => setPillConnected(false));
-    } else {
-        console.error('No transport available — need QWebChannel or DaemonClient');
-        document.querySelector('#loading p').textContent = 'No connection available';
-    }
+    // ── Connect to daemon via WebSocket ─────────────────────────────
+    const wsHost = location.hostname || 'localhost';
+    const wsPort = new URLSearchParams(location.search).get('port') || '8765';
+    const client = new DaemonClient(`ws://${wsHost}:${wsPort}`);
+    client._listeners.onConnect.push(() => {
+        bootstrap(client.hvMonitor, client.boosterMonitor);
+    });
+    client._listeners.onDisconnect.push(() => setPillConnected(false));
 
     initTableUI();
     initTabs();
@@ -333,21 +324,12 @@ function initTabs() {
 // ═════════════════════════════════════════════════════════════════════
 //  Unified channel status classification
 // ═════════════════════════════════════════════════════════════════════
-// classifyChannel(ch) is the SINGLE source of truth for all status
-// decisions across table, geo, alarm, and summary.
+// classifyChannel(ch) reads the daemon-provided authoritative status.
+// The daemon sets ch.level ('fault'|'suppressed'|'warn'|'ramp'|'on'|'off')
+// and ch.dv_warn (bool).  This function derives CSS classes, badge HTML,
+// and convenience booleans for the rendering layers.
 //
-// Returns: {
-//   level:     'fault' | 'suppressed' | 'warn' | 'on' | 'ramp' | 'off'
-//   cssClass:  'status-err' | 'status-warn' | 'status-work' | 'status-ok'
-//   dot:       'fault' | 'warn' | 'on' | 'off'
-//   isFault:   bool    — triggers alarm, red tab dots, red count
-//   isWarn:    bool    — ΔV warning or suppressed errors (amber)
-//   isSettled: bool    — fully ON, not ramping (eligible for ΔV check)
-//   faultTokens:     string[]  — unsuppressed error abbreviations
-//   suppressedTokens: string[] — suppressed error abbreviations (without ~)
-//   dvWarn:    bool    — ΔV exceeds threshold
-//   badgesHtml: string — pre-rendered status badges HTML
-// }
+// No classification logic lives here — all decisions are made by the daemon.
 
 const _working = new Set(['OFF', 'ON', 'RUP', 'RDN']);
 
@@ -356,38 +338,16 @@ function classifyChannel(ch) {
     const detail = ch.status ? (ch.status.split('|')[1] || '').trim() : '';
     const tokens = abbr ? abbr.split(/\s+/).filter(t => t !== '') : [];
 
-    // Separate token categories
-    const faultTokens     = tokens.filter(t => !_working.has(t) && !t.startsWith('~'));
+    // Token categories (for badge rendering only — NOT for classification)
+    const faultTokens      = tokens.filter(t => !_working.has(t) && !t.startsWith('~'));
     const suppressedTokens = tokens.filter(t => t.startsWith('~')).map(t => t.slice(1));
-    const isRamping       = tokens.includes('RUP') || tokens.includes('RDN');
-    const isOn            = tokens.includes('ON') || ch.on;
-    const isSettled        = tokens.length > 0 && tokens.every(t => t === 'ON' || t.startsWith('~'));
+    const isRamping        = tokens.includes('RUP') || tokens.includes('RDN');
 
-    // ΔV warning: use daemon-provided dv_warn if available, else compute locally
-    const dvWarn = (ch.dv_warn !== undefined)
-        ? ch.dv_warn
-        : (isSettled && ch.vmon != null && ch.vset != null
-           && Math.abs(ch.vmon - ch.vset) > DV.warn_threshold);
+    // Daemon-authoritative fields
+    const level  = ch.level || 'off';
+    const dvWarn = ch.dv_warn || false;
 
-    // Determine level: prefer daemon-provided, else compute locally
-    const hasFault      = faultTokens.length > 0;
-    const hasSuppressed = suppressedTokens.length > 0;
-
-    let level;
-    if (ch.level) {
-        // Daemon provides authoritative classification
-        level = ch.level;
-    } else {
-        // Fallback (QWebChannel mode — daemon doesn't provide level)
-        if (hasFault)           level = 'fault';
-        else if (hasSuppressed) level = 'suppressed';
-        else if (dvWarn)        level = 'warn';
-        else if (isRamping)     level = 'ramp';
-        else if (isOn)          level = 'on';
-        else                    level = 'off';
-    }
-
-    // Derive CSS class and dot from level
+    // Derive CSS class and dot from daemon level
     let cssClass, dot;
     switch (level) {
         case 'fault':      cssClass = 'status-err';  dot = 'fault'; break;
@@ -398,7 +358,7 @@ function classifyChannel(ch) {
         default:           cssClass = 'status-ok';   dot = 'off';   break;
     }
 
-    // Build badges HTML
+    // Build badges HTML (visual rendering of the daemon's status tokens)
     const badges = [];
     if (isRamping) {
         const rampDir = tokens.includes('RUP') ? 'RUP' : 'RDN';
@@ -418,9 +378,9 @@ function classifyChannel(ch) {
 
     return {
         level, cssClass, dot,
-        isFault: hasFault,
-        isWarn: hasSuppressed || dvWarn,
-        isSettled,
+        isFault: level === 'fault',
+        isWarn:  level === 'suppressed' || level === 'warn',
+        isSettled: level === 'on' || level === 'warn' || level === 'suppressed',
         faultTokens, suppressedTokens,
         dvWarn, badgesHtml
     };
