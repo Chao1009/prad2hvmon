@@ -246,7 +246,7 @@ static void printUsage(const char *prog)
               << "  -l <file>   Voltage-limits JSON      (default: $DATABASE_DIR/voltage_limits.json)\n"
               << "  -w <file>   DeltaV warning rules JSON (default: $DATABASE_DIR/dv_warn.json)\n"
               << "  -p <port>   WebSocket port           (default: 8765)\n"
-              << "  -t <ms>     Poll interval in ms      (default: 3000)\n"
+              << "  -t <ms>     Poll interval in ms      (default: 2000)\n"
               << "  -h          Show this help\n";
 }
 
@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
     std::string crateFile, moduleFile, guiConfigFile, daqMapFile;
     std::string ignoreFile, limitsFile, dvWarnFile;
     uint16_t    wsPort       = 8765;
-    int         pollInterval = 3000;
+    int         pollInterval = 2000;
 
     // DATABASE_DIR is a compile-time define (same as the original project)
 #ifdef DATABASE_DIR
