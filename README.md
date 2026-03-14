@@ -131,6 +131,7 @@ If the Pictures folder is unavailable the file is saved to the current working d
 |--------|-------------|
 | `-c <file>` | Path to crates JSON config file (default: auto-discover) |
 | `-f <file>` | Path to channel voltage-setting file (write mode) |
+| `-l <file>` | Path to voltage-limits JSON file (default: auto-discover) |
 | `-s <file>` | Path to save channel readings (read mode) |
 | `-m <file>` | Path to module geometry JSON file (GUI mode) |
 | `-h` | Show help message |
@@ -226,6 +227,36 @@ The geometry map links each detector module to its live HV data by matching the 
 
 If no booster entries are found in `hycal_modules.json`, the application falls back to a `"booster"` array in `gui_config.json` (legacy path).
 
+### Voltage Limits (`database/voltage_limits.json`)
+
+Optional. Overrides the built-in per-channel voltage limits that `SetVoltage()` enforces. Rules are evaluated in order — the first matching pattern wins. If the file is absent, the hard-coded defaults are used (see Channel Types below).
+
+```json
+{
+    "limits": [
+        { "pattern": "G235",  "voltage": 1800 },
+        { "pattern": "G*",    "voltage": 1950 },
+        { "pattern": "W*",    "voltage": 1450 },
+        { "pattern": "P*",    "voltage": 3000 },
+        { "pattern": "L*",    "voltage": 2000 },
+        { "pattern": "S*",    "voltage": 2000 },
+        { "pattern": "H*",    "voltage": 2000 },
+        { "pattern": "*",     "voltage": 1500 }
+    ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `pattern` | Channel name or wildcard. `"G*"` matches any name starting with `G`. `"G235"` matches only that channel. `"*"` matches everything (catch-all). |
+| `voltage` | Maximum voltage (V) that `SetVoltage()` will allow for matching channels. |
+
+**Order matters.** Place specific channel overrides (e.g. `"G235"`) before broader wildcards (e.g. `"G*"`), and put the catch-all `"*"` last. The first matching rule determines the limit.
+
+Limits are loaded once at startup, before crate initialization, and applied to each channel as it is constructed during `ReadBoardMap()`. If VMon exceeds the configured limit while the channel is ON, the channel reports an `OVL` (over-limit) fault that behaves identically to hardware faults — it appears in the status column, triggers the audible alarm, is logged by the fault logger, and shows a red badge in the GUI.
+
+If the file does not exist, no warning is printed and the built-in defaults apply. Use `-l <file>` to specify a custom path.
+
 ### DAQ Map (`database/daq_map.json`)
 
 Optional. Maps module names to their DAQ readout addresses (crate, slot, channel). When present, this information is shown in geometry tooltips and module popups alongside the HV data:
@@ -313,7 +344,7 @@ The JS frontend maintains a separate fast render loop (default 200 ms) that redr
 
 ## Channel Types
 
-| Name Pattern | Type | Voltage Limit | Description |
+| Name Pattern | Type | Default Limit | Description |
 |-------------|------|---------------|-------------|
 | `G*` | PbGlass | 1950 V | Lead glass calorimeter modules |
 | `W*` | PbWO4 | 1450 V | Lead tungstate crystal modules |
@@ -322,7 +353,7 @@ The JS frontend maintains a separate fast render loop (default 200 ms) that redr
 | `S*` / `SCIN*` | Scintillator | 2000 V | Scintillator counters |
 | `H*` | Veto | 2000 V | PrimEx veto counter channels |
 
-Voltage limits are enforced by `CAEN_VoltageLimit()` in `caen_lib/caen_channel.cpp`. Channels with unrecognised name prefixes default to 1500 V.
+These defaults are built into `CAEN_VoltageLimit()` in `caen_lib/caen_channel.cpp` and apply when no matching rule is found in `voltage_limits.json`. Channels with unrecognised name prefixes default to 1500 V. To override any limit, add a rule to `database/voltage_limits.json` (see Configuration above). When VMon exceeds the limit on an active channel, the software-defined `OVL` fault is raised, which triggers the alarm, fault logger, and GUI fault indicators just like a hardware fault.
 
 ## Author
 
