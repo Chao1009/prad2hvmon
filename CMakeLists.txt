@@ -112,3 +112,32 @@ target_link_libraries(prad2hvd PRIVATE
     asio_standalone
     pthread
 )
+
+# ── Optional Qt GUI client ───────────────────────────────────────────────────
+# Build with:  cmake .. -DBUILD_GUI=ON -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
+# Skip with:   cmake ..   (default: OFF)
+option(BUILD_GUI "Build the Qt WebEngine GUI client (prad2hvmon)" OFF)
+
+if(BUILD_GUI)
+    find_package(Qt5 REQUIRED COMPONENTS Widgets WebEngineWidgets)
+
+    set(RESOURCE_DIR "${CMAKE_SOURCE_DIR}/resources")
+    get_filename_component(RESOURCE_DIR "${RESOURCE_DIR}" ABSOLUTE)
+
+    add_executable(prad2hvmon
+        src/gui_main.cpp
+    )
+
+    target_compile_definitions(prad2hvmon PRIVATE
+        RESOURCE_DIR="${RESOURCE_DIR}"
+    )
+
+    target_link_libraries(prad2hvmon PRIVATE
+        Qt5::Widgets
+        Qt5::WebEngineWidgets
+    )
+
+    message(STATUS "Qt GUI client: ON (resources: ${RESOURCE_DIR})")
+else()
+    message(STATUS "Qt GUI client: OFF (enable with -DBUILD_GUI=ON)")
+endif()

@@ -191,8 +191,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Connect to daemon via WebSocket ─────────────────────────────
-    const wsHost = location.hostname || 'localhost';
-    const wsPort = new URLSearchParams(location.search).get('port') || '8765';
+    const _params = new URLSearchParams(location.search);
+    const wsHost = _params.get('host') || location.hostname || 'localhost';
+    const wsPort = _params.get('port') || '8765';
     const client = new DaemonClient(`ws://${wsHost}:${wsPort}`);
     client._listeners.onConnect.push(() => {
         bootstrap(client.hvMonitor, client.boosterMonitor);
