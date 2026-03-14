@@ -769,31 +769,36 @@ function setPillConnected(ok) {
 // The user can silence the alarm via the 🔇 button; it stays muted
 // until all faults clear, then re-arms automatically.
 
+let _userHasInteracted = false;
+// Track the very first user gesture so we know when AudioContext creation is allowed.
+function _markInteracted() {
+    _userHasInteracted = true;
+    document.removeEventListener('click',   _markInteracted);
+    document.removeEventListener('keydown', _markInteracted);
+    document.removeEventListener('pointerdown', _markInteracted);
+    // If an alarm was waiting for a gesture, start it now
+    if (alarmActive && !alarmMuted && !alarmOsc) startAlarmTone();
+}
+document.addEventListener('click',   _markInteracted, { once: false });
+document.addEventListener('keydown', _markInteracted, { once: false });
+document.addEventListener('pointerdown', _markInteracted, { once: false });
+
 function ensureAlarmCtx() {
-    if (alarmCtx) return;
+    if (alarmCtx) return true;
+    // Only create the AudioContext if we know a user gesture has occurred
+    if (!_userHasInteracted) return false;
     alarmCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // Belt-and-suspenders: resume in case the browser still considers it suspended
+    if (alarmCtx.state === 'suspended') alarmCtx.resume();
+    return true;
 }
 
 function startAlarmTone() {
     if (alarmOsc) return;              // already playing
-    // AudioContext requires a prior user gesture.  If the user hasn't
-    // clicked anything yet, ensureAlarmCtx will create a *suspended*
-    // context.  We still try — the tone will start playing once the
-    // user interacts (resume() in toggleMute or any click).
-    ensureAlarmCtx();
-    if (alarmCtx.state === 'suspended') {
-        // Can't play yet — register a one-shot resume on next user gesture
-        const resume = () => {
-            if (alarmCtx && alarmCtx.state === 'suspended') alarmCtx.resume();
-            // Re-trigger tone if alarm is still active and not muted
-            if (alarmActive && !alarmMuted && !alarmOsc) startAlarmTone();
-            document.removeEventListener('click', resume);
-            document.removeEventListener('keydown', resume);
-        };
-        document.addEventListener('click', resume, { once: true });
-        document.addEventListener('keydown', resume, { once: true });
-        return;   // button still shows alarming state visually
-    }
+    // If no user gesture yet, we can't create the AudioContext.
+    // The _markInteracted handler will call startAlarmTone() once the
+    // user interacts, so the alarm starts as soon as allowed.
+    if (!ensureAlarmCtx()) return;     // button still shows alarming state visually
 
     // Two-tone pattern: 880 Hz for 120 ms, silence 80 ms, 660 Hz 120 ms,
     // silence 680 ms → repeats every ~1 s.  Uses a looping buffer approach
