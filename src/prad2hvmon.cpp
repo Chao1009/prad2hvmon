@@ -45,6 +45,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 
 
 // ── Load crate list from JSON ────────────────────────────────────────────────
@@ -167,6 +168,7 @@ static void print_channels(const std::vector<CAEN_Crate*> &crates,
                            const std::string &save_path);
 static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
                            const std::string &setting_path);
+static void dump_board_params(const std::vector<CAEN_Crate*> &crates);
 inline void write_lines(std::ostream &out,
                         const std::vector<std::string> &lines);
 
@@ -186,7 +188,7 @@ int main(int argc, char *argv[])
     co.AddOpts(ConfigOption::help_message, 'h', "help");
 
     // help messages
-    co.SetDesc("usage: %0 <mode> [gui, read, write]");
+    co.SetDesc("usage: %0 <mode> [gui, read, write, hv_params]");
     co.SetDesc('c', "path to crates JSON file (default: auto-discover).");
     co.SetDesc('f', "path to the channel voltage-setting file (write mode).");
     co.SetDesc('i', "path to error-ignore JSON file (default: auto-discover).");
@@ -591,6 +593,8 @@ int main(int argc, char *argv[])
         print_channels(crates, save_file);
     } else if (mode == "write") {
         write_channels(crate_map, setting_file);
+    } else if (mode == "hv_params") {
+        dump_board_params(crates);
     } else {
         std::cerr << "Unknown mode: " << mode << "\n";
         return -1;
@@ -649,7 +653,7 @@ static void print_channels(const std::vector<CAEN_Crate*> &crates,
                                 "crate", "slot", "channel",
                                 "name", "VMon", "VSet"));
     for (auto *cr : crates) {
-        cr->ReadVoltage();
+        cr->ReadAllParams();
         for (auto *bd : cr->GetBoardList()) {
             for (auto *ch : bd->GetChannelList()) {
                 lines.push_back(
@@ -714,6 +718,119 @@ static void write_channels(const std::map<std::string, CAEN_Crate*> &crate_map,
     }
     for (const auto &m : missing) std::cout << m << '\n';
     std::cout << "Restored HV settings from " << setting_path << '\n';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  hv_params mode: print discovered param info from the board objects
+// ─────────────────────────────────────────────────────────────────────────────
+
+static const char *paramTypeName(unsigned t) {
+    switch (t) {
+    case PARAM_TYPE_NUMERIC:  return "NUMERIC";
+    case PARAM_TYPE_ONOFF:    return "ONOFF";
+    case PARAM_TYPE_CHSTATUS: return "CHSTATUS";
+    case PARAM_TYPE_BDSTATUS: return "BDSTATUS";
+    case PARAM_TYPE_BINARY:   return "BINARY";
+    case PARAM_TYPE_STRING:   return "STRING";
+    case PARAM_TYPE_ENUM:     return "ENUM";
+    default:                  return "UNKNOWN";
+    }
+}
+
+static const char *paramModeName(unsigned m) {
+    switch (m) {
+    case PARAM_MODE_RDONLY: return "RD";
+    case PARAM_MODE_WRONLY: return "WR";
+    case PARAM_MODE_RDWR:  return "RW";
+    default:               return "??";
+    }
+}
+
+static const char *paramUnitName(unsigned short u) {
+    switch (u) {
+    case PARAM_UN_NONE:    return "";
+    case PARAM_UN_AMPERE:  return "A";
+    case PARAM_UN_VOLT:    return "V";
+    case PARAM_UN_WATT:    return "W";
+    case PARAM_UN_CELSIUS: return "°C";
+    case PARAM_UN_HERTZ:   return "Hz";
+    case PARAM_UN_BAR:     return "bar";
+    case PARAM_UN_VPS:     return "V/s";
+    case PARAM_UN_SECOND:  return "s";
+    case PARAM_UN_RPM:     return "rpm";
+    case PARAM_UN_COUNT:   return "cnt";
+    default:               return "?";
+    }
+}
+
+static const char *expPrefix(short e) {
+    switch (e) {
+    case  6: return "M";
+    case  3: return "k";
+    case  0: return "";
+    case -3: return "m";
+    case -6: return "µ";
+    default: return "?";
+    }
+}
+
+static void printParamList(const std::vector<ParamInfo> &params)
+{
+    for (const auto &pi : params) {
+        std::string extra;
+        if (pi.isFloat()) {
+            extra = fmt::format("  [{:.1f} .. {:.1f}] {}{}",
+                                pi.minval, pi.maxval,
+                                expPrefix(pi.exp), paramUnitName(pi.unit));
+        }
+        std::cout << fmt::format("    {:<16s}  {:10s}  {:2s}{}\n",
+                                 pi.name, paramTypeName(pi.type),
+                                 paramModeName(pi.mode), extra);
+    }
+}
+
+static void dump_board_params(const std::vector<CAEN_Crate*> &crates)
+{
+    std::set<std::string> seen_models;
+
+    for (auto *cr : crates) {
+        for (auto *bd : cr->GetBoardList()) {
+            std::string key = bd->GetModel();
+            bool first_time = seen_models.insert(key).second;
+
+            if (!first_time) {
+                std::cout << fmt::format(
+                    "--- {} slot {} — Model {} (same as above, skipped)\n",
+                    cr->GetName(), bd->GetSlot(), bd->GetModel());
+                continue;
+            }
+
+            std::cout << fmt::format(
+                "\n═══ {} slot {} — Model {} ({} ch, serial {}, fw {}) ═══\n",
+                cr->GetName(), bd->GetSlot(), bd->GetModel(),
+                bd->GetSize(), bd->GetSerialNum(), bd->GetFirmware());
+
+            std::cout << "\n  Board parameters:\n";
+            if (bd->GetBdParamInfo().empty())
+                std::cout << "    (none discovered)\n";
+            else
+                printParamList(bd->GetBdParamInfo());
+
+            std::cout << "\n  Channel parameters (ch 0):\n";
+            if (bd->GetChParamInfo().empty())
+                std::cout << "    (none discovered)\n";
+            else
+                printParamList(bd->GetChParamInfo());
+
+            std::cout << "\n";
+        }
+    }
+
+    if (seen_models.empty())
+        std::cout << "No boards found in any crate.\n";
+    else
+        std::cout << fmt::format("\nDone — {} unique board model(s) queried.\n",
+                                 seen_models.size());
 }
 
 // ── Pull in MOC-generated code for the header-only QObjects ──────────────────

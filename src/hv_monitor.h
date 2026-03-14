@@ -7,7 +7,7 @@
 // ───────────────
 //   HVPoller   lives on a dedicated QThread (worker).
 //              Owns all CAEN_Crate objects.
-//              Its QTimer fires there → CheckStatus / ReadVoltage never block
+//              Its QTimer fires there → ReadAllParams never blocks
 //              the GUI thread.
 //              Exposes slots for write commands so they are queued onto the
 //              worker thread automatically via QMetaObject::invokeMethod.
@@ -200,8 +200,7 @@ private slots:
     void doPoll()
     {
         for (auto *cr : crates_) {
-            cr->CheckStatus();
-            cr->ReadVoltage();
+            cr->ReadAllParams();   // reads all board + channel params generically
         }
         // Track fault transitions across poll cycles
         for (auto *cr : crates_)
@@ -209,7 +208,7 @@ private slots:
                 // Board-level faults
                 std::string bdId = cr->GetName() + "_s" + std::to_string(bd->GetSlot());
                 fault_tracker_.update(bdId, bd->GetBdStatusString(), "board");
-                // Channel-level faults
+                // Channel-level faults (OVL already evaluated in ReadAllParams)
                 for (auto *ch : bd->GetChannelList())
                     fault_tracker_.update(ch->GetName(), ch->GetStatusString(), "channel");
             }
@@ -236,22 +235,35 @@ private:
             for (auto *bd : cr->GetBoardList()) {
                 for (auto *ch : bd->GetChannelList()) {
                     QJsonObject o;
-                    o["crate"]      = QString::fromStdString(cr->GetName());
-                    o["ip"]         = QString::fromStdString(cr->GetIP());
-                    o["slot"]       = bd->GetSlot();
-                    o["model"]      = QString::fromStdString(bd->GetModel());
-                    o["channel"]    = ch->GetChannel();
-                    o["name"]       = QString::fromStdString(ch->GetName());
-                    o["vmon"]       = ch->GetVMon();
-                    o["vset"]       = ch->GetVSet();
-                    o["svmax"]      = std::isnan(ch->GetSVMax()) ? QJsonValue::Null : QJsonValue(ch->GetSVMax());
-                    o["iSupported"] = ch->SupportsCurrentIO();
-                    if (ch->SupportsCurrentIO()) {
-                        o["imon"] = std::isnan(ch->GetIMon()) ? QJsonValue::Null : QJsonValue(ch->GetIMon());
-                        o["iset"] = std::isnan(ch->GetISet()) ? QJsonValue::Null : QJsonValue(ch->GetISet());
+                    o["crate"]   = QString::fromStdString(cr->GetName());
+                    o["ip"]      = QString::fromStdString(cr->GetIP());
+                    o["slot"]    = bd->GetSlot();
+                    o["model"]   = QString::fromStdString(bd->GetModel());
+                    o["channel"] = ch->GetChannel();
+                    o["name"]    = QString::fromStdString(ch->GetName());
+
+                    // Emit all discovered params generically
+                    for (const auto &[pname, pval] : ch->GetParams()) {
+                        QString key = QString::fromStdString(pname);
+                        if (pval.tag == ParamValue::Float)
+                            o[key] = std::isnan(pval.f) ? QJsonValue::Null : QJsonValue(pval.f);
+                        else if (pval.tag == ParamValue::UInt)
+                            o[key] = static_cast<int>(pval.u);
                     }
-                    o["on"]     = ch->IsTurnedOn();
+
+                    // Frontend-compatible aliases (lowercase keys the JS expects)
+                    o["vmon"]  = std::isnan(ch->GetVMon()) ? QJsonValue::Null : QJsonValue(ch->GetVMon());
+                    o["vset"]  = std::isnan(ch->GetVSet()) ? QJsonValue::Null : QJsonValue(ch->GetVSet());
+                    o["svmax"] = std::isnan(ch->GetSVMax()) ? QJsonValue::Null : QJsonValue(ch->GetSVMax());
+                    o["imon"]  = std::isnan(ch->GetIMon()) ? QJsonValue::Null : QJsonValue(ch->GetIMon());
+                    o["iset"]  = std::isnan(ch->GetISet()) ? QJsonValue::Null : QJsonValue(ch->GetISet());
+                    o["on"]    = ch->IsTurnedOn();
                     o["status"] = QString::fromStdString(ch->GetStatusString());
+                    o["limit"]  = ch->GetLimit();
+
+                    // Whether current I/O is supported (IMon param exists and is not NAN)
+                    o["iSupported"] = ch->HasParam("IMon");
+
                     arr.append(o);
                 }
             }
@@ -271,9 +283,21 @@ private:
                 o["nChan"]    = bd->GetSize();
                 o["serial"]   = bd->GetSerialNum();
                 o["firmware"] = bd->GetFirmware();
+
+                // Emit all discovered board params generically
+                for (const auto &[pname, pval] : bd->GetBdParams()) {
+                    QString key = QString::fromStdString(pname);
+                    if (pval.tag == ParamValue::Float)
+                        o[key] = std::isnan(pval.f) ? QJsonValue::Null : QJsonValue(static_cast<double>(pval.f));
+                    else if (pval.tag == ParamValue::UInt)
+                        o[key] = static_cast<int>(pval.u);
+                }
+
+                // Frontend-compatible aliases
                 o["hvmax"]    = std::isnan(bd->GetHVMax()) ? QJsonValue::Null : QJsonValue(static_cast<double>(bd->GetHVMax()));
                 o["temp"]     = std::isnan(bd->GetTemp())  ? QJsonValue::Null : QJsonValue(static_cast<double>(bd->GetTemp()));
                 o["bdstatus"] = QString::fromStdString(bd->GetBdStatusString());
+
                 arr.append(o);
             }
         }

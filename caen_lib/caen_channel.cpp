@@ -1,32 +1,113 @@
 //============================================================================//
-// A C++ wrapper class to use CAENHVWrapper library                           //
+// C++ wrapper for CAEN HV systems with generic parameter discovery           //
 //                                                                            //
-// Chao Peng                                                                  //
-// 05/17/2016                                                                 //
+// Chao Peng — Argonne National Laboratory                                    //
+// 05/17/2016 — original                                                      //
+// 03/2026   — refactored to generic parameter discovery                      //
 //============================================================================//
 
 #include "caen_channel.h"
 #include <cstring>
+#include <algorithm>
 
 using namespace std;
 using namespace CAENHV;
 
-//============================================================================//
-// CAEN HV Channel                                                            //
-//============================================================================//
-CAEN_Channel::~CAEN_Channel()
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+bool CAEN_IsUnsupportedParam(int err)
 {
-    // place holder
+    return (err == 0xe || err == 0x16 || err == 0x1b || err == -5);
 }
 
-void CAEN_Channel::SetPower(const bool& on)
+//============================================================================//
+// CAEN_Channel
+//============================================================================//
+
+CAEN_Channel::~CAEN_Channel() {}
+
+// ── Generic getters ──────────────────────────────────────────────────────────
+
+float CAEN_Channel::GetFloat(const string &pname) const
+{
+    auto it = params_.find(pname);
+    if (it == params_.end() || it->second.tag != ParamValue::Float) return NAN;
+    return it->second.f;
+}
+
+unsigned int CAEN_Channel::GetUInt(const string &pname) const
+{
+    auto it = params_.find(pname);
+    if (it == params_.end() || it->second.tag != ParamValue::UInt) return 0;
+    return it->second.u;
+}
+
+bool CAEN_Channel::HasParam(const string &pname) const
+{
+    return params_.count(pname) > 0;
+}
+
+// ── Generic setters (write to hardware) ──────────────────────────────────────
+
+bool CAEN_Channel::SetFloat(const string &pname, float value)
+{
+    float val = value;
+    int handle = mother->GetHandle();
+    unsigned short slot = mother->GetSlot();
+    int err = CAENHV_SetChParam(handle, slot, pname.c_str(), 1, &channel, &val);
+
+    if (CAEN_IsUnsupportedParam(err)) return false;
+    CAEN_ShowError("HV Channel Set " + pname, err);
+
+    if (err == CAENHV_OK) {
+        params_[pname] = ParamValue::fromFloat(val);
+        return true;
+    }
+    return false;
+}
+
+bool CAEN_Channel::SetUInt(const string &pname, unsigned int value)
+{
+    unsigned int val = value;
+    int handle = mother->GetHandle();
+    unsigned short slot = mother->GetSlot();
+    int err = CAENHV_SetChParam(handle, slot, pname.c_str(), 1, &channel, &val);
+
+    if (CAEN_IsUnsupportedParam(err)) return false;
+    CAEN_ShowError("HV Channel Set " + pname, err);
+
+    if (err == CAENHV_OK) {
+        params_[pname] = ParamValue::fromUInt(val);
+        return true;
+    }
+    return false;
+}
+
+// ── SetVoltage (with limit enforcement) ──────────────────────────────────────
+
+void CAEN_Channel::SetVoltage(float v)
+{
+    float val = v;
+    if (v > limit) {
+        cerr << "HV Channel ERROR: Trying to set voltage " << v
+             << " V, which exceeds limit " << limit
+             << " V for channel " << name
+             << ". Clamping to limit." << endl;
+        val = limit;
+    }
+    SetFloat("V0Set", val);
+}
+
+// ── SetPower (with primary-channel logic) ────────────────────────────────────
+
+void CAEN_Channel::SetPower(bool on)
 {
     int err;
     unsigned int val = on ? 1 : 0;
     int handle = mother->GetHandle();
     unsigned short slot = mother->GetSlot();
 
-    if(on && mother->GetPrimaryChannelNumber() >= 0) {
+    if (on && mother->GetPrimaryChannelNumber() >= 0) {
         unsigned short list[2];
         list[0] = mother->GetPrimaryChannelNumber();
         list[1] = channel;
@@ -37,115 +118,51 @@ void CAEN_Channel::SetPower(const bool& on)
     }
 
     CAEN_ShowError("HV Channel Set Power", err);
+    if (err == CAENHV_OK)
+        params_["Pw"] = ParamValue::fromUInt(val);
 }
 
-void CAEN_Channel::SetVoltage(const float& v)
-{
-    float val = v;
-    if(v > limit) {
-        cerr << "HV Channel ERROR: Trying to set voltage " << v
-             << " V, which exceeds limit " << limit
-             << " V for channel " << name
-             << ". Change it to the limit. " << endl;
-        val = v;
-    }
-
-    int handle = mother->GetHandle();
-    unsigned short slot = mother->GetSlot();
-    int err = CAENHV_SetChParam(handle, slot, "V0Set", 1, &channel, &val);
-
-    CAEN_ShowError("HV Channel Set Voltage", err);
-
-    if(err == CAENHV_OK)
-        Vset = val;
-}
+// ── SetName ──────────────────────────────────────────────────────────────────
 
 void CAEN_Channel::SetName(const string &n)
 {
     int handle = mother->GetHandle();
     unsigned short slot = mother->GetSlot();
     int err = CAENHV_SetChName(handle, slot, 1, &channel, n.c_str());
-
     CAEN_ShowError("HV Channel Set Name", err);
-
-    if(err == CAENHV_OK)
-        name = n;
+    if (err == CAENHV_OK) name = n;
 }
 
-// Returns true if the CAEN error code means the parameter simply does not
-// exist on this board model — not a real communication failure.
-// 0xe = "Property not found", 0x1b = "Function not available for device".
-// Note: negative error values are errors from the power supply itself and
-// should NOT be treated as unsupported — they are real hardware errors.
-static inline bool isUnsupportedParam(int err)
+// ── OVL evaluation (called after all params read) ────────────────────────────
+
+void CAEN_Channel::EvaluateOVL()
 {
-    return (err == 0xe || err == 0x16 || err == 0x1b || err == -5);
-}
+    unsigned int st = GetUInt("Status");
+    bool on = IsTurnedOn();
+    float vmon = GetVMon();
 
-void CAEN_Channel::SetCurrent(const float &i)
-{
-    if (!supportsCurrentIO) return;
-
-    float val = i;
-    int handle = mother->GetHandle();
-    unsigned short slot = mother->GetSlot();
-    int err = CAENHV_SetChParam(handle, slot, "I0Set", 1, &channel, &val);
-
-    if (isUnsupportedParam(err)) {
-        supportsCurrentIO = false;
-        return;
+    if (on && !std::isnan(vmon) && vmon > limit) {
+        if (!(st & (1u << OVL_BIT)))
+            cerr << "Channel " << name << " VMon " << vmon
+                 << " V exceeds software limit " << limit << " V!" << endl;
+        st |= (1u << OVL_BIT);
+    } else {
+        st &= ~(1u << OVL_BIT);
     }
-    CAEN_ShowError("HV Channel Set Current", err);
+    // Write back to cache (not to hardware)
+    params_["Status"] = ParamValue::fromUInt(st);
 
-    if(err == CAENHV_OK)
-        Iset = val;
+    // Also check for hardware errors and print them
+    unsigned int hw_status = st & 0xFFFF;  // lower 16 bits = hardware
+    CAEN_ShowChError(name, hw_status);
 }
 
-void CAEN_Channel::SetSVMax(const float &v)
+// ── GetStatusString ──────────────────────────────────────────────────────────
+
+string CAEN_Channel::GetStatusString() const
 {
-    float val = v;
-    int handle = mother->GetHandle();
-    unsigned short slot = mother->GetSlot();
-    int err = CAENHV_SetChParam(handle, slot, "SVMax", 1, &channel, &val);
-
-    if (isUnsupportedParam(err)) {
-        SVMax = NAN;
-        return;
-    }
-    CAEN_ShowError("HV Channel Set SVMax", err);
-
-    if (err == CAENHV_OK)
-        SVMax = val;
-}
-
-void CAEN_Channel::UpdateCurrent(const float &im, const float &is)
-{
-    Imon = im;
-    Iset = is;
-}
-
-void CAEN_Channel::SetLimit(const float &l)
-{
-    limit = l;
-}
-
-void CAEN_Channel::CheckStatus()
-{
-    int handle = mother->GetHandle();
-    unsigned short slot = mother->GetSlot();
-    unsigned int status_;
-    int err = CAENHV_GetChParam(handle, slot, "Status", 1, &channel, &status_);
-    CAEN_ShowError("HV Channel Read Status", err);
-    if (err == CAENHV_OK) {
-        // Preserve software-only bits (OVL) across hardware status updates
-        status = status_ | (status & (1u << OVL_BIT));
-        CAEN_ShowChError(name, status_);
-    }
-}
-
-std::string CAEN_Channel::GetStatusString() const
-{
-    if (status == 0) return "OFF|channel is off";
+    unsigned int st = GetStatus();
+    if (st == 0) return "OFF|channel is off";
 
     static const struct { int bit; const char *abbr; const char *full; } flags[] = {
         {  0, "ON",   "channel is on"          },
@@ -166,9 +183,9 @@ std::string CAEN_Channel::GetStatusString() const
         { static_cast<int>(OVL_BIT), "OVL", "VMon over software limit" },
     };
 
-    std::string abbrs, detail;
+    string abbrs, detail;
     for (const auto &f : flags) {
-        if (status & (1u << f.bit)) {
+        if (st & (1u << f.bit)) {
             if (!abbrs.empty())  abbrs  += ' ';
             if (!detail.empty()) detail += ", ";
             abbrs  += f.abbr;
@@ -178,195 +195,65 @@ std::string CAEN_Channel::GetStatusString() const
     return abbrs + '|' + detail;
 }
 
-void CAEN_Channel::ReadVoltage()
-{
-    int handle = mother->GetHandle();
-    unsigned short slot = mother->GetSlot();
-    unsigned int pw;
-    int err;
-
-    err = CAENHV_GetChParam(handle, slot, "Pw", 1, &channel, &pw);
-    CAEN_ShowError("HV Channel Read Power", err);
-    on_off = (bool)pw;
-
-    err = CAENHV_GetChParam(handle, slot, "VMon", 1, &channel, &Vmon);
-    CAEN_ShowError("HV Channel Read Voltage", err);
-
-    err = CAENHV_GetChParam(handle, slot, "V0Set", 1, &channel, &Vset);
-    CAEN_ShowError("HV Channel Read Voltage Set", err);
-
-    // Software over-limit check: set/clear the OVL bit based on VMon vs limit.
-    // Only flag when the channel is on — off channels read ~0 V.
-    if (on_off && Vmon > limit) {
-        if (!(status & (1u << OVL_BIT)))   // newly over limit — log once
-            cerr << "Channel " << name << " VMon " << Vmon
-                 << " V exceeds software limit " << limit << " V!" << endl;
-        status |= (1u << OVL_BIT);
-    } else {
-        status &= ~(1u << OVL_BIT);
-    }
-
-    // Read software voltage maximum (SVMax) — may not exist on all boards
-    if (supportsSVMax) {
-        err = CAENHV_GetChParam(handle, slot, "SVMax", 1, &channel, &SVMax);
-        if (isUnsupportedParam(err)) {
-            supportsSVMax = false;
-            SVMax = NAN;
-        } else {
-            CAEN_ShowError("HV Channel Read SVMax", err);
-        }
-    }
-
-    if (!supportsCurrentIO) return;
-
-    err = CAENHV_GetChParam(handle, slot, "IMon", 1, &channel, &Imon);
-    if (isUnsupportedParam(err)) {
-        supportsCurrentIO = false; Imon = NAN; Iset = NAN;
-        return;
-    }
-    CAEN_ShowError("HV Channel Read Current Mon", err);
-
-    // IMon and I0Set are a pair — if IMon is supported, I0Set must be too
-    err = CAENHV_GetChParam(handle, slot, "I0Set", 1, &channel, &Iset);
-    CAEN_ShowError("HV Channel Read Current Set", err);
-}
-
-void CAEN_Channel::UpdateVoltage(const bool &pw, const float &vm, const float &vs)
-{
-    on_off = pw;
-    Vmon = vm;
-    Vset = vs;
-
-    // Software over-limit check: set/clear the OVL bit based on VMon vs limit.
-    // Only flag when the channel is on — off channels read ~0 V.
-    if (on_off && Vmon > limit) {
-        if (!(status & (1u << OVL_BIT)))   // newly over limit — log once
-            cerr << "Channel " << name << " VMon " << Vmon
-                 << " V exceeds software limit " << limit << " V!" << endl;
-        status |= (1u << OVL_BIT);
-    } else {
-        status &= ~(1u << OVL_BIT);
-    }
-}
 
 //============================================================================//
-// CAEN HV Board                                                              //
+// CAEN_Board
 //============================================================================//
+
 CAEN_Board::~CAEN_Board()
 {
-    for(auto &channel : channelList)
-        delete channel;
+    for (auto *ch : channelList) delete ch;
 }
 
-int CAEN_Board::GetHandle()
-{
-    return mother->GetHandle();
-}
+int CAEN_Board::GetHandle() { return mother->GetHandle(); }
 
-CAEN_Channel *CAEN_Board::GetPrimaryChannel()
-{
-    return GetChannel(primary);
-}
+CAEN_Channel *CAEN_Board::GetPrimaryChannel() { return GetChannel(primary); }
 
 CAEN_Channel *CAEN_Board::GetChannel(int i)
 {
-    unsigned int index  = (unsigned int) i;
-    if(index >= channelList.size())
-        return nullptr;
-
-    return channelList[index];
+    if (static_cast<unsigned>(i) >= channelList.size()) return nullptr;
+    return channelList[i];
 }
 
-void CAEN_Board::ReadBoardMap()
+bool CAEN_Board::HasChParam(const string &name) const
 {
-    channelList.clear();
-    if(nChan < 1)
-        return;
-
-    int err;
-    float monVals[nChan], setVals[nChan];
-    unsigned int pwON[nChan];
-    unsigned short list[nChan];
-    char nameList[nChan][MAX_CH_NAME];
-
-    for(int k = 0; k < nChan; ++k)
-        list[k] = k;
-
-    err = CAENHV_GetChName(mother->GetHandle(), slot, nChan, list, nameList);
-    CAEN_ShowError("HV Board Read Name", err);
-
-    err = CAENHV_GetChParam(mother->GetHandle(), slot, "Pw", nChan, list, pwON);
-    CAEN_ShowError("HV Board Read Power", err);
-
-    err = CAENHV_GetChParam(mother->GetHandle(), slot, "VMon", nChan, list, monVals);
-    CAEN_ShowError("HV Board Read Voltage", err);
-
-    err = CAENHV_GetChParam(mother->GetHandle(), slot, "V0Set", nChan, list, setVals);
-    CAEN_ShowError("HV Board Read Voltage Set", err);
-
-    float imonVals[nChan], isetVals[nChan];
-    bool boardSupportsCurrentIO = true;
-
-    err = CAENHV_GetChParam(mother->GetHandle(), slot, "IMon", nChan, list, imonVals);
-    if (isUnsupportedParam(err)) {
-        boardSupportsCurrentIO = false;
-        for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
-    } else {
-        CAEN_ShowError("HV Board Read Current Mon", err);
-        // IMon and I0Set are a pair — no separate unsupported check needed
-        err = CAENHV_GetChParam(mother->GetHandle(), slot, "I0Set", nChan, list, isetVals);
-        CAEN_ShowError("HV Board Read Current Set", err);
-    }
-
-    float svmaxVals[nChan];
-    bool boardSupportsSVMax = true;
-    err = CAENHV_GetChParam(mother->GetHandle(), slot, "SVMax", nChan, list, svmaxVals);
-    if (isUnsupportedParam(err)) {
-        boardSupportsSVMax = false;
-        for (int k = 0; k < nChan; ++k) svmaxVals[k] = NAN;
-    } else {
-        CAEN_ShowError("HV Board Read SVMax", err);
-    }
-
-    for(int k = 0; k < nChan; ++k)
-    {
-        string ch_name = nameList[k];
-        auto *ch = new CAEN_Channel(this, k, ch_name, pwON[k], monVals[k], setVals[k]);
-        ch->UpdateCurrent(imonVals[k], isetVals[k]);
-        if (!boardSupportsCurrentIO) ch->SetSupportsCurrentIO(false);
-        if (!boardSupportsSVMax) ch->SetSupportsSVMax(false);
-        ch->SetSVMaxDirect(svmaxVals[k]);
-        channelList.push_back(ch);
-    }
-
-    if(model.find("1932") != string::npos)
-        primary = 0;
+    for (const auto &pi : ch_param_info_)
+        if (pi.name == name) return true;
+    return false;
 }
 
-void CAEN_Board::ReadBoardParams()
+unsigned short CAEN_Board::GetFirmware()
 {
-    int handle = mother->GetHandle();
-    unsigned short slotList[1] = { slot };
-    float val;
-    unsigned int uval;
-    int err;
-
-    err = CAENHV_GetBdParam(handle, 1, slotList, "HVMax", &val);
-    if (err == CAENHV_OK) hvMax = val;
-    else if (!isUnsupportedParam(err)) CAEN_ShowError("HV Board Read HVMax", err);
-
-    err = CAENHV_GetBdParam(handle, 1, slotList, "Temp", &val);
-    if (err == CAENHV_OK) temp = val;
-    else if (!isUnsupportedParam(err)) CAEN_ShowError("HV Board Read Temp", err);
-
-    err = CAENHV_GetBdParam(handle, 1, slotList, "BdStatus", &uval);
-    if (err == CAENHV_OK) bdStatus = uval;
-    else if (!isUnsupportedParam(err)) CAEN_ShowError("HV Board Read BdStatus", err);
+    return (static_cast<unsigned short>(fmwLSB) << 8) | fmwMSB;
 }
 
-std::string CAEN_Board::GetBdStatusString() const
+// ── Board-level generic getters ──────────────────────────────────────────────
+
+float CAEN_Board::GetBdFloat(const string &pname) const
 {
-    if (bdStatus == 0) return "OK|normal";
+    auto it = bd_params_.find(pname);
+    if (it == bd_params_.end() || it->second.tag != ParamValue::Float) return NAN;
+    return it->second.f;
+}
+
+unsigned int CAEN_Board::GetBdUInt(const string &pname) const
+{
+    auto it = bd_params_.find(pname);
+    if (it == bd_params_.end() || it->second.tag != ParamValue::UInt) return 0;
+    return it->second.u;
+}
+
+bool CAEN_Board::HasBdParam(const string &pname) const
+{
+    return bd_params_.count(pname) > 0;
+}
+
+// ── BdStatusString (unchanged logic) ─────────────────────────────────────────
+
+string CAEN_Board::GetBdStatusString() const
+{
+    unsigned int bds = GetBdStatus();
+    if (bds == 0) return "OK|normal";
 
     static const struct { int bit; const char *abbr; const char *full; } flags[] = {
         { 0, "PWRF",  "power-fail"              },
@@ -377,9 +264,9 @@ std::string CAEN_Board::GetBdStatusString() const
         { 5, "OVERT", "over-temperature"         },
     };
 
-    std::string abbrs, detail;
+    string abbrs, detail;
     for (const auto &f : flags) {
-        if (bdStatus & (1u << f.bit)) {
+        if (bds & (1u << f.bit)) {
             if (!abbrs.empty())  abbrs  += ' ';
             if (!detail.empty()) detail += ", ";
             abbrs  += f.abbr;
@@ -389,189 +276,233 @@ std::string CAEN_Board::GetBdStatusString() const
     return abbrs + '|' + detail;
 }
 
-void CAEN_Board::ReadVoltage()
+// ── Parameter Discovery ──────────────────────────────────────────────────────
+
+void CAEN_Board::DiscoverChParams()
 {
-    int err;
+    ch_param_info_.clear();
+    if (nChan < 1) return;
+
     int handle = mother->GetHandle();
-    float monVals[nChan], setVals[nChan];
-    unsigned int pw[nChan];
-    unsigned short list[nChan];
-    char nameList[nChan][MAX_CH_NAME];
+    char *nameList = nullptr;
+    int parNum = 0;
+    unsigned short ch0 = 0;
 
-    for(int k = 0; k < nChan; ++k)
-        list[k] = k;
-
-    err = CAENHV_GetChName(handle, slot, nChan, list, nameList);
-    CAEN_ShowError("HV Board Read Name", err);
-
-    err = CAENHV_GetChParam(handle, slot, "Pw", nChan, list, pw);
-    CAEN_ShowError("HV Board Read Power", err);
-
-    err = CAENHV_GetChParam(handle, slot, "VMon", nChan, list, monVals);
-    CAEN_ShowError("HV Board Read Voltage", err);
-
-    err = CAENHV_GetChParam(handle, slot, "V0Set", nChan, list, setVals);
-    CAEN_ShowError("HV Board Read Voltage Set", err);
-
-    float imonVals[nChan], isetVals[nChan];
-    // Check the first channel's flag — all channels on the same board share support
-    const bool boardSupportsCurrentIO = channelList.empty() || channelList.at(0)->SupportsCurrentIO();
-
-    if (boardSupportsCurrentIO) {
-        err = CAENHV_GetChParam(handle, slot, "IMon", nChan, list, imonVals);
-        if (isUnsupportedParam(err)) {
-            // Mark all channels on this board as unsupported
-            for (int k = 0; k < nChan; ++k) {
-                imonVals[k] = NAN; isetVals[k] = NAN;
-                channelList.at(k)->SetSupportsCurrentIO(false);
-            }
-        } else {
-            CAEN_ShowError("HV Board Read Current Mon", err);
-            // IMon and I0Set are a pair — no separate unsupported check needed
-            err = CAENHV_GetChParam(handle, slot, "I0Set", nChan, list, isetVals);
-            CAEN_ShowError("HV Board Read Current Set", err);
-        }
-    } else {
-        for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
-    }
-
-    float svmaxVals[nChan];
-    // Use the explicit flag set during ReadBoardMap, not NAN sentinel
-    const bool boardSupportsSVMax = channelList.empty() || channelList.at(0)->SupportsSVMax();
-    if (boardSupportsSVMax) {
-        err = CAENHV_GetChParam(handle, slot, "SVMax", nChan, list, svmaxVals);
-        if (isUnsupportedParam(err)) {
-            for (int k = 0; k < nChan; ++k) svmaxVals[k] = NAN;
-        } else {
-            CAEN_ShowError("HV Board Read SVMax", err);
-        }
-    } else {
-        for (int k = 0; k < nChan; ++k) svmaxVals[k] = NAN;
-    }
-
-    for(int k = 0; k < nChan; ++k)
-    {
-        if(channelList.at(k)->GetName() != nameList[k]) {
-            cerr << "Different channel name, need to update HV system map!"
-                 << " Read: " << nameList[k]
-                 << " Was: " << channelList.at(k)->GetName()
-                 << endl;
-            continue;
-        }
-        channelList.at(k)->UpdateVoltage(pw[k], monVals[k], setVals[k]);
-        if (boardSupportsCurrentIO)
-            channelList.at(k)->UpdateCurrent(imonVals[k], isetVals[k]);
-        channelList.at(k)->SetSVMaxDirect(svmaxVals[k]);
-    }
-}
-
-void CAEN_Board::CheckStatus()
-{
-    int err;
-    int handle = mother->GetHandle();
-    unsigned int status[nChan];
-    unsigned short list[nChan];
-
-    for(int k = 0; k < nChan; ++k)
-        list[k] = k;
-
-    err = CAENHV_GetChParam(handle, slot, "Status", nChan, list, status);
-    CAEN_ShowError("HV Board Read Voltage Set", err);
-
-    for(int k = 0; k < nChan; ++k)
-    {
-        if (err == CAENHV_OK) {
-            channelList.at(k)->SetStatus(status[k]);
-            CAEN_ShowChError(channelList.at(k)->GetName(), status[k]);
-        }
-    }
-}
-
-unsigned short CAEN_Board::GetFirmware()
-{
-    unsigned short lsb = fmwLSB;
-    unsigned short msb = fmwMSB;
-
-    return ((lsb << 8) | msb);
-}
-
-void CAEN_Board::SetVoltage(const vector<float> &Vset)
-{
-    if(Vset.size() != nChan) {
-        cout << "HV Board Set Voltage Warning: Mismatched size in value list, "
-             << "input size is " << Vset.size()
-             << ", should be " << nChan
-             << ". Operation terminated."
-             << endl;
+    int err = CAENHV_GetChParamInfo(handle, slot, ch0, &nameList, &parNum);
+    if (err != CAENHV_OK || !nameList || parNum == 0) {
+        if (err != CAENHV_OK)
+            CAEN_ShowError("DiscoverChParams", err);
         return;
     }
 
-    int err;
-    int handle = mother->GetHandle();
-    unsigned short list[nChan];
-    float val[nChan];
+    for (int i = 0; i < parNum; ++i) {
+        ParamInfo pi;
+        pi.name = string(nameList + i * (MAX_PARAM_NAME + 1));
 
-    for(int k = 0; k < nChan; ++k)
-    {
-        list[k] = k;
-        val[k] = Vset[k];
+        CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Type", &pi.type);
+        CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Mode", &pi.mode);
+
+        if (pi.isFloat()) {
+            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Minval", &pi.minval);
+            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Maxval", &pi.maxval);
+            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Unit",   &pi.unit);
+            CAENHV_GetChParamProp(handle, slot, ch0, pi.name.c_str(), "Exp",    &pi.exp);
+        }
+
+        ch_param_info_.push_back(pi);
+    }
+    free(nameList);
+
+    cout << "  Discovered " << ch_param_info_.size()
+         << " channel params for " << model << " slot " << slot << ":";
+    for (const auto &pi : ch_param_info_) cout << " " << pi.name;
+    cout << endl;
+}
+
+void CAEN_Board::DiscoverBdParams()
+{
+    bd_param_info_.clear();
+
+    int handle = mother->GetHandle();
+    char *nameList = nullptr;
+
+    int err = CAENHV_GetBdParamInfo(handle, slot, &nameList);
+    if (err != CAENHV_OK || !nameList) {
+        if (err != CAENHV_OK)
+            CAEN_ShowError("DiscoverBdParams", err);
+        return;
     }
 
-    err = CAENHV_SetChParam(handle, slot, "V0Set", nChan, list, val);
-    CAEN_ShowError("HV Board Set Voltage", err);
+    const char *p = nameList;
+    while (*p) {
+        ParamInfo pi;
+        pi.name = string(p);
+
+        CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Type", &pi.type);
+        CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Mode", &pi.mode);
+
+        if (pi.isFloat()) {
+            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Minval", &pi.minval);
+            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Maxval", &pi.maxval);
+            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Unit",   &pi.unit);
+            CAENHV_GetBdParamProp(handle, slot, pi.name.c_str(), "Exp",    &pi.exp);
+        }
+
+        bd_param_info_.push_back(pi);
+        p += pi.name.size() + 1;
+    }
+    free(nameList);
+
+    cout << "  Discovered " << bd_param_info_.size()
+         << " board params for " << model << " slot " << slot << ":";
+    for (const auto &pi : bd_param_info_) cout << " " << pi.name;
+    cout << endl;
 }
+
+// ── ReadBoardMap (init: discover + first read) ───────────────────────────────
+
+void CAEN_Board::ReadBoardMap()
+{
+    channelList.clear();
+    if (nChan < 1) return;
+
+    // 1. Discover available parameters
+    DiscoverBdParams();
+    DiscoverChParams();
+
+    // 2. Read channel names
+    int handle = mother->GetHandle();
+    unsigned short list[nChan];
+    char nameList[nChan][MAX_CH_NAME];
+    for (int k = 0; k < nChan; ++k) list[k] = k;
+
+    int err = CAENHV_GetChName(handle, slot, nChan, list, nameList);
+    CAEN_ShowError("HV Board Read Name", err);
+
+    // 3. Create channels
+    for (int k = 0; k < nChan; ++k) {
+        auto *ch = new CAEN_Channel(this, k, string(nameList[k]));
+        channelList.push_back(ch);
+    }
+
+    // 4. Detect primary channel (A1932 boards)
+    if (model.find("1932") != string::npos)
+        primary = 0;
+
+    // 5. Initial read of all params
+    ReadAllParams();
+}
+
+// ── ReadAllParams (polling: read all board + channel params generically) ─────
+
+void CAEN_Board::ReadAllParams()
+{
+    int handle = mother->GetHandle();
+    unsigned short list[nChan];
+    for (int k = 0; k < nChan; ++k) list[k] = k;
+
+    // ── Board-level params ───────────────────────────────────────────────
+    unsigned short slotList[1] = { slot };
+    for (const auto &pi : bd_param_info_) {
+        if (!pi.isReadable()) continue;
+
+        if (pi.isFloat()) {
+            float val;
+            int err = CAENHV_GetBdParam(handle, 1, slotList, pi.name.c_str(), &val);
+            if (err == CAENHV_OK)
+                bd_params_[pi.name] = ParamValue::fromFloat(val);
+            else if (!CAEN_IsUnsupportedParam(err))
+                CAEN_ShowError("HV Board Read " + pi.name, err);
+        } else if (pi.isUInt()) {
+            unsigned int val;
+            int err = CAENHV_GetBdParam(handle, 1, slotList, pi.name.c_str(), &val);
+            if (err == CAENHV_OK)
+                bd_params_[pi.name] = ParamValue::fromUInt(val);
+            else if (!CAEN_IsUnsupportedParam(err))
+                CAEN_ShowError("HV Board Read " + pi.name, err);
+        }
+    }
+
+    // ── Channel-level params (bulk read per param) ───────────────────────
+    for (const auto &pi : ch_param_info_) {
+        if (!pi.isReadable()) continue;
+
+        if (pi.isFloat()) {
+            float vals[nChan];
+            int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
+            if (err == CAENHV_OK) {
+                for (int k = 0; k < nChan; ++k)
+                    channelList[k]->SetParamDirect(pi.name, vals[k]);
+            } else if (!CAEN_IsUnsupportedParam(err)) {
+                CAEN_ShowError("HV Board Read " + pi.name, err);
+            }
+        } else if (pi.isUInt()) {
+            unsigned int vals[nChan];
+            int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
+            if (err == CAENHV_OK) {
+                for (int k = 0; k < nChan; ++k)
+                    channelList[k]->SetParamDirect(pi.name, vals[k]);
+            } else if (!CAEN_IsUnsupportedParam(err)) {
+                CAEN_ShowError("HV Board Read " + pi.name, err);
+            }
+        }
+    }
+
+    // ── Post-read: check names, evaluate OVL ─────────────────────────────
+    for (auto *ch : channelList)
+        ch->EvaluateOVL();
+}
+
+// ── Bulk write methods (backward compat) ─────────────────────────────────────
 
 void CAEN_Board::SetPower(const bool &on_off)
 {
-    int err;
     int handle = mother->GetHandle();
     unsigned short list[nChan];
     unsigned int val[nChan];
-
-    for(int k = 0; k < nChan; ++k)
-    {
-        list[k] = k;
-        val[k] = (on_off)? 1: 0;
-    }
-
-    err = CAENHV_SetChParam(handle, slot, "Pw", nChan, list, val);
+    for (int k = 0; k < nChan; ++k) { list[k] = k; val[k] = on_off ? 1 : 0; }
+    int err = CAENHV_SetChParam(handle, slot, "Pw", nChan, list, val);
     CAEN_ShowError("HV Board Set Power", err);
 }
 
 void CAEN_Board::SetPower(const vector<unsigned int> &on_off)
 {
-    if(on_off.size() != nChan) {
-        cout << "HV Board Set Power Warning: Mismatched size in value list, "
-             << "input size is " << on_off.size()
-             << ", should be " << nChan
-             << ". Operation terminated."
-             << endl;
+    if (on_off.size() != nChan) {
+        cerr << "HV Board Set Power Warning: size mismatch (" << on_off.size()
+             << " vs " << nChan << ")" << endl;
         return;
     }
-
-    int err;
     int handle = mother->GetHandle();
     unsigned short list[nChan];
     unsigned int val[nChan];
-
-    for(int k = 0; k < nChan; ++k)
-    {
-        list[k] = k;
-        val[k] = on_off[k];
-    }
-
-    err = CAENHV_SetChParam(handle, slot, "Pw", nChan, list, val);
+    for (int k = 0; k < nChan; ++k) { list[k] = k; val[k] = on_off[k]; }
+    int err = CAENHV_SetChParam(handle, slot, "Pw", nChan, list, val);
     CAEN_ShowError("HV Board Set Power", err);
 }
 
+void CAEN_Board::SetVoltage(const vector<float> &Vset)
+{
+    if (Vset.size() != nChan) {
+        cerr << "HV Board Set Voltage Warning: size mismatch (" << Vset.size()
+             << " vs " << nChan << ")" << endl;
+        return;
+    }
+    int handle = mother->GetHandle();
+    unsigned short list[nChan];
+    float val[nChan];
+    for (int k = 0; k < nChan; ++k) { list[k] = k; val[k] = Vset[k]; }
+    int err = CAENHV_SetChParam(handle, slot, "V0Set", nChan, list, val);
+    CAEN_ShowError("HV Board Set Voltage", err);
+}
+
+
 //============================================================================//
-// CAEN HV Crate                                                              //
+// CAEN_Crate
 //============================================================================//
+
 CAEN_Crate::~CAEN_Crate()
 {
-    for(auto &board : boardList)
-        delete board;
-
+    for (auto *bd : boardList) delete bd;
     DeInitialize();
 }
 
@@ -579,39 +510,26 @@ bool CAEN_Crate::Initialize()
 {
     char arg[32];
     strcpy(arg, ip.c_str());
-    int err = CAENHV_InitSystem(sys_type,
-                                link_type,
-                                arg,
-                                username.c_str(),
-                                password.c_str(),
-                                &handle);
-    if(err != CAENHV_OK) {
+    int err = CAENHV_InitSystem(sys_type, link_type, arg,
+                                username.c_str(), password.c_str(), &handle);
+    if (err != CAENHV_OK) {
         CAEN_ShowError("HV Crate Initialize", err);
         return false;
     }
-
-    if(!mapped) {// fist time initialize, does not have crate map
-        ReadCrateMap();
-    }
-
+    if (!mapped) ReadCrateMap();
     return true;
 }
 
 bool CAEN_Crate::DeInitialize()
 {
-    // -1 means not established, so no need to deinitialize
     if (handle != -1) {
-
         int err = CAENHV_DeinitSystem(handle);
-
-        if(err != CAENHV_OK) {
+        if (err != CAENHV_OK) {
             CAEN_ShowError("HV Crate DeInitialize", err);
             return false;
         }
     }
-
     Clear();
-
     return true;
 }
 
@@ -620,26 +538,18 @@ void CAEN_Crate::Clear()
     handle = -1;
     boardList.clear();
     mapped = false;
-    for(auto &i : slot_map)
-    {
-        i = 0;
-    }
+    for (auto &i : slot_map) i = 0;
 }
 
 void CAEN_Crate::ReadCrateMap()
 {
-    if(handle < 0) {
-        cerr << "HV Crate Read Map Error: crate "
-             << name << " is not initialized!"
-             << endl;
+    if (handle < 0) {
+        cerr << "HV Crate Read Map Error: crate " << name << " is not initialized!" << endl;
         return;
     }
 
     boardList.clear();
-    for(auto &i : slot_map)
-    {
-        i = -1;
-    }
+    for (auto &i : slot_map) i = -1;
 
     unsigned short NbofSlot;
     unsigned short *NbofChList;
@@ -647,29 +557,24 @@ void CAEN_Crate::ReadCrateMap()
     unsigned short *serNumList;
     unsigned char *fmwMinList, *fmwMaxList;
 
-    int err = CAENHV_GetCrateMap(handle, &NbofSlot, &NbofChList, &modelList, &descList, &serNumList, &fmwMinList, &fmwMaxList);
+    int err = CAENHV_GetCrateMap(handle, &NbofSlot, &NbofChList, &modelList,
+                                 &descList, &serNumList, &fmwMinList, &fmwMaxList);
 
     char *m = modelList, *d = descList;
-    if(err == CAENHV_OK) {
-        for(int slot = 0; slot < NbofSlot; ++slot, m += strlen(m) + 1, d += strlen(d) + 1) {
+    if (err == CAENHV_OK) {
+        for (int sl = 0; sl < NbofSlot; ++sl, m += strlen(m) + 1, d += strlen(d) + 1) {
+            if (!NbofChList[sl]) continue;
 
-            if(!NbofChList[slot])
+            // TODO: get rid of this hard-coded exception
+            if ((id == 5 && sl == 14) || (id == 4 && sl == 12) || (id == 4 && sl == 14))
                 continue;
 
-            // TODO, get rid of this hard coded exception
-            if((id == 5 && slot == 14) ||
-               (id == 4 && slot == 12) ||
-               (id == 4 && slot == 14)
-              )
-                continue;
+            auto *newBoard = new CAEN_Board(this, m, d, sl, NbofChList[sl],
+                                            serNumList[sl], fmwMinList[sl], fmwMaxList[sl]);
+            newBoard->ReadBoardMap();   // discovers params + initial read
 
-            CAEN_Board *newBoard = new CAEN_Board(this, m, d, slot, NbofChList[slot], serNumList[slot], fmwMinList[slot], fmwMaxList[slot]);
-            newBoard->ReadBoardMap();
-            newBoard->ReadBoardParams();
-
-            slot_map[slot] = boardList.size();
+            slot_map[sl] = boardList.size();
             boardList.push_back(newBoard);
-
         }
         mapped = true;
     } else {
@@ -688,22 +593,19 @@ void CAEN_Crate::PrintCrateMap()
 {
     cout << "Slot map is:" << endl;
     for (int i = 0; i < MAX_SLOTS; ++i) {
-        if ( slot_map[i] >= 0 ) {
+        if (slot_map[i] >= 0)
             cout << slot_map[i] << ": " << i << endl;
-        }
     }
 }
 
 CAEN_Board *CAEN_Crate::GetBoard(const unsigned short &slot)
 {
-    if(slot >= MAX_SLOTS) {
-        cerr << "Crate does not have slot "  << slot << endl;
+    if (slot >= MAX_SLOTS) {
+        cerr << "Crate does not have slot " << slot << endl;
         return nullptr;
     }
     size_t index = slot_map[slot];
-    if(index >= boardList.size())
-        return nullptr;
-
+    if (index >= boardList.size()) return nullptr;
     return boardList[index];
 }
 
@@ -714,59 +616,43 @@ void CAEN_Crate::HeartBeat()
     CAEN_ShowError("HV Crate Heartbeat", err);
 }
 
-void CAEN_Crate::CheckStatus()
+void CAEN_Crate::ReadAllParams()
 {
-    for(auto &board : boardList)
-        board->CheckStatus();
-}
-
-void CAEN_Crate::ReadVoltage()
-{
-    for(auto &board : boardList) {
-        board->ReadVoltage();
-        board->ReadBoardParams();
-    }
+    for (auto *bd : boardList)
+        bd->ReadAllParams();
 }
 
 void CAEN_Crate::SetPower(const bool &on_off)
 {
-    for(auto &board : boardList)
-        board->SetPower(on_off);
+    for (auto *bd : boardList) bd->SetPower(on_off);
 }
 
+
 //============================================================================//
-// CAEN HV General                                                            //
+// CAEN HV General
 //============================================================================//
 
 ostream &operator<<(ostream &os, CAEN_Board &b)
 {
     return os << b.GetModel() << ", " << b.GetDescription() << ", "
               << b.GetSlot() << ", " << b.GetSize() << ", "
-              << b.GetSerialNum() << ", "
-              << b.GetFirmware() << ".";
+              << b.GetSerialNum() << ", " << b.GetFirmware() << ".";
 }
 
 void CAEN_ShowError(const string &prefix, const int &err, const bool &ShowSuccess)
 {
-    if(err == CAENHV_OK && !ShowSuccess)
-        return;
-
-    if(err == CAENHV_OK) {
+    if (err == CAENHV_OK && !ShowSuccess) return;
+    if (err == CAENHV_OK) {
         cout << prefix << ": Command successfully executed." << endl;
         return;
     }
-
     string result = prefix + " ERROR: ";
-
-    if(err < 0) {
-        // Negative values are errors reported directly by the power supply hardware
-        result += "Power supply error (code " + std::to_string(err) + ")";
+    if (err < 0) {
+        result += "Power supply error (code " + to_string(err) + ")";
         cerr << result << endl;
         return;
     }
-
-    switch(err)
-    {
+    switch (err) {
     case 0x01: result += "Operating system error"; break;
     case 0x02: result += "Write error in communication channel"; break;
     case 0x03: result += "Read error in communication channel"; break;
@@ -803,43 +689,31 @@ void CAEN_ShowError(const string &prefix, const int &err, const bool &ShowSucces
     case 0x1004: result += "Login failed"; break;
     case 0x1005: result += "Logout failed"; break;
     case 0x1006: result += "Link type not supported"; break;
-    default: result += "Unknown error code (" + std::to_string(err) + ")"; break;
+    default: result += "Unknown error code (" + to_string(err) + ")"; break;
     }
-
     cerr << result << endl;
 }
 
 
 // ── Configurable voltage limits ──────────────────────────────────────────────
-static std::vector<CAEN_Channel::VoltageLimitRule> voltage_limit_rules;
+
+static vector<CAEN_Channel::VoltageLimitRule> voltage_limit_rules;
 
 void CAEN_Channel::SetVoltageLimit(const string &pattern, float limit)
 {
-    // Replace existing rule with the same pattern, if any
     for (auto &rule : voltage_limit_rules) {
-        if (rule.pattern == pattern) {
-            rule.limit = limit;
-            return;
-        }
+        if (rule.pattern == pattern) { rule.limit = limit; return; }
     }
     voltage_limit_rules.push_back({pattern, limit});
 }
 
-void CAEN_Channel::ClearVoltageLimits()
-{
-    voltage_limit_rules.clear();
-}
+void CAEN_Channel::ClearVoltageLimits() { voltage_limit_rules.clear(); }
 
-const std::vector<CAEN_Channel::VoltageLimitRule> &CAEN_Channel::GetVoltageLimitRules()
+const vector<CAEN_Channel::VoltageLimitRule> &CAEN_Channel::GetVoltageLimitRules()
 {
     return voltage_limit_rules;
 }
 
-// Match a channel name against a pattern.
-// Supported forms:
-//   "G235"   — exact match
-//   "G*"     — prefix match (trailing '*' only)
-//   "*"      — matches everything (catch-all default)
 static bool matchPattern(const string &pattern, const string &name)
 {
     if (pattern.empty()) return false;
@@ -851,59 +725,40 @@ static bool matchPattern(const string &pattern, const string &name)
 
 float CAEN_VoltageLimit(const string &name)
 {
-    // Check user-configured rules first (order matters — first match wins)
     for (const auto &rule : voltage_limit_rules) {
-        if (matchPattern(rule.pattern, name))
-            return rule.limit;
+        if (matchPattern(rule.pattern, name)) return rule.limit;
     }
-
-    // Built-in defaults (backward-compatible fallback)
-    // Lead Glass
-    if(!name.empty() && name[0] == 'G') return 1950;
-    // Lead Tungstate
-    if(!name.empty() && name[0] == 'W') return 1450;
-    // LMS Reference PMT
-    if(!name.empty() && name[0] == 'L') return 2000;
-    // Scintillator
-    if(!name.empty() && name[0] == 'S') return 2000;
-    // Primary Channel
-    if(!name.empty() && name[0] == 'P') return 3000;
-    // PrimEx Veto Counter Channels
-    if(!name.empty() && name[0] == 'H') return 2000;
-
-    // not configured
+    if (!name.empty() && name[0] == 'G') return 1950;
+    if (!name.empty() && name[0] == 'W') return 1450;
+    if (!name.empty() && name[0] == 'L') return 2000;
+    if (!name.empty() && name[0] == 'S') return 2000;
+    if (!name.empty() && name[0] == 'P') return 3000;
+    if (!name.empty() && name[0] == 'H') return 2000;
     return 1500;
 }
 
-// ── CAEN_Channel static member definition ────────────────────────────────────
+// ── Error ignore list ────────────────────────────────────────────────────────
+
 vector<string> CAEN_Channel::error_ignore_list;
 
-void CAEN_Channel::SetErrorIgnoreList(const vector<string> &names)
-{
-    error_ignore_list = names;
-}
-
-const vector<string> &CAEN_Channel::GetErrorIgnoreList()
-{
-    return error_ignore_list;
-}
+void CAEN_Channel::SetErrorIgnoreList(const vector<string> &names) { error_ignore_list = names; }
+const vector<string> &CAEN_Channel::GetErrorIgnoreList() { return error_ignore_list; }
 
 void CAEN_ShowChError(const string &n, const unsigned int &err_bit)
 {
     for (const auto &ignored : CAEN_Channel::GetErrorIgnoreList()) {
         if (n == ignored) return;
     }
-
-    if(err_bit&(1 << 3)) cerr << "Channel " << n << " is in overcurrent!" << endl;
-    if(err_bit&(1 << 4)) cerr << "Channel " << n << " is in overvoltage!" << endl;
-    if(err_bit&(1 << 5)) cerr << "Channel " << n << " is in undervoltage!" << endl;
-    if(err_bit&(1 << 6)) cerr << "Channel " << n << " is in external trip!" << endl;
-    if(err_bit&(1 << 7)) cerr << "Channel " << n << " is in max voltage!" << endl;
-    if(err_bit&(1 << 8)) cerr << "Channel " << n << " is in external disable!" << endl;
-    if(err_bit&(1 << 9)) cerr << "Channel " << n << " is in internal trip!" << endl;
-    if(err_bit&(1 << 10)) cerr << "Channel " << n << " is in calibration error!" << endl;
-    if(err_bit&(1 << 11)) cerr << "Channel " << n << " is unplugged!" << endl;
-    if(err_bit&(1 << 13)) cerr << "Channel " << n << " is in overvoltage protection!" << endl;
-    if(err_bit&(1 << 14)) cerr << "Channel " << n << " is in power fail!" << endl;
-    if(err_bit&(1 << 15)) cerr << "Channel " << n << " is in temperature error!" << endl;
+    if (err_bit & (1 << 3))  cerr << "Channel " << n << " is in overcurrent!" << endl;
+    if (err_bit & (1 << 4))  cerr << "Channel " << n << " is in overvoltage!" << endl;
+    if (err_bit & (1 << 5))  cerr << "Channel " << n << " is in undervoltage!" << endl;
+    if (err_bit & (1 << 6))  cerr << "Channel " << n << " is in external trip!" << endl;
+    if (err_bit & (1 << 7))  cerr << "Channel " << n << " is in max voltage!" << endl;
+    if (err_bit & (1 << 8))  cerr << "Channel " << n << " is in external disable!" << endl;
+    if (err_bit & (1 << 9))  cerr << "Channel " << n << " is in internal trip!" << endl;
+    if (err_bit & (1 << 10)) cerr << "Channel " << n << " is in calibration error!" << endl;
+    if (err_bit & (1 << 11)) cerr << "Channel " << n << " is unplugged!" << endl;
+    if (err_bit & (1 << 13)) cerr << "Channel " << n << " is in overvoltage protection!" << endl;
+    if (err_bit & (1 << 14)) cerr << "Channel " << n << " is in power fail!" << endl;
+    if (err_bit & (1 << 15)) cerr << "Channel " << n << " is in temperature error!" << endl;
 }
