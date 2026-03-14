@@ -474,13 +474,20 @@ int main(int argc, char *argv[])
 
         workerThread.quit();
         workerThread.wait();
-        // Explicitly disconnect all booster TCP sockets before tearing down
-        // the thread, so the connections are released promptly rather than
-        // relying on destructor cleanup via deleteLater.
-        QMetaObject::invokeMethod(bPoller, "disconnectAll",
-                                  Qt::BlockingQueuedConnection);
+
+        // Shut down the booster worker thread.  The difficulty: doPoll() uses
+        // synchronous TCP with 2–3 s timeouts per supply.  If a poll is in
+        // flight when we quit, the thread won't stop until those timeouts
+        // expire.  We quit the event loop first (so no further timer events
+        // fire), then wait with a generous but bounded timeout.
         boosterThread.quit();
-        boosterThread.wait();
+        if (!boosterThread.wait(8000)) {
+            // If an in-flight doPoll is still blocking on TCP timeouts,
+            // force-terminate so the process exits promptly.
+            std::cerr << "WARNING: booster thread did not stop in time — terminating\n";
+            boosterThread.terminate();
+            boosterThread.wait();
+        }
         return ret;
     }
 
