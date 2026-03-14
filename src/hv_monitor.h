@@ -205,9 +205,14 @@ private slots:
         }
         // Track fault transitions across poll cycles
         for (auto *cr : crates_)
-            for (auto *bd : cr->GetBoardList())
+            for (auto *bd : cr->GetBoardList()) {
+                // Board-level faults
+                std::string bdId = cr->GetName() + "_s" + std::to_string(bd->GetSlot());
+                fault_tracker_.update(bdId, bd->GetBdStatusString(), "board");
+                // Channel-level faults
                 for (auto *ch : bd->GetChannelList())
-                    fault_tracker_.update(ch->GetName(), ch->GetStatusString());
+                    fault_tracker_.update(ch->GetName(), ch->GetStatusString(), "channel");
+            }
         fault_tracker_.endCycle();
 
         emit snapshotReady(buildSnapshot());

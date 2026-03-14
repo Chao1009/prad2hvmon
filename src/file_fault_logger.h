@@ -4,8 +4,8 @@
 //
 // Log format (one line per event, tab-separated):
 //
-//   2026-03-14 10:23:45.123<TAB>APPEAR<TAB>W232<TAB>OVC OVV
-//   2026-03-14 10:23:48.456<TAB>DISAPPEAR<TAB>W232<TAB>OVC OVV
+//   2026-03-14 10:23:45.123<TAB>APPEAR<TAB>channel<TAB>W232<TAB>OVC OVV
+//   2026-03-14 10:23:48.456<TAB>DISAPPEAR<TAB>board<TAB>PRadHV_1_s0<TAB>OVERT|over-temperature
 //
 // Thread safety: all public methods are guarded by a mutex so the logger
 // can be called from the HV poller thread and the booster poller thread
@@ -29,7 +29,8 @@ public:
     explicit FileFaultLogger(const std::string &log_dir);
     ~FileFaultLogger() override;
 
-    void log(const std::string &name,
+    void log(const std::string &type,
+             const std::string &name,
              const std::string &status,
              Direction direction) override;
 

@@ -31,7 +31,8 @@ FileFaultLogger::~FileFaultLogger()
     if (file_.is_open()) file_.close();
 }
 
-void FileFaultLogger::log(const std::string &name,
+void FileFaultLogger::log(const std::string &type,
+                          const std::string &name,
                           const std::string &status,
                           Direction direction)
 {
@@ -43,6 +44,7 @@ void FileFaultLogger::log(const std::string &name,
                                                            : "DISAPPEAR";
     file_ << now_timestamp() << '\t'
           << dir_str         << '\t'
+          << type            << '\t'
           << name            << '\t'
           << status          << '\n';
 }

@@ -114,7 +114,7 @@ public slots:
         }
         // Log DISAPPEAR for any active faults since polling has stopped
         for (auto *s : supplies_)
-            fault_tracker_.update(s->name.toStdString(), "");
+            fault_tracker_.update(s->name.toStdString(), "", "booster");
         fault_tracker_.endCycle();
         // Emit one final snapshot so the UI sees "disconnected" state
         emit snapshotReady(buildSnapshot());
@@ -154,7 +154,7 @@ private slots:
         // Track fault transitions — a booster "fault" is any non-empty error
         for (auto *s : supplies_) {
             std::string status = s->connected ? "" : s->error.toStdString();
-            fault_tracker_.update(s->name.toStdString(), status);
+            fault_tracker_.update(s->name.toStdString(), status, "booster");
         }
         fault_tracker_.endCycle();
         emit snapshotReady(buildSnapshot());

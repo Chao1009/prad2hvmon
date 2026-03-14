@@ -40,8 +40,10 @@ public:
 
     void setLogger(FaultLogger *logger) { logger_ = logger; }
 
-    // Call once per channel per poll cycle.
-    void update(const std::string &name, const std::string &status)
+    // Call once per channel/board per poll cycle.
+    // type: "channel", "board", or "booster"
+    void update(const std::string &name, const std::string &status,
+                const std::string &type = "channel")
     {
         seen_.insert(name);
 
@@ -50,16 +52,17 @@ public:
 
         if (was_fault && prev_status_[name] != status) {
             // Old fault disappeared (or changed to a different fault/normal)
-            if (logger_) logger_->log(name, prev_status_[name],
+            if (logger_) logger_->log(prev_type_[name], name, prev_status_[name],
                                       FaultLogger::Direction::Disappear);
         }
         if (is_fault && prev_status_[name] != status) {
             // New fault appeared (or changed from a different fault/normal)
-            if (logger_) logger_->log(name, status,
+            if (logger_) logger_->log(type, name, status,
                                       FaultLogger::Direction::Appear);
         }
 
         prev_status_[name] = status;
+        prev_type_[name]   = type;
     }
 
     // Call after all update() calls in one cycle.
@@ -71,9 +74,10 @@ public:
         for (auto it = prev_status_.begin(); it != prev_status_.end(); ) {
             if (seen_.find(it->first) == seen_.end()) {
                 if (isFault(it->second) && logger_) {
-                    logger_->log(it->first, it->second,
+                    logger_->log(prev_type_[it->first], it->first, it->second,
                                  FaultLogger::Direction::Disappear);
                 }
+                prev_type_.erase(it->first);
                 it = prev_status_.erase(it);
             } else {
                 ++it;
@@ -110,7 +114,7 @@ private:
             // Normalise to upper-case
             std::transform(token.begin(), token.end(), token.begin(),
                            [](unsigned char c){ return std::toupper(c); });
-            if (token != "ON" && token != "OFF" && token != "RUP" && token != "RDN")
+            if (token != "ON" && token != "OFF" && token != "RUP" && token != "RDN" && token != "OK" && token != "NORMAL")
                 return true;   // at least one fault token
         }
         return false;  // all tokens are normal operating states
@@ -118,5 +122,6 @@ private:
 
     FaultLogger *logger_ = nullptr;
     std::unordered_map<std::string, std::string> prev_status_;
+    std::unordered_map<std::string, std::string> prev_type_;
     std::unordered_set<std::string>              seen_;
 };

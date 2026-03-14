@@ -25,11 +25,13 @@ public:
 
     // Called by the polling layer when a fault transition is detected.
     //
+    //   type      – "channel", "board", or "booster"
     //   name      – channel identifier (e.g. "W232" or "Booster1")
     //   status    – the fault status string (e.g. "OVC", "OVV", "TRIP",
     //               or the full status string from GetStatusString())
     //   direction – whether the fault just appeared or just disappeared
-    virtual void log(const std::string &name,
+    virtual void log(const std::string &type,
+                     const std::string &name,
                      const std::string &status,
                      Direction direction) = 0;
 
