@@ -70,8 +70,6 @@ private:
     // Generic parameter values — populated by Board::ReadAllParams()
     std::unordered_map<std::string, ParamValue> params_;
 
-    static std::vector<std::string> error_ignore_list;
-
 public:
     // Constructor
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n)
@@ -141,9 +139,17 @@ public:
     static void ClearVoltageLimits();
     static const std::vector<VoltageLimitRule> &GetVoltageLimitRules();
 
-    // ── Error ignore list (static, shared) ───────────────────────────────
-    static void SetErrorIgnoreList(const std::vector<std::string> &names);
-    static const std::vector<std::string> &GetErrorIgnoreList();
+    // ── Error ignore rules (static, shared) ────────────────────────────
+    // Each rule maps a channel name pattern to a set of status abbreviations
+    // (e.g. "OV", "UV", "OVL") that should be suppressed for matching channels.
+    // Suppressed errors show as amber warnings (~OV) instead of red faults.
+    struct ErrorIgnoreRule {
+        std::string              pattern;   // channel name or wildcard ("W*", "G29")
+        std::vector<std::string> errors;    // status abbrevs to suppress
+    };
+    static void SetErrorIgnoreRules(const std::vector<ErrorIgnoreRule> &rules);
+    static const std::vector<ErrorIgnoreRule> &GetErrorIgnoreRules();
+    static bool IsErrorSuppressed(const std::string &ch_name, const std::string &error_abbr);
 };
 
 

@@ -79,31 +79,39 @@ load_crate_list(const QString &path)
 }
 
 // ── Load error-ignore list from JSON ────────────────────────────────────────
-static std::vector<std::string>
-load_error_ignore_list(const QString &path)
+static std::vector<CAEN_Channel::ErrorIgnoreRule>
+load_error_ignore_rules(const QString &path)
 {
-    std::vector<std::string> list;
-    if (path.isEmpty()) return list;
+    std::vector<CAEN_Channel::ErrorIgnoreRule> rules;
+    if (path.isEmpty()) return rules;
 
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         std::cerr << "WARNING: cannot open error-ignore file: "
                   << path.toStdString() << "\n";
-        return list;
+        return rules;
     }
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
     if (doc.isNull()) {
         std::cerr << "WARNING: invalid JSON in error-ignore file: "
                   << err.errorString().toStdString() << "\n";
-        return list;
+        return rules;
     }
-    for (const auto &val : doc.object()["ignore"].toArray())
-        list.push_back(val.toString().toStdString());
+    for (const auto &val : doc.object()["ignore"].toArray()) {
+        if (!val.isObject()) continue;
+        QJsonObject obj = val.toObject();
+        CAEN_Channel::ErrorIgnoreRule rule;
+        rule.pattern = obj["name"].toString().toStdString();
+        for (const auto &e : obj["errors"].toArray())
+            rule.errors.push_back(e.toString().toStdString());
+        if (!rule.pattern.empty() && !rule.errors.empty())
+            rules.push_back(rule);
+    }
 
-    std::cout << fmt::format("Loaded {} error-ignore channel(s) from {}\n",
-                             list.size(), path.toStdString());
-    return list;
+    std::cout << fmt::format("Loaded {} error-ignore rule(s) from {}\n",
+                             rules.size(), path.toStdString());
+    return rules;
 }
 
 // ── Load voltage limits from JSON ───────────────────────────────────────────
@@ -252,7 +260,7 @@ int main(int argc, char *argv[])
             ignoreConfigPath = QString::fromStdString(
                 std::string(DATABASE_DIR) + "/error_ignore.json");
         }
-        CAEN_Channel::SetErrorIgnoreList(load_error_ignore_list(ignoreConfigPath));
+        CAEN_Channel::SetErrorIgnoreRules(load_error_ignore_rules(ignoreConfigPath));
     }
 
     // ── Load and apply voltage limits ───────────────────────────────────

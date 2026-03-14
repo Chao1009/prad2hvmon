@@ -188,8 +188,10 @@ string CAEN_Channel::GetStatusString() const
         if (st & (1u << f.bit)) {
             if (!abbrs.empty())  abbrs  += ' ';
             if (!detail.empty()) detail += ", ";
-            abbrs  += f.abbr;
-            detail += f.full;
+            // Prefix with ~ if this error is suppressed for this channel
+            bool suppressed = IsErrorSuppressed(name, f.abbr);
+            abbrs  += suppressed ? string("~") + f.abbr : f.abbr;
+            detail += suppressed ? string("(ignored) ") + f.full : f.full;
         }
     }
     return abbrs + '|' + detail;
@@ -821,28 +823,46 @@ float CAEN_VoltageLimit(const string &name)
     return 1500;
 }
 
-// ── Error ignore list ────────────────────────────────────────────────────────
+// ── Error ignore rules ──────────────────────────────────────────────────────
 
-vector<string> CAEN_Channel::error_ignore_list;
+static vector<CAEN_Channel::ErrorIgnoreRule> error_ignore_rules;
 
-void CAEN_Channel::SetErrorIgnoreList(const vector<string> &names) { error_ignore_list = names; }
-const vector<string> &CAEN_Channel::GetErrorIgnoreList() { return error_ignore_list; }
+void CAEN_Channel::SetErrorIgnoreRules(const vector<ErrorIgnoreRule> &rules) { error_ignore_rules = rules; }
+const vector<CAEN_Channel::ErrorIgnoreRule> &CAEN_Channel::GetErrorIgnoreRules() { return error_ignore_rules; }
+
+bool CAEN_Channel::IsErrorSuppressed(const string &ch_name, const string &error_abbr)
+{
+    for (const auto &rule : error_ignore_rules) {
+        if (matchPattern(rule.pattern, ch_name)) {
+            for (const auto &e : rule.errors)
+                if (e == error_abbr) return true;
+        }
+    }
+    return false;
+}
+
+// Bit → abbreviation mapping used by both CAEN_ShowChError and GetStatusString
+static const struct { int bit; const char *abbr; const char *msg; } ch_error_flags[] = {
+    {  3, "OC",   "overcurrent"            },
+    {  4, "OV",   "overvoltage"            },
+    {  5, "UV",   "undervoltage"           },
+    {  6, "EXT",  "external trip"          },
+    {  7, "MAXV", "max voltage"            },
+    {  8, "DIS",  "external disable"       },
+    {  9, "ITRP", "internal trip"          },
+    { 10, "CAL",  "calibration error"      },
+    { 11, "UNPLG","unplugged"              },
+    { 13, "OVP",  "overvoltage protection" },
+    { 14, "PWRF", "power fail"             },
+    { 15, "TEMP", "temperature error"      },
+};
 
 void CAEN_ShowChError(const string &n, const unsigned int &err_bit)
 {
-    for (const auto &ignored : CAEN_Channel::GetErrorIgnoreList()) {
-        if (n == ignored) return;
+    for (const auto &f : ch_error_flags) {
+        if (err_bit & (1u << f.bit)) {
+            if (!CAEN_Channel::IsErrorSuppressed(n, f.abbr))
+                cerr << "Channel " << n << " is in " << f.msg << "!" << endl;
+        }
     }
-    if (err_bit & (1 << 3))  cerr << "Channel " << n << " is in overcurrent!" << endl;
-    if (err_bit & (1 << 4))  cerr << "Channel " << n << " is in overvoltage!" << endl;
-    if (err_bit & (1 << 5))  cerr << "Channel " << n << " is in undervoltage!" << endl;
-    if (err_bit & (1 << 6))  cerr << "Channel " << n << " is in external trip!" << endl;
-    if (err_bit & (1 << 7))  cerr << "Channel " << n << " is in max voltage!" << endl;
-    if (err_bit & (1 << 8))  cerr << "Channel " << n << " is in external disable!" << endl;
-    if (err_bit & (1 << 9))  cerr << "Channel " << n << " is in internal trip!" << endl;
-    if (err_bit & (1 << 10)) cerr << "Channel " << n << " is in calibration error!" << endl;
-    if (err_bit & (1 << 11)) cerr << "Channel " << n << " is unplugged!" << endl;
-    if (err_bit & (1 << 13)) cerr << "Channel " << n << " is in overvoltage protection!" << endl;
-    if (err_bit & (1 << 14)) cerr << "Channel " << n << " is in power fail!" << endl;
-    if (err_bit & (1 << 15)) cerr << "Channel " << n << " is in temperature error!" << endl;
 }
