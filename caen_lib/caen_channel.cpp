@@ -470,56 +470,64 @@ void CAEN_Board::ReadAllParams()
     for (const auto &pi : ch_param_info_) {
         if (!pi.isReadable()) continue;
 
-        // Check if a previous cycle already determined this param needs
-        // per-channel reads (e.g. PRIMARY channel doesn't support SVMax).
-        bool needsPerChannel = ch_param_needs_perchannel_.count(pi.name) > 0;
+        // Check if a previous cycle determined this param needs a reduced
+        // channel list (e.g. PRIMARY ch 0 doesn't support SVMax).
+        auto fallbackIt = ch_param_fallback_list_.find(pi.name);
+        bool useFallback = (fallbackIt != ch_param_fallback_list_.end());
+
+        // Choose which channel list and count to use
+        unsigned short *readList = list;
+        int readCount = nChan;
+        if (useFallback) {
+            readList = fallbackIt->second.data();
+            readCount = static_cast<int>(fallbackIt->second.size());
+            if (readCount == 0) continue;   // no channels support this param
+        }
 
         if (pi.isFloat()) {
-            bool bulkOK = false;
-            if (!needsPerChannel) {
-                float vals[nChan];
-                int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
-                if (err == CAENHV_OK) {
-                    for (int k = 0; k < nChan; ++k)
-                        channelList[k]->SetParamDirect(pi.name, vals[k]);
-                    bulkOK = true;
-                } else {
-                    // Mark this param for per-channel reads on future cycles
-                    ch_param_needs_perchannel_[pi.name] = true;
-                }
-            }
-            if (!bulkOK) {
-                // Per-channel fallback: handles boards where some channels
-                // (e.g. PRIMARY ch 0) don't support a param that others do.
+            float vals[readCount];
+            int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(),
+                                        readCount, readList, vals);
+            if (err == CAENHV_OK) {
+                for (int k = 0; k < readCount; ++k)
+                    channelList[readList[k]]->SetParamDirect(pi.name, vals[k]);
+            } else if (!useFallback) {
+                // First failure — probe each channel once to build the
+                // fallback list of channels that actually support this param.
+                std::vector<unsigned short> good;
                 for (int k = 0; k < nChan; ++k) {
                     float val;
                     unsigned short chk = k;
-                    int err2 = CAENHV_GetChParam(handle, slot, pi.name.c_str(), 1, &chk, &val);
-                    if (err2 == CAENHV_OK)
+                    int err2 = CAENHV_GetChParam(handle, slot, pi.name.c_str(),
+                                                 1, &chk, &val);
+                    if (err2 == CAENHV_OK) {
                         channelList[k]->SetParamDirect(pi.name, val);
+                        good.push_back(k);
+                    }
                 }
+                ch_param_fallback_list_[pi.name] = std::move(good);
             }
+            // else: fallback list exists but bulk read failed — hardware issue
         } else if (pi.isUInt()) {
-            bool bulkOK = false;
-            if (!needsPerChannel) {
-                unsigned int vals[nChan];
-                int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(), nChan, list, vals);
-                if (err == CAENHV_OK) {
-                    for (int k = 0; k < nChan; ++k)
-                        channelList[k]->SetParamDirect(pi.name, vals[k]);
-                    bulkOK = true;
-                } else {
-                    ch_param_needs_perchannel_[pi.name] = true;
-                }
-            }
-            if (!bulkOK) {
+            unsigned int vals[readCount];
+            int err = CAENHV_GetChParam(handle, slot, pi.name.c_str(),
+                                        readCount, readList, vals);
+            if (err == CAENHV_OK) {
+                for (int k = 0; k < readCount; ++k)
+                    channelList[readList[k]]->SetParamDirect(pi.name, vals[k]);
+            } else if (!useFallback) {
+                std::vector<unsigned short> good;
                 for (int k = 0; k < nChan; ++k) {
                     unsigned int val;
                     unsigned short chk = k;
-                    int err2 = CAENHV_GetChParam(handle, slot, pi.name.c_str(), 1, &chk, &val);
-                    if (err2 == CAENHV_OK)
+                    int err2 = CAENHV_GetChParam(handle, slot, pi.name.c_str(),
+                                                 1, &chk, &val);
+                    if (err2 == CAENHV_OK) {
                         channelList[k]->SetParamDirect(pi.name, val);
+                        good.push_back(k);
+                    }
                 }
+                ch_param_fallback_list_[pi.name] = std::move(good);
             }
         }
     }

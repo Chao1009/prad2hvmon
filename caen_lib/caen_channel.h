@@ -172,8 +172,10 @@ private:
     std::unordered_map<std::string, ParamValue> bd_params_;
 
     // Params where bulk read fails (e.g. PRIMARY ch doesn't support SVMax).
-    // These fall back to per-channel reads on every poll cycle.
-    std::unordered_map<std::string, bool> ch_param_needs_perchannel_;
+    // Maps param name → list of channel indices that DO support it.
+    // First cycle: bulk fails → probe each channel once → build list.
+    // Subsequent cycles: single bulk read of only the supporting channels.
+    std::unordered_map<std::string, std::vector<unsigned short>> ch_param_fallback_list_;
 
 public:
     CAEN_Board(CAEN_Crate *mo)
