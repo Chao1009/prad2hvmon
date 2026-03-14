@@ -1,0 +1,304 @@
+/* ═══════════════════════════════════════════════════════
+   Booster HV Tab + Geo Popup
+   ═══════════════════════════════════════════════════════ */
+
+#booster-tab {
+    padding: 20px 24px;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+#booster-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+}
+
+.booster-title   { font-size: 1rem; font-weight: 600; color: var(--text); }
+.booster-subtitle { font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
+
+#booster-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.booster-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color 0.2s;
+    flex: 1 1 320px;
+    min-width: 300px;
+    max-width: 480px;
+}
+
+.booster-card.card-fault { border-color: var(--red);   }
+.booster-card.card-warn  { border-color: var(--amber); }
+.booster-card.card-on    { border-color: var(--green); }
+
+.booster-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.booster-card-name { font-size: 1.25rem; font-weight: 700; color: var(--text); }
+.booster-card-ip   { font-size: 0.92rem; color: var(--text-dim); font-family: monospace; margin-top: 1px; }
+
+.booster-conn-badge {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.booster-conn-badge .conn-ok         { background: rgba(40,180,90,0.15); color: var(--green); padding: 3px 10px; border-radius: 20px; }
+.booster-conn-badge .conn-err        { background: rgba(220,60,60,0.15); color: var(--red);   padding: 3px 10px; border-radius: 20px; }
+.booster-conn-badge .conn-connecting { background: rgba(59,158,255,0.15); color: var(--accent); padding: 3px 10px; border-radius: 20px; animation: pulse-text 1.5s ease infinite; }
+.booster-conn-badge .conn-off        { background: rgba(107,123,143,0.12); color: var(--text-dim); padding: 3px 10px; border-radius: 20px; }
+
+.booster-readout {
+    display: grid;
+    grid-template-columns: auto 1fr auto 1fr;
+    gap: 4px 10px;
+    align-items: baseline;
+}
+
+/* Full-width rows (Mode, Output) span both value columns */
+.booster-readout .booster-lbl-full { grid-column: 1; }
+.booster-readout .booster-val-full { grid-column: 2 / 5; }
+
+.booster-lbl { font-size: 0.88rem; color: var(--text-dim); white-space: nowrap; }
+.booster-val {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.booster-val.val-live { color: var(--accent); }
+.booster-val.val-dim  { color: var(--text-dim); font-weight: 400; }
+
+.booster-mode-badge {
+    display: inline-block;
+    font-size: 0.80rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+}
+
+.mode-cv { background: rgba(59,158,255,0.15); color: var(--accent); }
+.mode-cc { background: rgba(255,180,0,0.15);  color: var(--amber);  }
+
+/* Parent grid: [input col] [set-btn col] [spacer] [on] [off]
+   Row 1 uses only first 2 columns; row 2 uses all 5. */
+.booster-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+/* Row 1: VSet input (fixed) + Set V (fixed) — no stretching */
+.booster-controls-vset {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+}
+
+.booster-controls-vset .booster-vset-input { width: 110px; flex-shrink: 0; }
+.booster-controls-vset .b-btn-set          { width: 58px;  white-space: nowrap; flex-shrink: 0; }
+
+/* Row 2: ISet input (fixed) + Set I (fixed) + spacer + ON + OFF */
+.booster-controls-iset {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.booster-controls-iset .booster-iset-input { width: 110px; flex-shrink: 0; }
+.booster-controls-iset .b-btn-seti         { width: 58px;  white-space: nowrap; flex-shrink: 0; }
+.booster-controls-spacer                   { flex: 1; }
+.booster-controls-iset .b-btn-on,
+.booster-controls-iset .b-btn-off          { white-space: nowrap; flex-shrink: 0; }
+
+.booster-vset-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-size: 0.95rem;
+    padding: 5px 9px;
+    width: 100px;
+    min-width: 0;
+    text-align: right;
+}
+
+.booster-vset-input:focus { outline: none; border-color: var(--accent); }
+
+.booster-iset-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-size: 0.95rem;
+    padding: 5px 9px;
+    width: 100px;
+    min-width: 0;
+    text-align: right;
+}
+.booster-iset-input:focus { outline: none; border-color: var(--amber); }
+
+.booster-btn {
+    font-size: 0.92rem;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.booster-btn:disabled { opacity: 0.35; cursor: default; }
+.b-btn-set  { background: var(--accent);              color: #000;         border-color: var(--accent); }
+.b-btn-seti { background: rgba(234,179,8,0.20);   color: var(--amber); border-color: var(--amber); }
+.b-btn-seti:hover { background: rgba(234,179,8,0.35); }
+.b-btn-on   { background: rgba(40,180,90,0.18);  color: var(--green); border-color: var(--green); }
+.b-btn-off  { background: rgba(220,60,60,0.15);  color: var(--red);   border-color: var(--red);   }
+.b-btn-on:hover  { background: rgba(40,180,90,0.30); }
+.b-btn-off:hover { background: rgba(220,60,60,0.28); }
+
+/* ─── Booster card status line (bottom) ──────────────────────────── */
+.booster-status {
+    font-size: 0.85rem;
+    min-height: 1.2em;
+}
+.booster-status .bst-connecting {
+    color: var(--accent);
+    animation: pulse-text 1.5s ease infinite;
+}
+.booster-status .bst-error {
+    color: var(--red);
+    word-break: break-all;
+}
+.booster-status .bst-ok {
+    color: var(--green);
+}
+
+@keyframes pulse-text { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ─── Booster disconnected overlay ───────────────────────────────── */
+#booster-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(11, 14, 20, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: opacity 0.3s ease;
+}
+#booster-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* The booster-tab must be a positioning context for the overlay */
+#booster-tab { position: relative; }
+
+.booster-overlay-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 36px 48px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-hi);
+    border-radius: 14px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+    text-align: center;
+    max-width: 420px;
+}
+
+.booster-overlay-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.01em;
+}
+
+.booster-overlay-desc {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    line-height: 1.55;
+}
+
+.booster-overlay-btn {
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 10px 28px;
+    border-radius: 8px;
+    border: 1px solid var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+    cursor: pointer;
+    transition: all var(--transition);
+    letter-spacing: 0.03em;
+    margin-top: 4px;
+}
+.booster-overlay-btn:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Disconnect button in booster header */
+.booster-disconnect-btn {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--red-dim);
+    background: var(--red-dim);
+    color: var(--red);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.booster-disconnect-btn:hover {
+    background: var(--red);
+    color: #fff;
+}
+
+/* Retry button in booster header */
+.booster-retry-btn {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--amber-dim);
+    background: var(--amber-dim);
+    color: var(--amber);
+    cursor: pointer;
+    transition: all var(--transition);
+}
+.booster-retry-btn:hover {
+    background: var(--amber);
+    color: #000;
+}
