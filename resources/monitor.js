@@ -423,7 +423,7 @@ function renderTable() {
             const col = searchText.slice(0, colonIdx).trim();
             const val = searchText.slice(colonIdx + 1).trim();
             const colMap = { crate:'crate', slot:'slot', ch:'channel', channel:'channel',
-                             name:'name', model:'model', vmon:'vmon', vset:'vset' };
+                             name:'name', model:'model', vmon:'vmon', vset:'vset', svmax:'svmax' };
             const field = colMap[col];
             data = field
                 ? data.filter(c => String(c[field]).toLowerCase().includes(val))
@@ -511,40 +511,46 @@ function renderTable() {
             td7.innerHTML = buildVsetCell(ch);
             tr.appendChild(td7);
 
-            // td8: diff
+            // td8: svmax
             const td8 = document.createElement('td');
-            td8.className = dcls;
             td8.style.textAlign = 'right';
-            td8.textContent = fmt(diff, 2);
+            td8.innerHTML = buildSvmaxCell(ch);
             tr.appendChild(td8);
 
-            // td9: imon
+            // td9: diff
             const td9 = document.createElement('td');
+            td9.className = dcls;
             td9.style.textAlign = 'right';
-            td9.style.color = ch.iSupported === false ? 'var(--text-dim)' : '';
-            td9.textContent = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
+            td9.textContent = fmt(diff, 2);
             tr.appendChild(td9);
 
-            // td10: iset
+            // td10: imon
             const td10 = document.createElement('td');
             td10.style.textAlign = 'right';
-            td10.innerHTML = buildIsetCell(ch);
+            td10.style.color = ch.iSupported === false ? 'var(--text-dim)' : '';
+            td10.textContent = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
             tr.appendChild(td10);
 
-            // td11: status badges (no ON/OFF — Pwr column covers power state)
+            // td11: iset
             const td11 = document.createElement('td');
-            td11.innerHTML = statusBadgesHtml(ch);
+            td11.style.textAlign = 'right';
+            td11.innerHTML = buildIsetCell(ch);
             tr.appendChild(td11);
 
-            // td12: power button
+            // td12: status badges (no ON/OFF — Pwr column covers power state)
             const td12 = document.createElement('td');
-            td12.style.textAlign = 'center';
+            td12.innerHTML = statusBadgesHtml(ch);
+            tr.appendChild(td12);
+
+            // td13: power button
+            const td13 = document.createElement('td');
+            td13.style.textAlign = 'center';
             const btn = document.createElement('button');
             btn.className = 'pwr-btn ' + pwrCls;
             btn.textContent = ch.on ? 'ON' : 'OFF';
             btn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
-            td12.appendChild(btn);
-            tr.appendChild(td12);
+            td13.appendChild(btn);
+            tr.appendChild(td13);
 
             tr.className = prim ? 'primary-row' : '';
         } else {
@@ -560,21 +566,21 @@ function renderTable() {
             const vmonTxt = fmt(ch.vmon, 2);
             if (tr.cells[6].textContent !== vmonTxt) tr.cells[6].textContent = vmonTxt;
 
-            // diff class + value (td8)
-            if (tr.cells[8].className !== dcls) tr.cells[8].className = dcls;
+            // diff class + value (td9)
+            if (tr.cells[9].className !== dcls) tr.cells[9].className = dcls;
             const diffTxt = fmt(diff, 2);
-            if (tr.cells[8].textContent !== diffTxt) tr.cells[8].textContent = diffTxt;
+            if (tr.cells[9].textContent !== diffTxt) tr.cells[9].textContent = diffTxt;
 
-            // imon (td9)
+            // imon (td10)
             const imonTxt = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
-            if (tr.cells[9].textContent !== imonTxt) tr.cells[9].textContent = imonTxt;
+            if (tr.cells[10].textContent !== imonTxt) tr.cells[10].textContent = imonTxt;
 
-            // status badges (td11)
+            // status badges (td12)
             const stHtml = statusBadgesHtml(ch);
-            if (tr.cells[11].innerHTML !== stHtml) tr.cells[11].innerHTML = stHtml;
+            if (tr.cells[12].innerHTML !== stHtml) tr.cells[12].innerHTML = stHtml;
 
-            // power button (td12)
-            const pbtn = tr.cells[12].firstElementChild;
+            // power button (td13)
+            const pbtn = tr.cells[13].firstElementChild;
             const wantPwr = 'pwr-btn ' + pwrCls;
             if (pbtn.className !== wantPwr) pbtn.className = wantPwr;
             const pwrTxt = ch.on ? 'ON' : 'OFF';
@@ -583,12 +589,13 @@ function renderTable() {
                 pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
             }
 
-            // Expert mode cells (name td5, vset td7, iset td10) — rebuild if mode changed
+            // Expert mode cells (name td5, vset td7, svmax td8, iset td11) — rebuild if mode changed
             const trExpert = tr.dataset.expert === '1';
             if (trExpert !== expertMode) {
                 tr.cells[5].innerHTML  = buildNameCell(ch, prim);
                 tr.cells[7].innerHTML  = buildVsetCell(ch);
-                tr.cells[10].innerHTML = buildIsetCell(ch);
+                tr.cells[8].innerHTML  = buildSvmaxCell(ch);
+                tr.cells[11].innerHTML = buildIsetCell(ch);
                 tr.dataset.expert = expertMode ? '1' : '0';
             }
         }
@@ -649,6 +656,18 @@ function buildVsetCell(ch) {
                    >\u2713</button>`;
     }
     return `<span style="color:var(--text-dim)">${fmt(ch.vset, 2)}</span>`;
+}
+
+function buildSvmaxCell(ch) {
+    if (ch.svmax == null) return `<span style="color:var(--text-dim)">—</span>`;
+    if (expertMode) {
+        return `<input class="vset-inline" type="text" value="${fmt(ch.svmax, 2)}"
+                     onchange="inlineSetSVMax('${ch.crate}',${ch.slot},${ch.channel},this.value)"
+                   ><button class="vset-apply"
+                     onclick="inlineSetSVMax('${ch.crate}',${ch.slot},${ch.channel},this.previousElementSibling.value)"
+                   >\u2713</button>`;
+    }
+    return `<span style="color:var(--text-dim)">${fmt(ch.svmax, 2)}</span>`;
 }
 
 function buildIsetCell(ch) {
@@ -729,6 +748,15 @@ function inlineSetVoltage(crate, slot, channel, value) {
     hvMonitor.setChannelVoltage(crate, slot, channel, v);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) { ch.vset = v; dataDirty = true; }
+}
+
+function inlineSetSVMax(crate, slot, channel, value) {
+    if (!hvMonitor || !expertMode) return;
+    const v = parseFloat(value);
+    if (isNaN(v) || v < 0) return;
+    hvMonitor.setChannelSVMax(crate, slot, channel, v);
+    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+    if (ch) { ch.svmax = v; dataDirty = true; }
 }
 
 function inlineSetCurrent(crate, slot, channel, value) {

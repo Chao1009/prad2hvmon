@@ -26,6 +26,7 @@ private:
     float Vset;
     float Imon;
     float Iset;
+    float SVMax;
     float limit;
     unsigned int status;
     bool supportsCurrentIO;
@@ -36,18 +37,18 @@ public:
     // constructor
     CAEN_Channel(CAEN_Board *m)
     : mother(m), channel(-1), name(""), on_off(false), Vmon(0), Vset(0),
-      Imon(NAN), Iset(NAN), limit(CAEN_VoltageLimit(name)), status(0),
+      Imon(NAN), Iset(NAN), SVMax(NAN), limit(CAEN_VoltageLimit(name)), status(0),
       supportsCurrentIO(true)
     {}
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n)
     : mother(m), channel(c), name(n), on_off(false), Vmon(0), Vset(0),
-      Imon(NAN), Iset(NAN), limit(CAEN_VoltageLimit(name)), status(0),
+      Imon(NAN), Iset(NAN), SVMax(NAN), limit(CAEN_VoltageLimit(name)), status(0),
       supportsCurrentIO(true)
     {}
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n,
                  const bool &o, const float &vm, const float vs)
     : mother(m), channel(c), name(n), on_off(o), Vmon(vm), Vset(vs),
-      Imon(NAN), Iset(NAN), limit(CAEN_VoltageLimit(name)), status(0),
+      Imon(NAN), Iset(NAN), SVMax(NAN), limit(CAEN_VoltageLimit(name)), status(0),
       supportsCurrentIO(true)
     {}
 
@@ -56,6 +57,7 @@ public:
     void SetPower(const bool &on);
     void SetVoltage(const float &v);
     void SetCurrent(const float &i);
+    void SetSVMax(const float &v);
     void SetName(const std::string &n);
     void SetLimit(const float &l);
     void SetStatus(unsigned int s) { status = s; }
@@ -73,6 +75,8 @@ public:
     const float &GetVMon() {return Vmon;}
     const float &GetISet() {return Iset;}
     const float &GetIMon() {return Imon;}
+    float GetSVMax() const { return SVMax; }
+    void SetSVMaxDirect(float v) { SVMax = v; }
     bool SupportsCurrentIO() const { return supportsCurrentIO; }
     const bool &IsTurnedOn() {return on_off;}
     const unsigned short &GetChannel() {return channel;}

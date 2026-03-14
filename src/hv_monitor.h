@@ -184,6 +184,13 @@ public slots:
         if (ch) ch->SetCurrent(current);
     }
 
+    void setChannelSVMax(const QString &crateName, int slot,
+                         int channel, float svmax)
+    {
+        auto *ch = findChannel(crateName, slot, channel);
+        if (ch) ch->SetSVMax(svmax);
+    }
+
 signals:
     // Emitted on the worker thread; Qt queues delivery to the GUI thread.
     void snapshotReady(const QString &jsonData);
@@ -230,6 +237,7 @@ private:
                     o["name"]       = QString::fromStdString(ch->GetName());
                     o["vmon"]       = ch->GetVMon();
                     o["vset"]       = ch->GetVSet();
+                    o["svmax"]      = std::isnan(ch->GetSVMax()) ? QJsonValue::Null : QJsonValue(ch->GetSVMax());
                     o["iSupported"] = ch->SupportsCurrentIO();
                     if (ch->SupportsCurrentIO()) {
                         o["imon"] = std::isnan(ch->GetIMon()) ? QJsonValue::Null : QJsonValue(ch->GetIMon());
@@ -365,6 +373,18 @@ public slots:
                                   Q_ARG(int,     slot),
                                   Q_ARG(int,     channel),
                                   Q_ARG(float,   current));
+    }
+
+    Q_INVOKABLE
+    void setChannelSVMax(const QString &crateName, int slot,
+                         int channel, float svmax)
+    {
+        QMetaObject::invokeMethod(poller_, "setChannelSVMax",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(QString, crateName),
+                                  Q_ARG(int,     slot),
+                                  Q_ARG(int,     channel),
+                                  Q_ARG(float,   svmax));
     }
 
     // ── JS-callable: request a detached window for a tab ───────────────

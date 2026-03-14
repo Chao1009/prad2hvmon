@@ -101,6 +101,23 @@ void CAEN_Channel::SetCurrent(const float &i)
         Iset = val;
 }
 
+void CAEN_Channel::SetSVMax(const float &v)
+{
+    float val = v;
+    int handle = mother->GetHandle();
+    unsigned short slot = mother->GetSlot();
+    int err = CAENHV_SetChParam(handle, slot, "SVMax", 1, &channel, &val);
+
+    if (isUnsupportedParam(err)) {
+        SVMax = NAN;
+        return;
+    }
+    CAEN_ShowError("HV Channel Set SVMax", err);
+
+    if (err == CAENHV_OK)
+        SVMax = val;
+}
+
 void CAEN_Channel::UpdateCurrent(const float &im, const float &is)
 {
     Imon = im;
@@ -195,6 +212,14 @@ void CAEN_Channel::ReadVoltage()
     // IMon and I0Set are a pair — if IMon is supported, I0Set must be too
     err = CAENHV_GetChParam(handle, slot, "I0Set", 1, &channel, &Iset);
     CAEN_ShowError("HV Channel Read Current Set", err);
+
+    // Read software voltage maximum (SVMax) — may not exist on all boards
+    err = CAENHV_GetChParam(handle, slot, "SVMax", 1, &channel, &SVMax);
+    if (isUnsupportedParam(err)) {
+        SVMax = NAN;
+    } else {
+        CAEN_ShowError("HV Channel Read SVMax", err);
+    }
 }
 
 void CAEN_Channel::UpdateVoltage(const bool &pw, const float &vm, const float &vs)
@@ -280,12 +305,23 @@ void CAEN_Board::ReadBoardMap()
         CAEN_ShowError("HV Board Read Current Set", err);
     }
 
+    float svmaxVals[nChan];
+    bool boardSupportsSVMax = true;
+    err = CAENHV_GetChParam(mother->GetHandle(), slot, "SVMax", nChan, list, svmaxVals);
+    if (isUnsupportedParam(err)) {
+        boardSupportsSVMax = false;
+        for (int k = 0; k < nChan; ++k) svmaxVals[k] = NAN;
+    } else {
+        CAEN_ShowError("HV Board Read SVMax", err);
+    }
+
     for(int k = 0; k < nChan; ++k)
     {
         string ch_name = nameList[k];
         auto *ch = new CAEN_Channel(this, k, ch_name, pwON[k], monVals[k], setVals[k]);
         ch->UpdateCurrent(imonVals[k], isetVals[k]);
         if (!boardSupportsCurrentIO) ch->SetSupportsCurrentIO(false);
+        ch->SetSVMaxDirect(svmaxVals[k]);
         channelList.push_back(ch);
     }
 
@@ -339,6 +375,20 @@ void CAEN_Board::ReadVoltage()
         for (int k = 0; k < nChan; ++k) { imonVals[k] = NAN; isetVals[k] = NAN; }
     }
 
+    float svmaxVals[nChan];
+    // SVMax support is detected once during ReadBoardMap; NAN means unsupported
+    const bool boardSupportsSVMax = channelList.empty() || !std::isnan(channelList.at(0)->GetSVMax());
+    if (boardSupportsSVMax) {
+        err = CAENHV_GetChParam(handle, slot, "SVMax", nChan, list, svmaxVals);
+        if (isUnsupportedParam(err)) {
+            for (int k = 0; k < nChan; ++k) svmaxVals[k] = NAN;
+        } else {
+            CAEN_ShowError("HV Board Read SVMax", err);
+        }
+    } else {
+        for (int k = 0; k < nChan; ++k) svmaxVals[k] = NAN;
+    }
+
     for(int k = 0; k < nChan; ++k)
     {
         if(channelList.at(k)->GetName() != nameList[k]) {
@@ -351,6 +401,7 @@ void CAEN_Board::ReadVoltage()
         channelList.at(k)->UpdateVoltage(pw[k], monVals[k], setVals[k]);
         if (boardSupportsCurrentIO)
             channelList.at(k)->UpdateCurrent(imonVals[k], isetVals[k]);
+        channelList.at(k)->SetSVMaxDirect(svmaxVals[k]);
     }
 }
 
