@@ -133,7 +133,14 @@ All config files live in `database/`. The application auto-discovers them relati
 
 **`voltage_limits.json`** — Optional. Pattern-based voltage limit overrides. First match wins. Supports trailing wildcards (`"G*"`, `"*"`). When VMon exceeds the limit on an active channel, an `OVL` software fault is raised.
 
-**`error_ignore.json`** — Optional. List of channel names whose status errors are suppressed from stderr.
+**`error_ignore.json`** — Optional. Per-channel error suppression with wildcard support. Suppressed errors show as amber warnings instead of red faults (no alarm, no red tab dots, still visible in table/geo). Format:
+```json
+{"ignore": [
+    {"name": "W984", "errors": ["OV"]},
+    {"name": "W*",   "errors": ["OV", "UV"]},
+    {"name": "G29",  "errors": ["OV", "UV", "OC", "EXT", "MAXV", "DIS", "ITRP", "CAL", "UNPLG", "OVP", "PWRF", "TEMP", "OVL"]}
+]}
+```
 
 ## Channel Types & Default Limits
 
