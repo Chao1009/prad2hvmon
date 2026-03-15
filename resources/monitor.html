@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="monitor_board.css">
 <link rel="stylesheet" href="monitor_geo.css">
 <link rel="stylesheet" href="monitor_booster.css">
+<link rel="stylesheet" href="monitor_faultlog.css">
 </head>
 <body>
 
@@ -59,6 +60,7 @@
         <button class="tab-btn" data-tab="board-tab">Board Status</button>
         <button class="tab-btn" data-tab="geo-tab">HyCal Geometry</button>
         <button class="tab-btn" data-tab="booster-tab">Booster HV</button>
+        <button class="tab-btn" data-tab="faultlog-tab">Fault Log</button>
     </div>
 
     <!-- ═══════════════ TABLE TAB ═══════════════ -->
@@ -164,6 +166,27 @@
         <div id="booster-cards"></div>
     </div>
 
+    <!-- ═══════════════ FAULT LOG TAB ═══════════════ -->
+    <div class="tab-content" id="faultlog-tab">
+        <div id="faultlog-header">
+            <span class="faultlog-title">Fault Transition Log</span>
+            <span id="faultlog-count"></span>
+        </div>
+        <div id="faultlog-table-wrap">
+            <table id="faultlog-table">
+                <thead><tr>
+                    <th>Time</th>
+                    <th>Level</th>
+                    <th>Direction</th>
+                    <th>Type</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                </tr></thead>
+                <tbody id="faultlog-body"></tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer>
         <span id="last-update">Waiting for data…</span>
@@ -177,5 +200,6 @@
 <script src="monitor_board.js"></script>
 <script src="monitor_geo.js"></script>
 <script src="monitor_booster.js"></script>
+<script src="monitor_faultlog.js"></script>
 </body>
 </html>

@@ -21,6 +21,9 @@
 #include <mutex>
 #include <string>
 
+// Forward declaration — avoids circular include with hv_daemon.h
+class SnapshotStore;
+
 class FileFaultLogger : public FaultLogger
 {
 public:
@@ -43,6 +46,10 @@ public:
 
     void setVerbosity(Verbosity v) { verbosity_ = v; }
 
+    // Set the snapshot store to push live fault log entries for WebSocket broadcast.
+    // Call after constructing both the logger and the store.
+    void setSnapshotStore(SnapshotStore *store) { store_ = store; }
+
 private:
     void ensureOpen();                      // open/rotate file if needed
     static std::string today();             // "YYYY-MM-DD"
@@ -53,4 +60,5 @@ private:
     std::ofstream file_;
     std::mutex    mu_;
     Verbosity     verbosity_;
+    SnapshotStore *store_ = nullptr;        // optional: push entries for WS broadcast
 };

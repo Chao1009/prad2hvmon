@@ -323,6 +323,7 @@ int main(int argc, char *argv[])
               : (verbosity == 1) ? FileFaultLogger::Verbosity::FaultOnly
               :                    FileFaultLogger::Verbosity::WarnAndFault;
     FileFaultLogger faultLogger(logDir, verb);
+    faultLogger.setSnapshotStore(&store);   // push entries for live WS broadcast
     std::cout << "Fault logger: " << logDir << "/\n";
     const char *verbNames[] = { "silent", "faults only", "warn + fault" };
     std::cout << "Console verbosity: " << verbNames[std::min(verbosity, 2)] << "\n";

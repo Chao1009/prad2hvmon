@@ -135,6 +135,7 @@ private:
         sendSnapshot(hdl, "hv_snapshot",      store_.getHV().first);
         sendSnapshot(hdl, "board_snapshot",   store_.getBoard().first);
         sendSnapshot(hdl, "booster_snapshot", store_.getBooster().first);
+        sendSnapshot(hdl, "fault_log_snapshot", store_.getFaultLog().first);
     }
 
     void onClose(connection_hdl hdl)
@@ -198,6 +199,14 @@ private:
         if (bst_ver != last_bst_ver_) {
             broadcast("booster_snapshot", bst_data);
             last_bst_ver_ = bst_ver;
+        }
+
+        // Fault log: send only new entries since last broadcast
+        uint64_t fl_cur_ver = store_.faultLogVersion();
+        if (fl_cur_ver != last_fl_ver_) {
+            auto [fl_data, fl_ver] = store_.getFaultLogSince(last_fl_ver_);
+            broadcast("fault_log_snapshot", fl_data);
+            last_fl_ver_ = fl_ver;
         }
     }
 
@@ -321,6 +330,7 @@ private:
     uint64_t last_hv_ver_  = 0;
     uint64_t last_bd_ver_  = 0;
     uint64_t last_bst_ver_ = 0;
+    uint64_t last_fl_ver_  = 0;
 
     // Pre-loaded static config (sent to each client on connect)
     std::string module_geo_json_;

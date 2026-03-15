@@ -1,0 +1,141 @@
+/* ─── Fault Log tab ───────────────────────────────────────────────── */
+#faultlog-tab {
+    padding: 0;
+}
+
+#faultlog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card-alt);
+}
+#faultlog-header .faultlog-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-bright);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+#faultlog-count {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+}
+
+#faultlog-table-wrap {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+#faultlog-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+#faultlog-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-card);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Column widths */
+#faultlog-table th:nth-child(1),
+#faultlog-table td:nth-child(1) { width: 22%; }  /* Time */
+#faultlog-table th:nth-child(2),
+#faultlog-table td:nth-child(2) { width: 9%; }   /* Level */
+#faultlog-table th:nth-child(3),
+#faultlog-table td:nth-child(3) { width: 12%; }  /* Direction */
+#faultlog-table th:nth-child(4),
+#faultlog-table td:nth-child(4) { width: 9%; }   /* Type */
+#faultlog-table th:nth-child(5),
+#faultlog-table td:nth-child(5) { width: 12%; }  /* Name */
+#faultlog-table th:nth-child(6),
+#faultlog-table td:nth-child(6) { width: 36%; }  /* Status */
+
+#faultlog-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background var(--transition);
+}
+#faultlog-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+#faultlog-table tbody td {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 5px 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Row tinting — subtle background for fault rows */
+tr.fl-row-fault { background: rgba(245, 101, 101, 0.04); }
+tr.fl-row-warn  { background: transparent; }
+
+/* Time column */
+td.fl-time { color: var(--text-dim); }
+
+/* Name column — brighter */
+td.fl-name { color: var(--text-bright); font-weight: 600; }
+
+/* Status column */
+td.fl-status { color: var(--text); }
+
+/* ─── Badges ──────────────────────────────────────────────────────── */
+.fl-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+
+.fl-badge-fault {
+    color: var(--red);
+    background: var(--red-dim);
+}
+.fl-badge-warn {
+    color: var(--amber);
+    background: var(--amber-dim);
+}
+.fl-badge-appear {
+    color: var(--red);
+    background: rgba(245, 101, 101, 0.12);
+}
+.fl-badge-disappear {
+    color: var(--green);
+    background: var(--green-dim);
+}
+
+/* ─── Empty state ─────────────────────────────────────────────────── */
+#faultlog-empty {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 12px;
+}
+#faultlog-tab.active #faultlog-empty:only-child,
+#faultlog-body:empty ~ #faultlog-empty { display: flex; }

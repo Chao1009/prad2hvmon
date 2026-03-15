@@ -71,6 +71,49 @@ public:
         return { bst_, bst_ver_ };
     }
 
+    // ── Fault log ring buffer ────────────────────────────────────────────
+    // Called from the fault logger (any thread) when a transition is logged.
+    void pushFaultLogEntry(json entry) {
+        std::lock_guard lk(mu_);
+        fault_log_.push_back(std::move(entry));
+        if (fault_log_.size() > MAX_FAULT_LOG)
+            fault_log_.pop_front();
+        ++fault_log_ver_;
+    }
+
+    // Return the full log (for initial client sync)
+    std::pair<std::string, uint64_t> getFaultLog() const {
+        std::lock_guard lk(mu_);
+        json arr = json::array();
+        for (const auto &e : fault_log_) arr.push_back(e);
+        return { arr.dump(), fault_log_ver_ };
+    }
+
+    // Return only entries added since the given version
+    std::pair<std::string, uint64_t> getFaultLogSince(uint64_t since_ver) const {
+        std::lock_guard lk(mu_);
+        if (since_ver >= fault_log_ver_)
+            return { "[]", fault_log_ver_ };
+
+        // Number of new entries = difference in versions, capped by buffer size
+        uint64_t new_count = fault_log_ver_ - since_ver;
+        if (new_count > fault_log_.size())
+            new_count = fault_log_.size();
+
+        json arr = json::array();
+        auto it = fault_log_.end() - static_cast<ptrdiff_t>(new_count);
+        for (; it != fault_log_.end(); ++it)
+            arr.push_back(*it);
+        return { arr.dump(), fault_log_ver_ };
+    }
+
+    uint64_t faultLogVersion() const {
+        std::lock_guard lk(mu_);
+        return fault_log_ver_;
+    }
+
+    static constexpr size_t MAX_FAULT_LOG = 200;
+
 private:
     mutable std::mutex mu_;
     std::string hv_    = "[]";
@@ -79,6 +122,9 @@ private:
     uint64_t hv_ver_    = 0;
     uint64_t board_ver_ = 0;
     uint64_t bst_ver_   = 0;
+
+    std::deque<json> fault_log_;
+    uint64_t fault_log_ver_ = 0;
 };
 
 

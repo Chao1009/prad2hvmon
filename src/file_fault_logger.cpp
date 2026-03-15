@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "file_fault_logger.h"
+#include "hv_daemon.h"
 
 #include <chrono>
 #include <ctime>
@@ -37,21 +38,39 @@ void FileFaultLogger::log(const std::string &type,
                           Direction direction,
                           Level level)
 {
-    std::lock_guard<std::mutex> lk(mu_);
-    ensureOpen();
-
     const char *dir_str   = (direction == Direction::Appear) ? "APPEAR"
                                                              : "DISAPPEAR";
     const char *level_str = (level == Level::Warn) ? "WARN" : "FAULT";
+    std::string timestamp;
 
-    // Always write to file (both WARN and FAULT)
-    if (file_.is_open()) {
-        file_ << now_timestamp() << '\t'
-              << level_str       << '\t'
-              << dir_str         << '\t'
-              << type            << '\t'
-              << name            << '\t'
-              << status          << '\n';
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        ensureOpen();
+
+        timestamp = now_timestamp();
+
+        // Always write to file (both WARN and FAULT)
+        if (file_.is_open()) {
+            file_ << timestamp    << '\t'
+                  << level_str    << '\t'
+                  << dir_str      << '\t'
+                  << type         << '\t'
+                  << name         << '\t'
+                  << status       << '\n';
+        }
+    }
+
+    // Push to SnapshotStore for WebSocket broadcast (outside file mutex
+    // to avoid lock ordering issues — pushFaultLogEntry takes its own lock)
+    if (store_) {
+        nlohmann::json entry;
+        entry["time"]      = timestamp;
+        entry["level"]     = level_str;
+        entry["direction"] = dir_str;
+        entry["type"]      = type;
+        entry["name"]      = name;
+        entry["status"]    = status;
+        store_->pushFaultLogEntry(std::move(entry));
     }
 
     // Console output respects verbosity setting
