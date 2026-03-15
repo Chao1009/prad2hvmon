@@ -28,9 +28,6 @@ let boosterMonitor  = null;
 let boosterSupplies = [];   // latest snapshot [{idx,name,ip,connected,on,mode,vmon,vset,error}]
 let boosterByName   = {};   // modName ('Booster1'…) → live booster data
 let boosterDirty    = false;
-let boosterConnected  = false;  // whether we have an active TCP connection to boosters
-let boosterConnecting = false;  // true between Connect click and first real poll result
-let boosterSeenClean  = false;  // true after seeing a "clean" disconnect snapshot (all disconnected, no errors)
 
 // ── Audible alarm state ──────────────────────────────────────────────
 let alarmMuted    = false;   // true when the user clicks the mute button
@@ -83,41 +80,10 @@ document.addEventListener('DOMContentLoaded', () => {
             boosterMonitor.boosterUpdated.connect(jsonStr => {
                 boosterSupplies = JSON.parse(jsonStr);
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
-                // Two-phase "connecting" detection for Retry robustness:
-                //
-                // On Retry, the worker thread queue may look like:
-                //   [stale doPoll] → [disconnectAll] → [connectAll → doPoll]
-                //
-                // Phase 1: wait for the "clean" disconnect snapshot (all disconnected,
-                //          no errors).  Stale poll snapshots (with errors from the
-                //          previous attempt) are ignored during this phase.
-                // Phase 2: wait for the first real poll result (connected or errored).
-                //          This is the outcome of our connectAll request.
-                //
-                // For initial Connect (no Retry), boosterSeenClean is pre-set to
-                // true so we skip Phase 1 and go straight to Phase 2.
-                if (boosterConnecting) {
-                    if (!boosterSeenClean) {
-                        // Phase 1: look for the disconnect snapshot
-                        const isClean = boosterSupplies.every(s => !s.connected && !s.error);
-                        if (isClean) boosterSeenClean = true;
-                        // ignore stale poll snapshots (with errors) — don't clear boosterConnecting
-                    } else {
-                        // Phase 2: look for a real poll result
-                        const attemptDone = boosterSupplies.some(s => s.connected || s.error);
-                        if (attemptDone) {
-                            boosterConnecting = false;
-                            boosterSeenClean  = false;
-                            updateBoosterHeaderButtons();
-                        }
-                    }
-                }
                 boosterDirty = true;
                 evaluateAlarm();
             });
-            // Fetch static supply definitions (name, ip) to build cards now.
-            // The cache is pre-populated by the C++ constructor with all supplies
-            // in disconnected state, so cards appear immediately behind the overlay.
+            // Fetch static supply definitions to build cards immediately.
             boosterMonitor.readAll(jsonStr => {
                 boosterSupplies = JSON.parse(jsonStr);
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });

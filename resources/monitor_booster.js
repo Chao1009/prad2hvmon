@@ -222,74 +222,8 @@ function openBoosterPopup(mod) {
 
 // ── Booster tab card rendering ────────────────────────────────────────
 function initBoosterTab() {
-    // Connect button (inside overlay)
-    document.getElementById('btn-booster-connect').addEventListener('click', () => {
-        if (!boosterMonitor) return;
-        boosterConnecting = true;
-        boosterSeenClean  = true;   // no disconnect needed — skip Phase 1
-        setBoosterConnected(true);
-        updateBoosterHeaderButtons();
-        // Force immediate re-render so cards show "Connecting…"
-        boosterDirty = true;
-        renderBoosterCards();
-        boosterMonitor.connectAll();
-    });
-    // Retry button (in header bar) — disconnect then immediately reconnect
-    document.getElementById('btn-booster-retry').addEventListener('click', () => {
-        if (!boosterMonitor || boosterConnecting) return;
-        boosterConnecting = true;
-        boosterSeenClean  = false;  // wait for disconnect snapshot (Phase 1)
-        updateBoosterHeaderButtons();
-        // Clear local errors so cards show "Connecting…" immediately
-        boosterSupplies.forEach(s => { s.connected = false; s.error = ''; });
-        boosterDirty = true;
-        renderBoosterCards();
-        boosterMonitor.disconnectAll();
-        boosterMonitor.connectAll();
-    });
-    // Disconnect button (in header bar)
-    document.getElementById('btn-booster-disconnect').addEventListener('click', () => {
-        if (!boosterMonitor || boosterConnecting) return;
-        if (!confirm('Disconnect from TDK-Lambda boosters?\n\n' +
-                      'This will free the TCP connections so other\n' +
-                      'monitor instances can access the supplies.')) return;
-        boosterMonitor.disconnectAll();
-        boosterConnecting = false;
-        setBoosterConnected(false);
-    });
-    // Initial state: overlay visible, header buttons hidden
-    setBoosterConnected(false);
-}
-
-// Enable/disable Retry and Disconnect buttons based on boosterConnecting state
-function updateBoosterHeaderButtons() {
-    const retryBtn   = document.getElementById('btn-booster-retry');
-    const disconnBtn = document.getElementById('btn-booster-disconnect');
-    if (retryBtn) {
-        retryBtn.disabled = boosterConnecting;
-        retryBtn.style.opacity = boosterConnecting ? '0.35' : '';
-    }
-    if (disconnBtn) {
-        disconnBtn.disabled = boosterConnecting;
-        disconnBtn.style.opacity = boosterConnecting ? '0.35' : '';
-    }
-}
-
-function setBoosterConnected(connected) {
-    boosterConnected = connected;
-    const overlay    = document.getElementById('booster-overlay');
-    const disconnBtn = document.getElementById('btn-booster-disconnect');
-    const retryBtn   = document.getElementById('btn-booster-retry');
-    if (!overlay || !disconnBtn) return;
-    if (connected) {
-        overlay.classList.add('hidden');
-        disconnBtn.style.display = '';
-        if (retryBtn) retryBtn.style.display = '';
-    } else {
-        overlay.classList.remove('hidden');
-        disconnBtn.style.display = 'none';
-        if (retryBtn) retryBtn.style.display = 'none';
-    }
+    // Nothing to wire — the daemon manages all booster connections.
+    // Cards are rendered by renderBoosterCards() in the render loop.
 }
 
 function renderBoosterCards() {

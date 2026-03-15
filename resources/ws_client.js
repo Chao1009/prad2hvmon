@@ -191,9 +191,6 @@ class DaemonClient {
             setChannelSVMax(crate, slot, ch, value) {
                 self._send({type: 'set_svmax', crate, slot, ch, value});
             },
-            setPollInterval(ms) {
-                self._send({type: 'set_poll_interval', ms});
-            },
 
             // No-op for compatibility (detached views are a Qt-only feature)
             openDetachedView(tabId) {
@@ -228,15 +225,6 @@ class DaemonClient {
             },
             setCurrent(idx, value) {
                 self._send({type: 'booster_set_current', idx, value});
-            },
-            setPollInterval(ms) {
-                self._send({type: 'set_poll_interval', target: 'booster', ms});
-            },
-            connectAll() {
-                self._send({type: 'booster_connect_all'});
-            },
-            disconnectAll() {
-                self._send({type: 'booster_disconnect_all'});
             },
         };
     }
