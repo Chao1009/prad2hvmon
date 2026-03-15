@@ -8,7 +8,7 @@
 // Subsequent snapshots are incremental (only new entries since the
 // last broadcast), appended to the front of the local buffer.
 
-const FAULT_LOG_MAX = 200;
+let FAULT_LOG_MAX   = 200;   // updated from daemon init message
 let faultLogEntries = [];    // newest-first
 let faultLogDirty   = false;
 let faultLogIsInitial = true;  // true until first full snapshot received
@@ -22,7 +22,7 @@ let faultLogUnread  = false;   // true when new entries arrived while tab not ac
     DaemonClient.prototype._handleMessage = function(raw) {
         // Quick string check before parsing — avoids double JSON.parse
         // for the vast majority of messages (hv_snapshot, etc.)
-        if (raw.indexOf('fault_log_snapshot') === -1) {
+        if (raw.indexOf('fault_log') === -1) {
             return orig.call(this, raw);
         }
         let msg;
@@ -31,7 +31,11 @@ let faultLogUnread  = false;   // true when new entries arrived while tab not ac
             receiveFaultLog(msg.data);
             return;
         }
-        // Not actually a fault_log_snapshot (false positive from indexOf)
+        // Pick up capacity from init message (contains "fault_log_capacity")
+        if (msg.type === 'init' && msg.fault_log_capacity) {
+            FAULT_LOG_MAX = msg.fault_log_capacity;
+        }
+        // Pass through to original handler (init, or false-positive indexOf match)
         return orig.call(this, raw);
     };
 })();

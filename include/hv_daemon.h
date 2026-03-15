@@ -79,7 +79,7 @@ public:
         ++fault_log_ver_;
         entry["_seq"] = fault_log_ver_;  // tag for precise incremental retrieval
         fault_log_.push_back(std::move(entry));
-        if (fault_log_.size() > MAX_FAULT_LOG)
+        if (fault_log_.size() > max_fault_log_)
             fault_log_.pop_front();
     }
 
@@ -114,7 +114,19 @@ public:
         return fault_log_ver_;
     }
 
-    static constexpr size_t MAX_FAULT_LOG = 200;
+    static constexpr size_t DEFAULT_FAULT_LOG_CAP = 200;
+
+    void setFaultLogCapacity(size_t cap) {
+        std::lock_guard lk(mu_);
+        max_fault_log_ = (cap < 10) ? 10 : cap;  // enforce minimum of 10
+        while (fault_log_.size() > max_fault_log_)
+            fault_log_.pop_front();
+    }
+
+    size_t faultLogCapacity() const {
+        std::lock_guard lk(mu_);
+        return max_fault_log_;
+    }
 
 private:
     mutable std::mutex mu_;
@@ -127,6 +139,7 @@ private:
 
     std::deque<json> fault_log_;
     uint64_t fault_log_ver_ = 0;
+    size_t   max_fault_log_ = DEFAULT_FAULT_LOG_CAP;
 };
 
 

@@ -120,10 +120,11 @@ private:
 
         // Send static config to the new client immediately
         json init;
-        init["type"]           = "init";
-        init["module_geometry"] = json::parse(module_geo_json_, nullptr, false);
-        init["gui_config"]     = json::parse(gui_config_json_, nullptr, false);
-        init["daq_map"]        = json::parse(daq_map_json_,    nullptr, false);
+        init["type"]               = "init";
+        init["module_geometry"]     = json::parse(module_geo_json_, nullptr, false);
+        init["gui_config"]         = json::parse(gui_config_json_, nullptr, false);
+        init["daq_map"]            = json::parse(daq_map_json_,    nullptr, false);
+        init["fault_log_capacity"] = store_.faultLogCapacity();
 
         try {
             server_.send(hdl, init.dump(), websocketpp::frame::opcode::text);
