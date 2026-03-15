@@ -55,17 +55,21 @@
 
 /* Column widths */
 #faultlog-table th:nth-child(1),
-#faultlog-table td:nth-child(1) { width: 22%; }  /* Time */
+#faultlog-table td:nth-child(1) { width: 20%; }  /* Time */
 #faultlog-table th:nth-child(2),
-#faultlog-table td:nth-child(2) { width: 9%; }   /* Level */
+#faultlog-table td:nth-child(2) { width: 8%; }   /* Level */
 #faultlog-table th:nth-child(3),
-#faultlog-table td:nth-child(3) { width: 12%; }  /* Direction */
+#faultlog-table td:nth-child(3) { width: 11%; }  /* Direction */
 #faultlog-table th:nth-child(4),
-#faultlog-table td:nth-child(4) { width: 9%; }   /* Type */
+#faultlog-table td:nth-child(4) { width: 8%; }   /* Type */
 #faultlog-table th:nth-child(5),
-#faultlog-table td:nth-child(5) { width: 12%; }  /* Name */
+#faultlog-table td:nth-child(5) { width: 10%; }  /* Name */
 #faultlog-table th:nth-child(6),
-#faultlog-table td:nth-child(6) { width: 36%; }  /* Status */
+#faultlog-table td:nth-child(6) { width: 9%; text-align: right; }  /* VMon */
+#faultlog-table th:nth-child(7),
+#faultlog-table td:nth-child(7) { width: 9%; text-align: right; }  /* VSet */
+#faultlog-table th:nth-child(8),
+#faultlog-table td:nth-child(8) { width: 25%; }  /* Status */
 
 #faultlog-table tbody tr {
     border-bottom: 1px solid var(--border);

@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <string>
+#include <cmath>
 
 class FaultLogger
 {
@@ -32,11 +33,15 @@ public:
     //               or the full status string from GetStatusString())
     //   direction – whether the fault just appeared or just disappeared
     //   level     – Fault (hardware error) or Warn (ΔV, suppressed, etc.)
+    //   vmon/vset – voltage readback/setpoint at the moment of the transition
+    //               (NAN for non-channel entries like boards or boosters)
     virtual void log(const std::string &type,
                      const std::string &name,
                      const std::string &status,
                      Direction direction,
-                     Level level = Level::Fault) = 0;
+                     Level level = Level::Fault,
+                     float vmon = NAN,
+                     float vset = NAN) = 0;
 
     // Optional: called once per poll cycle after all log() calls.
     // Implementations can use this to flush buffers, rotate files, etc.

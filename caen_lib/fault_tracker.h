@@ -45,9 +45,12 @@ public:
     // level: Fault (hardware error) or Warn (ΔV, suppressed errors, etc.)
     //        Used when a new fault/warn appears; disappear inherits the
     //        level from the original appear event.
+    // vmon/vset: voltage context for the log entry (not used for change detection).
+    //            Pass NAN for non-channel entries (boards, boosters).
     void update(const std::string &name, const std::string &status,
                 const std::string &type = "channel",
-                FaultLogger::Level level = FaultLogger::Level::Fault)
+                FaultLogger::Level level = FaultLogger::Level::Fault,
+                float vmon = NAN, float vset = NAN)
     {
         seen_.insert(name);
 
@@ -58,12 +61,13 @@ public:
             // Old fault disappeared (or changed to a different fault/normal)
             if (logger_) logger_->log(prev_type_[name], name, prev_status_[name],
                                       FaultLogger::Direction::Disappear,
-                                      prev_level_[name]);
+                                      prev_level_[name], vmon, vset);
         }
         if (is_fault && prev_status_[name] != status) {
             // New fault appeared (or changed from a different fault/normal)
             if (logger_) logger_->log(type, name, status,
-                                      FaultLogger::Direction::Appear, level);
+                                      FaultLogger::Direction::Appear, level,
+                                      vmon, vset);
         }
 
         prev_status_[name] = status;

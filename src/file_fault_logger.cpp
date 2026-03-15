@@ -36,12 +36,27 @@ void FileFaultLogger::log(const std::string &type,
                           const std::string &name,
                           const std::string &status,
                           Direction direction,
-                          Level level)
+                          Level level,
+                          float vmon,
+                          float vset)
 {
     const char *dir_str   = (direction == Direction::Appear) ? "APPEAR"
                                                              : "DISAPPEAR";
     const char *level_str = (level == Level::Warn) ? "WARN" : "FAULT";
     std::string timestamp;
+
+    // Format vmon/vset columns (empty for non-channel entries)
+    std::string vmon_str, vset_str;
+    if (!std::isnan(vmon)) {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%.2f", vmon);
+        vmon_str = buf;
+    }
+    if (!std::isnan(vset)) {
+        char buf[16];
+        std::snprintf(buf, sizeof(buf), "%.2f", vset);
+        vset_str = buf;
+    }
 
     {
         std::lock_guard<std::mutex> lk(mu_);
@@ -56,7 +71,9 @@ void FileFaultLogger::log(const std::string &type,
                   << dir_str      << '\t'
                   << type         << '\t'
                   << name         << '\t'
-                  << status       << '\n';
+                  << status       << '\t'
+                  << vmon_str     << '\t'
+                  << vset_str     << '\n';
         }
     }
 
@@ -70,6 +87,8 @@ void FileFaultLogger::log(const std::string &type,
         entry["type"]      = type;
         entry["name"]      = name;
         entry["status"]    = status;
+        entry["vmon"]      = std::isnan(vmon) ? nlohmann::json(nullptr) : nlohmann::json(vmon);
+        entry["vset"]      = std::isnan(vset) ? nlohmann::json(nullptr) : nlohmann::json(vset);
         store_->pushFaultLogEntry(std::move(entry));
     }
 
@@ -82,7 +101,11 @@ void FileFaultLogger::log(const std::string &type,
     // Print to stderr for faults, stdout for warnings
     auto &out = (level == Level::Fault) ? std::cerr : std::cout;
     out << level_str << "  " << dir_str << "  "
-        << type << "  " << name << "  " << status << "\n";
+        << type << "  " << name << "  " << status;
+    if (!vmon_str.empty() || !vset_str.empty())
+        out << "  [VMon=" << (vmon_str.empty() ? "N/A" : vmon_str)
+            << " VSet=" << (vset_str.empty() ? "N/A" : vset_str) << "]";
+    out << "\n";
 }
 
 void FileFaultLogger::flush()

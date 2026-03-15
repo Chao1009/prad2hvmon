@@ -294,7 +294,8 @@ private:
                     if (cls.dv_warn && cls.level != "fault")
                         logLevel = FaultLogger::Level::Warn;
 
-                    fault_tracker_.update(ch->GetName(), trackStatus, "channel", logLevel);
+                    fault_tracker_.update(ch->GetName(), trackStatus, "channel", logLevel,
+                                          ch->GetVMon(), ch->GetVSet());
                 }
             }
         }

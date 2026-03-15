@@ -40,7 +40,9 @@ public:
              const std::string &name,
              const std::string &status,
              Direction direction,
-             Level level = Level::Fault) override;
+             Level level = Level::Fault,
+             float vmon = NAN,
+             float vset = NAN) override;
 
     void flush() override;
 

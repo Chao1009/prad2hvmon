@@ -131,6 +131,28 @@ function renderFaultLog() {
         tdName.textContent = e.name || '';
         tr.appendChild(tdName);
 
+        // VMon
+        const tdVmon = document.createElement('td');
+        tdVmon.style.textAlign = 'right';
+        if (e.vmon != null) {
+            tdVmon.textContent = Number(e.vmon).toFixed(2);
+        } else {
+            tdVmon.textContent = '';
+            tdVmon.style.color = 'var(--text-dim)';
+        }
+        tr.appendChild(tdVmon);
+
+        // VSet
+        const tdVset = document.createElement('td');
+        tdVset.style.textAlign = 'right';
+        if (e.vset != null) {
+            tdVset.textContent = Number(e.vset).toFixed(2);
+        } else {
+            tdVset.textContent = '';
+            tdVset.style.color = 'var(--text-dim)';
+        }
+        tr.appendChild(tdVset);
+
         // Status (show abbreviation part prominently, detail as title)
         const tdStatus = document.createElement('td');
         tdStatus.className = 'fl-status';
