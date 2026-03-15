@@ -93,6 +93,29 @@ The daemon serves the dashboard directly — open `http://<daemon-host>:8765/` i
 
 Multiple clients can connect simultaneously. All receive the same live data.
 
+### Remote Access (outside counting room)
+
+The daemon runs on `clonpc19` behind the JLab gateway `hallgw`. To access it from outside:
+
+```bash
+# SSH tunnel — forward port 8765 through the gateway
+ssh -L 8765:clonpc19:8765 -J your_username@hallgw clasrun@clonpc19
+```
+
+Then open in your local browser:
+
+```
+http://localhost:8765/
+```
+
+For the Qt GUI client:
+
+```bash
+./bin/prad2hvmon -H localhost -p 8765
+```
+
+The tunnel must stay open while you use the dashboard.
+
 ## Dashboard Features
 
 - **Channel Table** — Sortable, filterable, live-updating. Inline VSet/ISet/SVMax/Name editing in expert mode (apply button appears only when value changes; Enter or click to apply). Bulk ON/OFF. Summary strip with fault/warning counts.
