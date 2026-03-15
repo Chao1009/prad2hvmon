@@ -12,6 +12,7 @@ const FAULT_LOG_MAX = 200;
 let faultLogEntries = [];    // newest-first
 let faultLogDirty   = false;
 let faultLogIsInitial = true;  // true until first full snapshot received
+let faultLogUnread  = false;   // true when new entries arrived while tab not active
 
 // ── Patch DaemonClient to route fault_log_snapshot messages ──────────
 // ws_client.js is loaded before this script.  We wrap the prototype's
@@ -51,6 +52,8 @@ let faultLogIsInitial = true;  // true until first full snapshot received
     DaemonClient.prototype._connect = function() {
         faultLogEntries = [];
         faultLogIsInitial = true;
+        faultLogUnread = false;
+        updateFaultLogDot();
         return origConnect.call(this);
     };
 })();
@@ -60,6 +63,8 @@ function receiveFaultLog(entries) {
 
     // Daemon sends entries oldest-first.  Reverse for newest-first display.
     const incoming = entries.slice().reverse();
+
+    const wasInitial = faultLogIsInitial;
 
     if (faultLogIsInitial) {
         // First message after (re)connect: full buffer — replace everything
@@ -72,10 +77,15 @@ function receiveFaultLog(entries) {
     faultLogDirty = true;
 
     // If the fault log tab is currently active, render immediately
-    // (the main render loop only fires on dataDirty/boosterDirty)
+    // and mark entries as read (no red dot).
     const active = document.querySelector('.tab-content.active');
     if (active && active.id === 'faultlog-tab') {
         renderFaultLog();
+    } else if (!wasInitial) {
+        // Incremental entries arrived while tab is hidden — show unread dot.
+        // (Skip the initial full-buffer load on connect — that's history, not new.)
+        faultLogUnread = true;
+        updateFaultLogDot();
     }
 }
 
@@ -180,8 +190,14 @@ function renderFaultLog() {
     }
 }
 
+// ── Unread indicator dot on the Fault Log tab button ─────────────────
+function updateFaultLogDot() {
+    const btn = document.querySelector('.tab-btn[data-tab="faultlog-tab"]');
+    if (btn) btn.classList.toggle('has-fault', faultLogUnread);
+}
+
 // ── Hook into renderActiveTab so switching TO the fault log tab
-//    triggers a render of any pending dirty data ──────────────────────
+//    triggers a render of any pending dirty data and clears the dot ───
 (function patchRenderActiveTab() {
     const orig = window.renderActiveTab;
     if (!orig) return;
@@ -190,6 +206,10 @@ function renderFaultLog() {
         const active = document.querySelector('.tab-content.active');
         if (active && active.id === 'faultlog-tab') {
             renderFaultLog();
+            if (faultLogUnread) {
+                faultLogUnread = false;
+                updateFaultLogDot();
+            }
         }
     };
 })();

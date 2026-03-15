@@ -20,6 +20,7 @@
 #include <fmt/format.h>
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <deque>
 #include <functional>
@@ -75,10 +76,11 @@ public:
     // Called from the fault logger (any thread) when a transition is logged.
     void pushFaultLogEntry(json entry) {
         std::lock_guard lk(mu_);
+        ++fault_log_ver_;
+        entry["_seq"] = fault_log_ver_;  // tag for precise incremental retrieval
         fault_log_.push_back(std::move(entry));
         if (fault_log_.size() > MAX_FAULT_LOG)
             fault_log_.pop_front();
-        ++fault_log_ver_;
     }
 
     // Return the full log (for initial client sync)
@@ -95,15 +97,15 @@ public:
         if (since_ver >= fault_log_ver_)
             return { "[]", fault_log_ver_ };
 
-        // Number of new entries = difference in versions, capped by buffer size
-        uint64_t new_count = fault_log_ver_ - since_ver;
-        if (new_count > fault_log_.size())
-            new_count = fault_log_.size();
-
+        // Walk backwards from the end to find entries with _seq > since_ver
         json arr = json::array();
-        auto it = fault_log_.end() - static_cast<ptrdiff_t>(new_count);
-        for (; it != fault_log_.end(); ++it)
+        for (auto it = fault_log_.rbegin(); it != fault_log_.rend(); ++it) {
+            uint64_t seq = it->value("_seq", uint64_t(0));
+            if (seq <= since_ver) break;  // all earlier entries are older
             arr.push_back(*it);
+        }
+        // arr is newest-first; reverse to oldest-first (matching getFaultLog order)
+        std::reverse(arr.begin(), arr.end());
         return { arr.dump(), fault_log_ver_ };
     }
 
