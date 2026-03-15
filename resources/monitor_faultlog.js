@@ -63,7 +63,7 @@ let faultLogUnread  = false;   // true when new entries arrived while tab not ac
 })();
 
 function receiveFaultLog(entries) {
-    if (!Array.isArray(entries) || entries.length === 0) return;
+    if (!Array.isArray(entries)) return;
 
     // Daemon sends entries oldest-first.  Reverse for newest-first display.
     const incoming = entries.slice().reverse();
@@ -71,10 +71,13 @@ function receiveFaultLog(entries) {
     const wasInitial = faultLogIsInitial;
 
     if (faultLogIsInitial) {
-        // First message after (re)connect: full buffer — replace everything
+        // First message after (re)connect: full buffer — replace everything.
+        // May be empty if no faults have occurred yet.
         faultLogEntries = incoming.slice(0, FAULT_LOG_MAX);
         faultLogIsInitial = false;
+        if (incoming.length === 0) return;  // nothing to render
     } else {
+        if (incoming.length === 0) return;  // no new entries
         // Incremental: prepend new entries
         faultLogEntries = incoming.concat(faultLogEntries).slice(0, FAULT_LOG_MAX);
     }
