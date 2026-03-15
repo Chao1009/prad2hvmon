@@ -70,8 +70,41 @@ Headless process that polls hardware, classifies channel status, logs faults, an
 | `-r <dir>` | Resources directory for HTTP serving (default: auto-discover) |
 | `-p <port>` | WebSocket + HTTP port (default: 8765) |
 | `-t <ms>` | Poll interval in ms (default: 3000) |
+| `-v <level>` | Console verbosity: 0=silent, 1=faults only, 2=warn+fault (default: 2) |
 
 Stop with `Ctrl+C`. Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected.
+
+### Fault Log Format
+
+The daily log file is tab-separated with a level column:
+
+```
+2026-03-14 10:23:45.123	FAULT	APPEAR	channel	W232	ON OVC|Over Current
+2026-03-14 10:23:45.456	WARN	APPEAR	channel	G235	ON DVW|dV warning
+2026-03-14 10:23:48.789	FAULT	DISAPPEAR	channel	W232	ON OVC|Over Current
+```
+
+Hardware errors (OVC, OVV, TRIP, etc.) are logged as `FAULT`. ΔV threshold violations and suppressed errors are logged as `WARN`. The file always records both levels regardless of `-v`.
+
+### Running as a Persistent Service
+
+Use `tmux` to keep the daemon running after logout:
+
+```bash
+# Start in a named tmux session
+tmux new-session -d -s hvd './bin/prad2hvd -v 1'
+
+# Detach and log out — daemon keeps running
+
+# Reattach later to check output
+tmux attach -t hvd
+
+# List sessions
+tmux ls
+
+# Stop the daemon
+tmux send-keys -t hvd C-c
+```
 
 ## Qt GUI Client (`prad2hvmon`)
 
@@ -121,7 +154,7 @@ The tunnel must stay open while you use the dashboard.
 - **Channel Table** — Sortable, filterable, live-updating. Inline VSet/ISet/SVMax/Name editing in expert mode (apply button appears only when value changes; Enter or click to apply). Bulk ON/OFF. Summary strip with fault/warning counts.
 - **Board Status** — Per-board temperature, HVMax, firmware, status.
 - **HyCal Geometry Map** — 2D canvas at physical positions. Color by VMon, VSet, |ΔV|, or Status. Click for draggable live popups with controls.
-- **Booster HV Panel** — TDK-Lambda GEN supply cards with readback, VSet/ISet controls, ON/OFF. Connect/Disconnect/Retry buttons.
+- **Booster HV Panel** — TDK-Lambda GEN supply cards with live readback, VSet/ISet controls, ON/OFF. Connection managed by daemon.
 - **Alarm** — Audible two-tone beep every 2s on faults. Mute toggle, auto-re-arm when faults clear.
 
 ## Configuration Files
