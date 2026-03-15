@@ -95,11 +95,11 @@ Multiple clients can connect simultaneously. All receive the same live data.
 
 ### Remote Access (outside counting room)
 
-The daemon runs on `clonpc19` behind the JLab gateway `hallgw`. To access it from outside:
+The daemon runs on `clonpc19` behind the JLab gateway. To access it from outside:
 
 ```bash
 # SSH tunnel — forward port 8765 through the gateway
-ssh -L 8765:clonpc19:8765 -J your_username@hallgw clasrun@clonpc19
+ssh -L 8765:clonpc19:8765 -J your_username@hallgw.jlab.org clasrun@clonpc19
 ```
 
 Then open in your local browser:
