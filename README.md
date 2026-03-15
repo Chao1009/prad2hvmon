@@ -69,7 +69,7 @@ Headless process that polls hardware, classifies channel status, logs faults, an
 | `-w <file>` | ΔV warning rules JSON (default: `database/dv_warn.json`) |
 | `-r <dir>` | Resources directory for HTTP serving (default: auto-discover) |
 | `-p <port>` | WebSocket + HTTP port (default: 8765) |
-| `-t <ms>` | Poll interval in ms (default: 3000) |
+| `-t <ms>` | Poll interval in ms (default: 2000) |
 | `-v <level>` | Console verbosity: 0=silent, 1=faults only, 2=warn+fault (default: 2) |
 
 Stop with `Ctrl+C`. Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected.
