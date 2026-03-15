@@ -245,7 +245,8 @@ static void printUsage(const char *prog)
               << "  -i <file>   Error-ignore JSON        (default: $DATABASE_DIR/error_ignore.json)\n"
               << "  -l <file>   Voltage-limits JSON      (default: $DATABASE_DIR/voltage_limits.json)\n"
               << "  -w <file>   DeltaV warning rules JSON (default: $DATABASE_DIR/dv_warn.json)\n"
-              << "  -p <port>   WebSocket port           (default: 8765)\n"
+              << "  -r <dir>    Resources directory for HTTP serving (default: auto-discover)\n"
+              << "  -p <port>   WebSocket + HTTP port     (default: 8765)\n"
               << "  -t <ms>     Poll interval in ms      (default: 2000)\n"
               << "  -h          Show this help\n";
 }
@@ -254,7 +255,7 @@ int main(int argc, char *argv[])
 {
     // ── Defaults ─────────────────────────────────────────────────────────
     std::string crateFile, moduleFile, guiConfigFile, daqMapFile;
-    std::string ignoreFile, limitsFile, dvWarnFile;
+    std::string ignoreFile, limitsFile, dvWarnFile, resourceDir;
     uint16_t    wsPort       = 8765;
     int         pollInterval = 2000;
 
@@ -267,7 +268,7 @@ int main(int argc, char *argv[])
 
     // ── Parse command-line ───────────────────────────────────────────────
     int opt;
-    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:p:t:h")) != -1) {
+    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:h")) != -1) {
         switch (opt) {
         case 'c': crateFile     = optarg; break;
         case 'm': moduleFile    = optarg; break;
@@ -276,6 +277,7 @@ int main(int argc, char *argv[])
         case 'i': ignoreFile    = optarg; break;
         case 'l': limitsFile    = optarg; break;
         case 'w': dvWarnFile    = optarg; break;
+        case 'r': resourceDir   = optarg; break;
         case 'p': wsPort        = static_cast<uint16_t>(std::atoi(optarg)); break;
         case 't': pollInterval  = std::atoi(optarg); break;
         case 'h':
@@ -349,8 +351,27 @@ int main(int argc, char *argv[])
     std::cout << fmt::format("Poll threads started (interval: {} ms)\n",
                              pollInterval);
 
-    // ── Start WebSocket server (blocks on main thread) ───────────────────
-    WsServer server(wsPort, store, cmdq, moduleFile, guiConfigFile, daqMapFile);
+    // ── Locate resources directory (for built-in HTTP serving) ─────────
+    if (resourceDir.empty()) {
+        // Auto-discover relative to DATABASE_DIR or executable
+        std::vector<std::string> candidates = {
+            dbDir + "/../resources",
+        };
+        for (const auto &p : candidates) {
+            if (fs::exists(p + "/monitor.html")) {
+                resourceDir = fs::canonical(p).string();
+                break;
+            }
+        }
+    }
+    if (!resourceDir.empty())
+        std::cout << "HTTP resources: " << resourceDir << "\n";
+    else
+        std::cout << "HTTP resources: not found (use -r <dir> to enable)\n";
+
+    // ── Start WebSocket + HTTP server (blocks on main thread) ────────────
+    WsServer server(wsPort, store, cmdq, resourceDir,
+                    moduleFile, guiConfigFile, daqMapFile);
     g_server = &server;
 
     server.run();   // blocks until stop() is called

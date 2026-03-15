@@ -86,26 +86,35 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (resourceDir.isEmpty() || !QFile::exists(resourceDir + "/monitor.html")) {
-        std::cerr << "ERROR: cannot find monitor.html\n"
-                  << "Use -r <path> to specify the resources directory.\n";
+    if (resourceDir.isEmpty() && parser.isSet(resourceOpt)) {
+        std::cerr << "ERROR: cannot find monitor.html in specified resources dir\n";
         return 1;
     }
-    std::cout << "Resources: " << resourceDir.toStdString() << "\n";
-    std::cout << "Daemon: ws://" << host.toStdString() << ":" << port.toStdString() << "\n";
+    if (!resourceDir.isEmpty())
+        std::cout << "Resources: " << resourceDir.toStdString() << "\n";
+    std::cout << "Daemon: " << host.toStdString() << ":" << port.toStdString() << "\n";
 
     // ── Create web view ──────────────────────────────────────────────
     QWebEngineView view;
     view.setWindowTitle("PRad-II HV Monitor");
     view.resize(winW, winH);
 
-    // Load monitor.html with ?host=...&port=... so ws_client.js knows
-    // where to connect
-    QUrl url = QUrl::fromLocalFile(resourceDir + "/monitor.html");
-    QUrlQuery query;
-    query.addQueryItem("host", host);
-    query.addQueryItem("port", port);
-    url.setQuery(query);
+    // Load dashboard from daemon's built-in HTTP server.
+    // The daemon serves resources at http://host:port/monitor.html
+    // and WebSocket on the same port — no separate file server needed.
+    QUrl url;
+    if (parser.isSet(resourceOpt)) {
+        // Explicit local resources — use file:// with query params
+        url = QUrl::fromLocalFile(resourceDir + "/monitor.html");
+        QUrlQuery query;
+        query.addQueryItem("host", host);
+        query.addQueryItem("port", port);
+        url.setQuery(query);
+    } else {
+        // Load from daemon's HTTP server (default)
+        url = QUrl(QString("http://%1:%2/monitor.html").arg(host, port));
+    }
+    std::cout << "Loading: " << url.toString().toStdString() << "\n";
     view.setUrl(url);
 
     // ── Screenshot shortcut (Ctrl+S) ─────────────────────────────────

@@ -17,9 +17,10 @@ Real-time high-voltage monitoring and control for the PRad-II HyCal calorimeter 
 │  HVPoller thread ── poll + classify │
 │  BoosterPoller thread ── poll       │
 │  FaultTracker ── daily log files    │
-│  WebSocket server ── JSON push      │
+│  WebSocket + HTTP server            │
 └──────────────┬──────────────────────┘
-               │ ws://host:8765
+               │ http://host:8765/
+               │ ws://host:8765/
        ┌───────┼───────┐
        ▼       ▼       ▼
     Browser  Qt GUI   Scripts
@@ -36,15 +37,11 @@ mkdir build && cd build
 cmake ..
 make -j$(nproc)
 
-# Start daemon
+# Start daemon (serves both WebSocket and dashboard HTTP on port 8765)
 ./bin/prad2hvd
 
-# Serve the web dashboard (separate terminal)
-cd resources
-python3 -m http.server 8080
-
-# Open in browser
-# http://localhost:8080/monitor.html
+# Open in any browser
+# http://clonpc19:8765/
 ```
 
 ### Build with Qt GUI client (optional)
@@ -53,8 +50,8 @@ python3 -m http.server 8080
 cmake .. -DBUILD_GUI=ON -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
 make -j$(nproc)
 
-# Run Qt client
-./bin/prad2hvmon -H localhost -p 8765
+# Run Qt client (loads dashboard from daemon's HTTP server)
+./bin/prad2hvmon -H clonpc19 -p 8765
 ```
 
 ## Daemon (`prad2hvd`)
@@ -70,7 +67,8 @@ Headless process that polls hardware, classifies channel status, logs faults, an
 | `-i <file>` | Error-ignore JSON (default: `database/error_ignore.json`) |
 | `-l <file>` | Voltage limits JSON (default: `database/voltage_limits.json`) |
 | `-w <file>` | ΔV warning rules JSON (default: `database/dv_warn.json`) |
-| `-p <port>` | WebSocket port (default: 8765) |
+| `-r <dir>` | Resources directory for HTTP serving (default: auto-discover) |
+| `-p <port>` | WebSocket + HTTP port (default: 8765) |
 | `-t <ms>` | Poll interval in ms (default: 3000) |
 
 Stop with `Ctrl+C`. Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected.
@@ -91,7 +89,7 @@ Optional thin client — a `QWebEngineView` window that loads `monitor.html` and
 
 ## Web Client
 
-Serve the `resources/` directory with any HTTP server. The dashboard connects to `ws://<hostname>:8765` automatically (hostname from the page URL, port overridable via `?port=NNNN`).
+The daemon serves the dashboard directly — open `http://<daemon-host>:8765/` in any browser. No separate file server needed. The same port handles both HTTP (for HTML/JS/CSS) and WebSocket (for live data).
 
 Multiple clients can connect simultaneously. All receive the same live data.
 

@@ -40,10 +40,12 @@ public:
     WsServer(uint16_t port,
              SnapshotStore &store,
              CommandQueue  &cmdq,
+             const std::string &resource_dir    = "",
              const std::string &module_geo_path = "",
              const std::string &gui_config_path = "",
              const std::string &daq_map_path    = "")
-        : port_(port), store_(store), cmdq_(cmdq)
+        : port_(port), store_(store), cmdq_(cmdq),
+          resource_dir_(resource_dir)
     {
         // Pre-load static config files into memory
         module_geo_json_ = readFile(module_geo_path, "[]");
@@ -67,6 +69,12 @@ public:
             [this](connection_hdl hdl, WsServerType::message_ptr msg) {
                 onMessage(hdl, msg);
             });
+
+        // Serve static files for plain HTTP requests (non-WebSocket).
+        // This lets browsers load the dashboard directly from
+        // http://host:port/ without a separate file server.
+        server_.set_http_handler(
+            [this](connection_hdl hdl) { onHttp(hdl); });
     }
 
     // Blocks on the Asio event loop.  Call stop() from a signal handler
@@ -76,7 +84,9 @@ public:
         server_.listen(port_);
         server_.start_accept();
 
-        std::cout << fmt::format("WebSocket server listening on port {}\n", port_);
+        std::cout << fmt::format("WebSocket + HTTP server listening on port {}\n", port_);
+        if (!resource_dir_.empty())
+            std::cout << fmt::format("  Dashboard: http://localhost:{}/\n", port_);
 
         // Set up a recurring timer to broadcast snapshots
         scheduleBroadcast();
@@ -220,6 +230,62 @@ private:
         } catch (...) {}
     }
 
+    // ── HTTP static file server ─────────────────────────────────────────
+
+    void onHttp(connection_hdl hdl)
+    {
+        auto con = server_.get_con_from_hdl(hdl);
+        std::string uri = con->get_resource();  // e.g. "/", "/monitor.js"
+
+        // Redirect "/" to "/monitor.html"
+        if (uri == "/") uri = "/monitor.html";
+
+        // Security: reject paths with ".." to prevent directory traversal
+        if (uri.find("..") != std::string::npos) {
+            con->set_status(websocketpp::http::status_code::forbidden);
+            con->set_body("403 Forbidden");
+            return;
+        }
+
+        // If no resource dir configured, return a helpful message
+        if (resource_dir_.empty()) {
+            con->set_status(websocketpp::http::status_code::not_found);
+            con->set_body("No resource directory configured. "
+                          "Use -r <path> to serve the dashboard.");
+            return;
+        }
+
+        // Build filesystem path
+        std::string filepath = resource_dir_ + uri;
+        std::ifstream f(filepath, std::ios::binary);
+        if (!f.is_open()) {
+            con->set_status(websocketpp::http::status_code::not_found);
+            con->set_body("404 Not Found: " + uri);
+            return;
+        }
+
+        std::string body((std::istreambuf_iterator<char>(f)),
+                          std::istreambuf_iterator<char>());
+
+        con->set_status(websocketpp::http::status_code::ok);
+        con->append_header("Content-Type", mimeType(uri));
+        con->append_header("Cache-Control", "no-cache");
+        con->set_body(body);
+    }
+
+    static std::string mimeType(const std::string &path)
+    {
+        auto ext = path.substr(path.rfind('.') + 1);
+        if (ext == "html") return "text/html; charset=utf-8";
+        if (ext == "js")   return "application/javascript; charset=utf-8";
+        if (ext == "css")  return "text/css; charset=utf-8";
+        if (ext == "json") return "application/json; charset=utf-8";
+        if (ext == "png")  return "image/png";
+        if (ext == "svg")  return "image/svg+xml";
+        if (ext == "ico")  return "image/x-icon";
+        return "application/octet-stream";
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     static std::string readFile(const std::string &path,
@@ -239,6 +305,7 @@ private:
     uint16_t       port_;
     SnapshotStore &store_;
     CommandQueue  &cmdq_;
+    std::string    resource_dir_;
 
     WsServerType   server_;
 
