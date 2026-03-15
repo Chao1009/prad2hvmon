@@ -41,7 +41,7 @@ make -j$(nproc)
 ./bin/prad2hvd
 
 # Open in any browser
-# http://clonpc19:8765/
+# http://localhost:8765/
 ```
 
 ### Build with Qt GUI client (optional)
@@ -51,7 +51,7 @@ cmake .. -DBUILD_GUI=ON -DCMAKE_PREFIX_PATH=/path/to/Qt5/lib/cmake
 make -j$(nproc)
 
 # Run Qt client (loads dashboard from daemon's HTTP server)
-./bin/prad2hvmon -H clonpc19 -p 8765
+./bin/prad2hvmon -H localhost -p 8765
 ```
 
 ## Daemon (`prad2hvd`)
