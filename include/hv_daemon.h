@@ -28,6 +28,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 #include <iostream>
 #include <cmath>
@@ -444,8 +445,29 @@ public:
                 dispatchCommand(cmd->payload);
             }
 
-            // Poll all supplies
-            for (auto *s : supplies_) s->poll();
+            // Poll all supplies and log connection state changes
+            for (auto *s : supplies_) {
+                bool wasCon = s->connected;
+                s->poll();
+                if (!wasCon && s->connected) {
+                    std::cout << fmt::format("Booster {} @ {}:{} — connected\n",
+                                             s->name, s->ip, s->port);
+                } else if (wasCon && !s->connected) {
+                    std::cerr << fmt::format("Booster {} @ {}:{} — connection lost: {}\n",
+                                             s->name, s->ip, s->port, s->error);
+                } else if (!s->connected && !s->error.empty()) {
+                    // Still disconnected — only log on first failure,
+                    // tracked via prev_booster_logged_
+                    if (prev_booster_logged_.find(s->name) == prev_booster_logged_.end()) {
+                        std::cerr << fmt::format("Booster {} @ {}:{} — cannot connect: {}\n",
+                                                 s->name, s->ip, s->port, s->error);
+                        prev_booster_logged_.insert(s->name);
+                    }
+                }
+                if (s->connected) {
+                    prev_booster_logged_.erase(s->name);
+                }
+            }
 
             // Track faults
             for (auto *s : supplies_) {
@@ -522,4 +544,5 @@ private:
     std::vector<BoosterSupply*> supplies_;
     std::atomic<int> poll_interval_ms_;
     FaultTracker fault_tracker_;
+    std::unordered_set<std::string> prev_booster_logged_;  // suppresses repeat "cannot connect" msgs
 };
