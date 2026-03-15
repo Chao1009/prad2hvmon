@@ -100,6 +100,9 @@ tmux new-session -d -s hvd './bin/prad2hvd -v 1'
 # Reattach later to check output
 tmux attach -t hvd
 
+# Detach from session (keep daemon running): Ctrl+A then D
+# (clonpc19 uses Ctrl+A as the tmux prefix instead of the default Ctrl+B)
+
 # List sessions
 tmux ls
 
