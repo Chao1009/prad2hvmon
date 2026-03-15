@@ -130,6 +130,7 @@ if(BUILD_GUI)
 
     target_compile_definitions(prad2hvmon PRIVATE
         RESOURCE_DIR="${RESOURCE_DIR}"
+        DATABASE_DIR="${DATABASE_DIR}"
     )
 
     target_link_libraries(prad2hvmon PRIVATE

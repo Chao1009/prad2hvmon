@@ -26,7 +26,6 @@
 #include <QKeySequence>
 #include <QPixmap>
 #include <QDateTime>
-#include <QStandardPaths>
 #include <QCommandLineParser>
 #include <QCommandLineOption>
 
@@ -120,10 +119,11 @@ int main(int argc, char *argv[])
     // ── Screenshot shortcut (Ctrl+S) ─────────────────────────────────
     auto *screenshotShortcut = new QShortcut(QKeySequence("Ctrl+S"), &view);
     QObject::connect(screenshotShortcut, &QShortcut::activated, [&view]() {
-        const QString dir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+        // Save screenshots to DATABASE_DIR/screenshots/
+        const QString dir = QString::fromStdString(DATABASE_DIR) + "/screenshots";
+        QDir().mkpath(dir);  // ensure the directory exists
         const QString ts  = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
-        const QString path = (dir.isEmpty() ? QString(".") : dir)
-                             + "/prad2hvmon_" + ts + ".png";
+        const QString path = dir + "/prad2hvmon_" + ts + ".png";
         const QPixmap px = view.grab();
         if (px.save(path))
             std::cout << "Screenshot saved: " << path.toStdString() << "\n";
