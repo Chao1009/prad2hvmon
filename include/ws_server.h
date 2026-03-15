@@ -136,7 +136,13 @@ private:
         sendSnapshot(hdl, "hv_snapshot",      store_.getHV().first);
         sendSnapshot(hdl, "board_snapshot",   store_.getBoard().first);
         sendSnapshot(hdl, "booster_snapshot", store_.getBooster().first);
-        sendSnapshot(hdl, "fault_log_snapshot", store_.getFaultLog().first);
+
+        // Send full fault log and advance the broadcast version so the
+        // next broadcastIfChanged tick doesn't re-send the same entries.
+        auto [fl_data, fl_ver] = store_.getFaultLog();
+        sendSnapshot(hdl, "fault_log_snapshot", fl_data);
+        if (fl_ver > last_fl_ver_)
+            last_fl_ver_ = fl_ver;
     }
 
     void onClose(connection_hdl hdl)
