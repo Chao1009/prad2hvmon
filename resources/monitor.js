@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const boosterActive = activeTabId === 'booster-tab';
         const boardActive   = activeTabId === 'board-tab';
         const shouldRender = (dataDirty && allChannels.length > 0)
-                           || (boosterDirty && (geoActive || boosterActive))
+                           || boosterDirty
                            || (boardDirty && boardActive);
         if (shouldRender && (ts - lastRenderTs) >= renderIntervalMs) {
             renderActiveTab();
@@ -238,7 +238,10 @@ function renderActiveTab() {
     if (active.id === 'table-tab') renderTable();     // calls updateFooter internally
     else if (active.id === 'board-tab') { if (boardDirty) { renderBoardTable(); boardDirty = false; } updateFooter(); }
     else if (active.id === 'geo-tab') { renderGeo(); updateFooter(); }
-    else if (active.id === 'booster-tab') { if (boosterDirty) { renderBoosterCards(); boosterDirty = false; } }
+    else if (active.id === 'booster-tab') updateFooter();
+    // Always render booster cards when dirty — they live in the DOM even when
+    // the tab is hidden, so they're ready when the user switches to it.
+    if (boosterDirty) { renderBoosterCards(); boosterDirty = false; }
     // Refresh open popups here, in the render loop, not on every data tick
     if (popups.size > 0) refreshAllPopups();
 }

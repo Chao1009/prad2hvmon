@@ -401,7 +401,6 @@ function wireBoosterCard(card, idx) {
 }
 
 function boosterCardClass(s) {
-    if (boosterConnecting) return '';  // neutral during connecting
     if (!s.connected || s.error) return 'card-fault';
     if (s.on && s.mode === 'CC')  return 'card-warn';
     if (s.on)                      return 'card-on';
@@ -409,16 +408,12 @@ function boosterCardClass(s) {
 }
 
 function boosterConnBadgeHtml(s) {
-    if (boosterConnecting)
-        return '<span class="conn-connecting">Connecting…</span>';
     if (s.connected) return '<span class="conn-ok">Connected</span>';
     if (s.error)     return '<span class="conn-err">Error</span>';
     return '<span class="conn-off">Offline</span>';
 }
 
 function boosterStatusHtml(s) {
-    if (boosterConnecting)
-        return '<span class="bst-connecting">Connecting…</span>';
     if (s.error) return '<span class="bst-error">' + escHtml(s.error) + '</span>';
     if (s.connected) return '<span class="bst-ok">Connected</span>';
     return '';
@@ -431,7 +426,6 @@ function boosterModeBadge(mode) {
 }
 
 function boosterPwrBadge(s) {
-    if (boosterConnecting) return '<span class="st-off">—</span>';
     if (!s.connected) return '<span class="st-off">OFFLINE</span>';
     return s.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>';
 }
