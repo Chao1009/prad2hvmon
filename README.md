@@ -104,6 +104,9 @@ tmux ls
 
 # Stop the daemon
 tmux send-keys -t hvd C-c
+
+# Force kill if unresponsive
+tmux kill-session -t hvd
 ```
 
 ## Qt GUI Client (`prad2hvmon`)
