@@ -13,8 +13,8 @@
 
 namespace fs = std::filesystem;
 
-FileFaultLogger::FileFaultLogger(const std::string &log_dir)
-    : log_dir_(log_dir)
+FileFaultLogger::FileFaultLogger(const std::string &log_dir, Verbosity verbosity)
+    : log_dir_(log_dir), verbosity_(verbosity)
 {
     // Ensure the log directory exists
     std::error_code ec;
@@ -34,19 +34,36 @@ FileFaultLogger::~FileFaultLogger()
 void FileFaultLogger::log(const std::string &type,
                           const std::string &name,
                           const std::string &status,
-                          Direction direction)
+                          Direction direction,
+                          Level level)
 {
     std::lock_guard<std::mutex> lk(mu_);
     ensureOpen();
-    if (!file_.is_open()) return;
 
-    const char *dir_str = (direction == Direction::Appear) ? "APPEAR"
-                                                           : "DISAPPEAR";
-    file_ << now_timestamp() << '\t'
-          << dir_str         << '\t'
-          << type            << '\t'
-          << name            << '\t'
-          << status          << '\n';
+    const char *dir_str   = (direction == Direction::Appear) ? "APPEAR"
+                                                             : "DISAPPEAR";
+    const char *level_str = (level == Level::Warn) ? "WARN" : "FAULT";
+
+    // Always write to file (both WARN and FAULT)
+    if (file_.is_open()) {
+        file_ << now_timestamp() << '\t'
+              << level_str       << '\t'
+              << dir_str         << '\t'
+              << type            << '\t'
+              << name            << '\t'
+              << status          << '\n';
+    }
+
+    // Console output respects verbosity setting
+    if (verbosity_ == Verbosity::Silent)
+        return;
+    if (verbosity_ == Verbosity::FaultOnly && level != Level::Fault)
+        return;
+
+    // Print to stderr for faults, stdout for warnings
+    auto &out = (level == Level::Fault) ? std::cerr : std::cout;
+    out << level_str << "  " << dir_str << "  "
+        << type << "  " << name << "  " << status << "\n";
 }
 
 void FileFaultLogger::flush()

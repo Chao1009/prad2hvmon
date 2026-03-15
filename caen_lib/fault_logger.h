@@ -20,6 +20,7 @@ class FaultLogger
 {
 public:
     enum class Direction { Appear, Disappear };
+    enum class Level     { Fault, Warn };
 
     virtual ~FaultLogger() = default;
 
@@ -30,10 +31,12 @@ public:
     //   status    – the fault status string (e.g. "OVC", "OVV", "TRIP",
     //               or the full status string from GetStatusString())
     //   direction – whether the fault just appeared or just disappeared
+    //   level     – Fault (hardware error) or Warn (ΔV, suppressed, etc.)
     virtual void log(const std::string &type,
                      const std::string &name,
                      const std::string &status,
-                     Direction direction) = 0;
+                     Direction direction,
+                     Level level = Level::Fault) = 0;
 
     // Optional: called once per poll cycle after all log() calls.
     // Implementations can use this to flush buffers, rotate files, etc.

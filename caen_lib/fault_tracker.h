@@ -41,9 +41,13 @@ public:
     void setLogger(FaultLogger *logger) { logger_ = logger; }
 
     // Call once per channel/board per poll cycle.
-    // type: "channel", "board", or "booster"
+    // type:  "channel", "board", or "booster"
+    // level: Fault (hardware error) or Warn (ΔV, suppressed errors, etc.)
+    //        Used when a new fault/warn appears; disappear inherits the
+    //        level from the original appear event.
     void update(const std::string &name, const std::string &status,
-                const std::string &type = "channel")
+                const std::string &type = "channel",
+                FaultLogger::Level level = FaultLogger::Level::Fault)
     {
         seen_.insert(name);
 
@@ -53,16 +57,18 @@ public:
         if (was_fault && prev_status_[name] != status) {
             // Old fault disappeared (or changed to a different fault/normal)
             if (logger_) logger_->log(prev_type_[name], name, prev_status_[name],
-                                      FaultLogger::Direction::Disappear);
+                                      FaultLogger::Direction::Disappear,
+                                      prev_level_[name]);
         }
         if (is_fault && prev_status_[name] != status) {
             // New fault appeared (or changed from a different fault/normal)
             if (logger_) logger_->log(type, name, status,
-                                      FaultLogger::Direction::Appear);
+                                      FaultLogger::Direction::Appear, level);
         }
 
         prev_status_[name] = status;
         prev_type_[name]   = type;
+        prev_level_[name]  = level;
     }
 
     // Call after all update() calls in one cycle.
@@ -75,9 +81,11 @@ public:
             if (seen_.find(it->first) == seen_.end()) {
                 if (isFault(it->second) && logger_) {
                     logger_->log(prev_type_[it->first], it->first, it->second,
-                                 FaultLogger::Direction::Disappear);
+                                 FaultLogger::Direction::Disappear,
+                                 prev_level_[it->first]);
                 }
                 prev_type_.erase(it->first);
+                prev_level_.erase(it->first);
                 it = prev_status_.erase(it);
             } else {
                 ++it;
@@ -123,5 +131,6 @@ private:
     FaultLogger *logger_ = nullptr;
     std::unordered_map<std::string, std::string> prev_status_;
     std::unordered_map<std::string, std::string> prev_type_;
+    std::unordered_map<std::string, FaultLogger::Level> prev_level_;
     std::unordered_set<std::string>              seen_;
 };

@@ -24,17 +24,24 @@
 class FileFaultLogger : public FaultLogger
 {
 public:
+    // Console verbosity levels (file always logs both WARN and FAULT)
+    enum class Verbosity { Silent, FaultOnly, WarnAndFault };
+
     // log_dir: directory where log files are written.
     //          Created if it doesn't exist.
-    explicit FileFaultLogger(const std::string &log_dir);
+    explicit FileFaultLogger(const std::string &log_dir,
+                             Verbosity verbosity = Verbosity::WarnAndFault);
     ~FileFaultLogger() override;
 
     void log(const std::string &type,
              const std::string &name,
              const std::string &status,
-             Direction direction) override;
+             Direction direction,
+             Level level = Level::Fault) override;
 
     void flush() override;
+
+    void setVerbosity(Verbosity v) { verbosity_ = v; }
 
 private:
     void ensureOpen();                      // open/rotate file if needed
@@ -45,4 +52,5 @@ private:
     std::string   current_date_;            // date of the currently open file
     std::ofstream file_;
     std::mutex    mu_;
+    Verbosity     verbosity_;
 };

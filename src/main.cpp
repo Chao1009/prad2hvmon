@@ -248,6 +248,7 @@ static void printUsage(const char *prog)
               << "  -r <dir>    Resources directory for HTTP serving (default: auto-discover)\n"
               << "  -p <port>   WebSocket + HTTP port     (default: 8765)\n"
               << "  -t <ms>     Poll interval in ms      (default: 2000)\n"
+              << "  -v <level>  Console verbosity: 0=silent, 1=faults only, 2=warn+fault (default: 2)\n"
               << "  -h          Show this help\n";
 }
 
@@ -258,6 +259,7 @@ int main(int argc, char *argv[])
     std::string ignoreFile, limitsFile, dvWarnFile, resourceDir;
     uint16_t    wsPort       = 8765;
     int         pollInterval = 2000;
+    int         verbosity    = 2;  // 0=silent, 1=fault, 2=warn+fault
 
     // DATABASE_DIR is a compile-time define (same as the original project)
 #ifdef DATABASE_DIR
@@ -268,7 +270,7 @@ int main(int argc, char *argv[])
 
     // ── Parse command-line ───────────────────────────────────────────────
     int opt;
-    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:h")) != -1) {
+    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:v:h")) != -1) {
         switch (opt) {
         case 'c': crateFile     = optarg; break;
         case 'm': moduleFile    = optarg; break;
@@ -280,6 +282,7 @@ int main(int argc, char *argv[])
         case 'r': resourceDir   = optarg; break;
         case 'p': wsPort        = static_cast<uint16_t>(std::atoi(optarg)); break;
         case 't': pollInterval  = std::atoi(optarg); break;
+        case 'v': verbosity     = std::atoi(optarg); break;
         case 'h':
         default:  printUsage(argv[0]); return (opt == 'h') ? 0 : 1;
         }
@@ -316,8 +319,13 @@ int main(int argc, char *argv[])
     CommandQueue  cmdq;
 
     std::string logDir = dbDir + "/fault_log";
-    FileFaultLogger faultLogger(logDir);
+    auto verb = (verbosity <= 0) ? FileFaultLogger::Verbosity::Silent
+              : (verbosity == 1) ? FileFaultLogger::Verbosity::FaultOnly
+              :                    FileFaultLogger::Verbosity::WarnAndFault;
+    FileFaultLogger faultLogger(logDir, verb);
     std::cout << "Fault logger: " << logDir << "/\n";
+    const char *verbNames[] = { "silent", "faults only", "warn + fault" };
+    std::cout << "Console verbosity: " << verbNames[std::min(verbosity, 2)] << "\n";
 
     // ── HV Poller ────────────────────────────────────────────────────────
     HVPoller hvPoller(crateList);

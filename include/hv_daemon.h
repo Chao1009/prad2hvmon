@@ -238,7 +238,17 @@ private:
                         else
                             trackStatus += " DVW|dV warning";
                     }
-                    fault_tracker_.update(ch->GetName(), trackStatus, "channel");
+
+                    // Determine log level: real hardware faults → FAULT,
+                    // ΔV warnings and suppressed errors → WARN
+                    FaultLogger::Level logLevel = FaultLogger::Level::Fault;
+                    if (cls.level == "warn" || cls.level == "suppressed")
+                        logLevel = FaultLogger::Level::Warn;
+                    // If the only "fault" is DVW (ΔV), it's a warning
+                    if (cls.dv_warn && cls.level != "fault")
+                        logLevel = FaultLogger::Level::Warn;
+
+                    fault_tracker_.update(ch->GetName(), trackStatus, "channel", logLevel);
                 }
             }
         }
