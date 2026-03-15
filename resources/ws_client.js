@@ -191,11 +191,6 @@ class DaemonClient {
             setChannelSVMax(crate, slot, ch, value) {
                 self._send({type: 'set_svmax', crate, slot, ch, value});
             },
-
-            // No-op for compatibility (detached views are a Qt-only feature)
-            openDetachedView(tabId) {
-                console.log('openDetachedView not available in web mode:', tabId);
-            },
         };
     }
 
