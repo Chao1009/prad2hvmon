@@ -413,8 +413,10 @@ function dirtyCheck(input) {
 function applyInline(input) {
     if (!input || !input.dataset.apply) return;
     const btn = input.nextElementSibling;
-    // Execute the apply action
-    new Function(input.dataset.apply)();
+    // Execute the apply action — bind `this` to the input element
+    // so that data-apply expressions like "inlineSetVoltage(...,this.value)"
+    // can reference the input's current value.
+    new Function(input.dataset.apply).call(input);
     // Update orig to new value so it's no longer dirty
     input.dataset.orig = input.value;
     input.classList.remove('dirty');
