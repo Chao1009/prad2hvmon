@@ -152,11 +152,22 @@ private:
                                  connections_.size());
     }
 
-    void onMessage(connection_hdl /*hdl*/, WsServerType::message_ptr msg)
+    void onMessage(connection_hdl hdl, WsServerType::message_ptr msg)
     {
         try {
             json cmd = json::parse(msg->get_payload());
             std::string type = cmd.value("type", "");
+
+            // save_settings: route to HV queue, remember who asked
+            if (type == "save_settings") {
+                {
+                    std::lock_guard lk(settings_mu_);
+                    settings_requester_ = hdl;
+                    settings_pending_ = true;
+                }
+                cmdq_.push({ Command::HV, std::move(cmd) });
+                return;
+            }
 
             // Route to the correct target
             if (type.rfind("booster_", 0) == 0 ||
@@ -214,6 +225,24 @@ private:
             auto [fl_data, fl_ver] = store_.getFaultLogSince(last_fl_ver_);
             broadcast("fault_log_snapshot", fl_data);
             last_fl_ver_ = fl_ver;
+        }
+
+        // Settings save response: send back to the requesting client only
+        if (store_.hasSettingsResponse()) {
+            std::string resp = store_.takeSettingsResponse();
+            if (!resp.empty()) {
+                std::lock_guard lk(settings_mu_);
+                if (settings_pending_) {
+                    settings_pending_ = false;
+                    std::string msg = R"({"type":"settings_snapshot","data":)" + resp + "}";
+                    try {
+                        server_.send(settings_requester_, msg,
+                                     websocketpp::frame::opcode::text);
+                    } catch (const std::exception &e) {
+                        std::cerr << "Failed to send settings response: " << e.what() << "\n";
+                    }
+                }
+            }
         }
     }
 
@@ -338,6 +367,11 @@ private:
     uint64_t last_bd_ver_  = 0;
     uint64_t last_bst_ver_ = 0;
     uint64_t last_fl_ver_  = 0;
+
+    // Settings save request-response tracking
+    std::mutex settings_mu_;
+    connection_hdl settings_requester_;
+    bool settings_pending_ = false;
 
     // Pre-loaded static config (sent to each client on connect)
     std::string module_geo_json_;

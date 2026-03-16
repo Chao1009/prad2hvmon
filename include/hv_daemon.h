@@ -128,6 +128,28 @@ public:
         return max_fault_log_;
     }
 
+    // ── Settings save/load (request-response via HVPoller) ─────────────
+    // The WsServer pushes a request; HVPoller processes it and stores
+    // the result; WsServer picks it up and sends to the requesting client.
+    void setSettingsResponse(std::string json_str) {
+        std::lock_guard lk(mu_);
+        settings_response_ = std::move(json_str);
+        settings_response_ready_ = true;
+    }
+
+    // Returns the response and clears it. Empty string if not ready.
+    std::string takeSettingsResponse() {
+        std::lock_guard lk(mu_);
+        if (!settings_response_ready_) return {};
+        settings_response_ready_ = false;
+        return std::move(settings_response_);
+    }
+
+    bool hasSettingsResponse() const {
+        std::lock_guard lk(mu_);
+        return settings_response_ready_;
+    }
+
 private:
     mutable std::mutex mu_;
     std::string hv_    = "[]";
@@ -140,6 +162,9 @@ private:
     std::deque<json> fault_log_;
     uint64_t fault_log_ver_ = 0;
     size_t   max_fault_log_ = DEFAULT_FAULT_LOG_CAP;
+
+    std::string settings_response_;
+    bool settings_response_ready_ = false;
 };
 
 
@@ -248,7 +273,12 @@ public:
 
             // Drain pending HV commands
             while (auto cmd = cmdq.tryPop(Command::HV)) {
-                dispatchCommand(cmd->payload);
+                if (cmd->payload.value("type", "") == "save_settings") {
+                    // Build settings snapshot on the poller thread (has access to crate objects)
+                    store.setSettingsResponse(buildSettingsSnapshot());
+                } else {
+                    dispatchCommand(cmd->payload);
+                }
             }
 
             // Poll all crates
@@ -422,6 +452,28 @@ private:
             std::cout << fmt::format("CMD set_poll_interval: {} ms\n", ms);
             setPollInterval(ms);
         }
+        else if (type == "set_all_voltage") {
+            float v = cmd.value("value", 0.0f);
+            int count = 0;
+            for (auto *cr : crates_)
+                for (auto *bd : cr->GetBoardList())
+                    for (auto *ch : bd->GetChannelList()) {
+                        ch->SetVoltage(v);
+                        ++count;
+                    }
+            std::cout << fmt::format("CMD set_all_voltage: {:.2f} V → {} channels\n", v, count);
+        }
+        else if (type == "save_settings") {
+            // Build settings JSON and store in SnapshotStore for WsServer to pick up
+            // The cmd contains a pointer to the store (set by WsServer before pushing)
+            std::cout << "CMD save_settings: building settings snapshot\n";
+            // We can't access the store here directly, so we store the result
+            // in a special field. The caller must pass the store pointer via the command.
+            // Instead, buildSettingsSnapshot() is called by the run() loop after dispatch.
+        }
+        else if (type == "load_settings") {
+            loadSettings(cmd);
+        }
         else {
             std::cerr << "HVPoller: unknown command type: " << type << "\n";
         }
@@ -524,10 +576,134 @@ private:
         return arr.dump();
     }
 
-    // ── Pending overrides ────────────────────────────────────────────────
-    // After a set_voltage/set_current/set_svmax command, hold the written
-    // value for a few poll cycles so the snapshot reflects the user's intent
-    // even if hardware readback hasn't caught up yet.
+    // ── Settings save: build JSON of all writable params ─────────────────
+    std::string buildSettingsSnapshot()
+    {
+        json root;
+        root["format"]    = "prad2hvmon_settings_v1";
+        auto now = std::chrono::system_clock::now();
+        auto tt  = std::chrono::system_clock::to_time_t(now);
+        char tbuf[32];
+        std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
+        root["timestamp"] = tbuf;
+
+        json channels = json::array();
+        int total = 0;
+
+        for (auto *cr : crates_) {
+            for (auto *bd : cr->GetBoardList()) {
+                const auto &paramInfo = bd->GetChParamInfo();
+                for (auto *ch : bd->GetChannelList()) {
+                    json entry;
+                    entry["crate"]   = cr->GetName();
+                    entry["slot"]    = bd->GetSlot();
+                    entry["channel"] = ch->GetChannel();
+                    entry["name"]    = ch->GetName();
+
+                    json params;
+                    for (const auto &pi : paramInfo) {
+                        if (!pi.isWritable()) continue;
+                        if (pi.isFloat()) {
+                            float v = ch->GetFloat(pi.name);
+                            if (!std::isnan(v)) params[pi.name] = v;
+                        } else if (pi.isUInt()) {
+                            if (ch->HasParam(pi.name))
+                                params[pi.name] = ch->GetUInt(pi.name);
+                        }
+                    }
+                    entry["params"] = params;
+                    channels.push_back(std::move(entry));
+                    ++total;
+                }
+            }
+        }
+        root["channels"] = channels;
+        std::cout << fmt::format("Settings snapshot: {} channels\n", total);
+        return root.dump(2);
+    }
+
+    // ── Settings load: restore writable params from JSON ─────────────────
+    void loadSettings(const json &cmd)
+    {
+        json data;
+        if (cmd.contains("settings") && cmd["settings"].is_object())
+            data = cmd["settings"];
+        else if (cmd.contains("settings") && cmd["settings"].is_string())
+            data = json::parse(cmd["settings"].get<std::string>(), nullptr, false);
+        else {
+            std::cerr << "CMD load_settings: missing 'settings' field\n";
+            return;
+        }
+        if (data.is_discarded()) {
+            std::cerr << "CMD load_settings: failed to parse settings JSON\n";
+            return;
+        }
+
+        std::string format = data.value("format", "");
+        if (format != "prad2hvmon_settings_v1")
+            std::cerr << "CMD load_settings: unknown format '" << format << "'\n";
+        std::cout << "CMD load_settings: timestamp="
+                  << data.value("timestamp", "?") << "\n";
+
+        auto &ch_arr = data["channels"];
+        if (!ch_arr.is_array()) {
+            std::cerr << "CMD load_settings: 'channels' is not an array\n";
+            return;
+        }
+
+        int restored = 0, skipped = 0, errors = 0;
+
+        for (const auto &entry : ch_arr) {
+            std::string crate_name = entry.value("crate", "");
+            int slot_n    = entry.value("slot", -1);
+            int channel_n = entry.value("channel", -1);
+            std::string ch_name = entry.value("name", "");
+
+            auto *ch = findChannel(crate_name, slot_n, channel_n);
+            if (!ch) {
+                ++skipped;
+                continue;
+            }
+
+            if (!ch_name.empty() && ch->GetName() != ch_name) {
+                ch->SetName(ch_name);
+                std::cout << fmt::format("  {}/s{}/ch{} name → {}\n",
+                    crate_name, slot_n, channel_n, ch_name);
+            }
+
+            auto cit = crate_map_.find(crate_name);
+            if (cit == crate_map_.end()) { ++skipped; continue; }
+            auto *board = cit->second->GetBoard(static_cast<unsigned short>(slot_n));
+            if (!board) { ++skipped; continue; }
+            const auto &paramInfo = board->GetChParamInfo();
+
+            if (!entry.contains("params") || !entry["params"].is_object()) continue;
+            for (auto it = entry["params"].begin(); it != entry["params"].end(); ++it) {
+                std::string pname = it.key();
+                const ParamInfo *pi = nullptr;
+                for (const auto &info : paramInfo) {
+                    if (info.name == pname && info.isWritable()) { pi = &info; break; }
+                }
+                if (!pi) continue;
+
+                bool ok = false;
+                if (pi->isFloat()) {
+                    float v = it.value().get<float>();
+                    ok = ch->SetFloat(pname, v);
+                    if (ok) std::cout << fmt::format("  {}/s{}/ch{} {} → {:.2f}\n",
+                        crate_name, slot_n, channel_n, pname, v);
+                } else if (pi->isUInt()) {
+                    unsigned int v = it.value().get<unsigned int>();
+                    ok = ch->SetUInt(pname, v);
+                    if (ok) std::cout << fmt::format("  {}/s{}/ch{} {} → {}\n",
+                        crate_name, slot_n, channel_n, pname, v);
+                }
+                if (ok) ++restored; else ++errors;
+            }
+        }
+        std::cout << fmt::format("CMD load_settings: {} restored, {} skipped, {} errors\n",
+            restored, skipped, errors);
+    }
 
     struct PendingOverride {
         std::string crate;

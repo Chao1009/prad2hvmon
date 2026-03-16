@@ -86,6 +86,15 @@
                 <button class="bulk-btn bulk-on" id="btn-all-on" title="Turn ALL channels ON">⏻ All ON</button>
                 <button class="bulk-btn bulk-off" id="btn-all-off" title="Turn ALL channels OFF">⏻ All OFF</button>
             </div>
+            <div class="bulk-setv-group" id="bulk-setv-group" style="display:none">
+                <input type="text" id="bulk-setv-input" class="bulk-setv-input" placeholder="V" title="Set VSet for all visible channels">
+                <button class="bulk-btn bulk-setv" id="btn-all-setv" title="Apply VSet to all visible channels">⚡ All Set V</button>
+            </div>
+            <div class="settings-group">
+                <button class="btn" id="btn-save-settings" title="Save all channel settings to JSON file">💾 Save</button>
+                <button class="btn" id="btn-load-settings" title="Load channel settings from JSON file">📂 Load</button>
+                <input type="file" id="load-settings-file" accept=".json" style="display:none">
+            </div>
         </div>
         <div id="table-wrap">
             <table>

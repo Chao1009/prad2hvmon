@@ -74,7 +74,75 @@ function initTableUI() {
         }
         expertMode = e.target.checked;
         document.getElementById('expert-label').classList.toggle('active', expertMode);
+        // Show/hide All Set V group (expert only)
+        const setvGroup = document.getElementById('bulk-setv-group');
+        if (setvGroup) setvGroup.style.display = expertMode ? 'flex' : 'none';
         dataDirty = true; boosterDirty = true; renderActiveTab();
+    });
+
+    // ── All Set V (expert mode bulk voltage set) ────────────────────────
+    document.getElementById('btn-all-setv').addEventListener('click', () => {
+        if (!hvMonitor || !expertMode) return;
+        const input = document.getElementById('bulk-setv-input');
+        const v = parseFloat(input.value);
+        if (isNaN(v) || v < 0) { input.style.borderColor = 'var(--red)'; return; }
+        input.style.borderColor = '';
+        const n = allChannels.length;
+        if (!confirm(`Set VSet = ${v.toFixed(1)} V on ALL ${n} channels?\n\nThis will change every HV channel across all crates.`)) return;
+        hvMonitor.setAllVoltage(v);
+        allChannels.forEach(ch => { ch.vset = v; });
+        dataDirty = true; renderActiveTab();
+    });
+
+    // ── Save settings ───────────────────────────────────────────────────
+    document.getElementById('btn-save-settings').addEventListener('click', () => {
+        if (!hvMonitor) return;
+        const btn = document.getElementById('btn-save-settings');
+        btn.textContent = '⏳ Saving…';
+        btn.disabled = true;
+        hvMonitor.saveSettings(data => {
+            btn.textContent = '💾 Save';
+            btn.disabled = false;
+            // Download as JSON file
+            const jsonStr = (typeof data === 'string') ? data : JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            a.href = url;
+            a.download = `hv_settings_${ts}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    });
+
+    // ── Load settings ───────────────────────────────────────────────────
+    document.getElementById('btn-load-settings').addEventListener('click', () => {
+        document.getElementById('load-settings-file').click();
+    });
+    document.getElementById('load-settings-file').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!confirm(`Load settings from "${file.name}"?\n\nThis will write all saved parameters to the HV hardware.`)) {
+            e.target.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const settings = JSON.parse(reader.result);
+                if (!settings.format || !settings.channels) {
+                    alert('Invalid settings file: missing "format" or "channels" field.');
+                    return;
+                }
+                hvMonitor.loadSettings(settings);
+                console.log('Settings loaded:', settings.channels.length, 'channels');
+            } catch (err) {
+                alert('Failed to parse JSON: ' + err.message);
+            }
+        };
+        reader.readAsText(file);
+        e.target.value = '';  // allow re-selecting same file
     });
 }
 

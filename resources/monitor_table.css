@@ -138,6 +138,22 @@ tr.primary-row td {
     display: flex; align-items: center; gap: 6px; margin-left: auto;
     font-family: var(--mono); font-size: 10.5px; color: var(--text-dim);
 }
+
+/* ─── Save/Load and All Set V controls ────────────────────────────── */
+.settings-group { display: flex; gap: 4px; margin-left: 4px; }
+.bulk-setv-group { display: flex; gap: 4px; margin-left: 4px; align-items: center; }
+.bulk-setv-input {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--bg); color: var(--text-bright);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 4px 8px; width: 70px; text-align: right; outline: none;
+}
+.bulk-setv-input:focus { border-color: var(--accent); }
+.bulk-btn.bulk-setv {
+    color: var(--amber); border-color: var(--amber-dim); background: var(--amber-dim);
+    font-weight: 600;
+}
+.bulk-btn.bulk-setv:hover { background: var(--amber); color: #000; }
 .expert-toggle .switch {
     position: relative; width: 34px; height: 18px; cursor: pointer;
 }

@@ -128,6 +128,12 @@ if(BUILD_GUI)
         src/gui_main.cpp
     )
 
+    target_include_directories(prad2hvmon PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${CAEN_LIB_DIR}
+    )
+
     target_compile_definitions(prad2hvmon PRIVATE
         RESOURCE_DIR="${RESOURCE_DIR}"
         DATABASE_DIR="${DATABASE_DIR}"
@@ -136,6 +142,9 @@ if(BUILD_GUI)
     target_link_libraries(prad2hvmon PRIVATE
         Qt5::Widgets
         Qt5::WebEngineWidgets
+        caen_lib
+        nlohmann_json::nlohmann_json
+        fmt::fmt
     )
 
     message(STATUS "Qt GUI client: ON (resources: ${RESOURCE_DIR})")
