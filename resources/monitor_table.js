@@ -106,6 +106,8 @@ function initTableUI() {
             hvMonitor.setChannelVoltage(ch.crate, ch.slot, ch.channel, v);
             ch.vset = v;
         });
+        // Force full table rebuild so expert-mode input cells get new values
+        document.getElementById('ch-body').innerHTML = '';
         dataDirty = true; renderActiveTab();
     });
 

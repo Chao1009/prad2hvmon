@@ -334,14 +334,28 @@ function updateBoosterCard(card, idx, s) {
         if (statusEl.innerHTML !== wantStatus) statusEl.innerHTML = wantStatus;
     }
 
-    // Expert mode guard
+    // Expert mode guard + update input values when not being edited
     const vsetEl = card.querySelector('[data-vset-input]');
     const setVEl = card.querySelector('[data-set-v]');
-    if (vsetEl) { vsetEl.disabled = !expertMode; vsetEl.style.opacity = expertMode ? '1' : '0.35'; }
+    if (vsetEl) {
+        vsetEl.disabled = !expertMode; vsetEl.style.opacity = expertMode ? '1' : '0.35';
+        if (document.activeElement !== vsetEl) {
+            const newV = s.vset != null ? s.vset.toFixed(2) : '';
+            vsetEl.value = newV;
+            vsetEl.dataset.orig = newV;
+        }
+    }
     if (setVEl) { setVEl.disabled = !expertMode; setVEl.style.opacity = expertMode ? '1' : '0.35'; }
     const isetEl = card.querySelector('[data-iset-input]');
     const setIEl = card.querySelector('[data-set-i]');
-    if (isetEl) { isetEl.disabled = !expertMode; isetEl.style.opacity = expertMode ? '1' : '0.35'; }
+    if (isetEl) {
+        isetEl.disabled = !expertMode; isetEl.style.opacity = expertMode ? '1' : '0.35';
+        if (document.activeElement !== isetEl) {
+            const newI = s.iset != null ? s.iset.toFixed(3) : '';
+            isetEl.value = newI;
+            isetEl.dataset.orig = newI;
+        }
+    }
     if (setIEl) { setIEl.disabled = !expertMode; setIEl.style.opacity = expertMode ? '1' : '0.35'; }
 }
 
