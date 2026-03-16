@@ -46,6 +46,7 @@ class DaemonClient {
         // Pending callbacks for readAll/readBoards/etc. (called once init arrives)
         this._pendingInit    = [];
         this._settingsCb     = null;  // callback for save_settings response
+        this._loadCb         = null;  // callback for load_settings response
 
         // Public API objects (same shape as QWebChannel objects)
         this.hvMonitor       = this._createHVMonitor();
@@ -120,6 +121,15 @@ class DaemonClient {
             if (this._settingsCb) {
                 const cb = this._settingsCb;
                 this._settingsCb = null;
+                cb(msg.data);
+            }
+            break;
+
+        case 'load_settings_done':
+            // Response to a load_settings request — call pending callback
+            if (this._loadCb) {
+                const cb = this._loadCb;
+                this._loadCb = null;
                 cb(msg.data);
             }
             break;
@@ -208,7 +218,8 @@ class DaemonClient {
                 self._settingsCb = cb;
                 self._send({type: 'save_settings'});
             },
-            loadSettings(settingsObj) {
+            loadSettings(settingsObj, cb) {
+                if (cb) self._loadCb = cb;
                 self._send({type: 'load_settings', settings: settingsObj});
             },
         };

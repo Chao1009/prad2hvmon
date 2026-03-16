@@ -158,13 +158,18 @@ private:
             json cmd = json::parse(msg->get_payload());
             std::string type = cmd.value("type", "");
 
-            // save_settings: route to HV queue, remember who asked
+            // save_settings / load_settings: route to HV queue, remember who asked
             if (type == "save_settings") {
-                {
-                    std::lock_guard lk(settings_mu_);
-                    settings_requester_ = hdl;
-                    settings_pending_ = true;
-                }
+                std::lock_guard lk(settings_mu_);
+                settings_requester_ = hdl;
+                settings_pending_ = true;
+                cmdq_.push({ Command::HV, std::move(cmd) });
+                return;
+            }
+            if (type == "load_settings") {
+                std::lock_guard lk(settings_mu_);
+                load_requester_ = hdl;
+                load_pending_ = true;
                 cmdq_.push({ Command::HV, std::move(cmd) });
                 return;
             }
@@ -240,6 +245,24 @@ private:
                                      websocketpp::frame::opcode::text);
                     } catch (const std::exception &e) {
                         std::cerr << "Failed to send settings response: " << e.what() << "\n";
+                    }
+                }
+            }
+        }
+
+        // Load settings response: send result back to requesting client
+        if (store_.hasLoadResponse()) {
+            std::string resp = store_.takeLoadResponse();
+            if (!resp.empty()) {
+                std::lock_guard lk(settings_mu_);
+                if (load_pending_) {
+                    load_pending_ = false;
+                    std::string msg = R"({"type":"load_settings_done","data":)" + resp + "}";
+                    try {
+                        server_.send(load_requester_, msg,
+                                     websocketpp::frame::opcode::text);
+                    } catch (const std::exception &e) {
+                        std::cerr << "Failed to send load response: " << e.what() << "\n";
                     }
                 }
             }
@@ -368,10 +391,12 @@ private:
     uint64_t last_bst_ver_ = 0;
     uint64_t last_fl_ver_  = 0;
 
-    // Settings save request-response tracking
+    // Settings save/load request-response tracking
     std::mutex settings_mu_;
     connection_hdl settings_requester_;
     bool settings_pending_ = false;
+    connection_hdl load_requester_;
+    bool load_pending_ = false;
 
     // Pre-loaded static config (sent to each client on connect)
     std::string module_geo_json_;

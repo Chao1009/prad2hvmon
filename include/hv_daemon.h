@@ -150,6 +150,24 @@ public:
         return settings_response_ready_;
     }
 
+    void setLoadResponse(std::string json_str) {
+        std::lock_guard lk(mu_);
+        load_response_ = std::move(json_str);
+        load_response_ready_ = true;
+    }
+
+    std::string takeLoadResponse() {
+        std::lock_guard lk(mu_);
+        if (!load_response_ready_) return {};
+        load_response_ready_ = false;
+        return std::move(load_response_);
+    }
+
+    bool hasLoadResponse() const {
+        std::lock_guard lk(mu_);
+        return load_response_ready_;
+    }
+
 private:
     mutable std::mutex mu_;
     std::string hv_    = "[]";
@@ -165,6 +183,8 @@ private:
 
     std::string settings_response_;
     bool settings_response_ready_ = false;
+    std::string load_response_;
+    bool load_response_ready_ = false;
 };
 
 
@@ -273,9 +293,11 @@ public:
 
             // Drain pending HV commands
             while (auto cmd = cmdq.tryPop(Command::HV)) {
-                if (cmd->payload.value("type", "") == "save_settings") {
-                    // Build settings snapshot on the poller thread (has access to crate objects)
+                std::string type = cmd->payload.value("type", "");
+                if (type == "save_settings") {
                     store.setSettingsResponse(buildSettingsSnapshot());
+                } else if (type == "load_settings") {
+                    store.setLoadResponse(loadSettings(cmd->payload));
                 } else {
                     dispatchCommand(cmd->payload);
                 }
@@ -560,7 +582,7 @@ private:
     }
 
     // ── Settings load: restore writable params from JSON ─────────────────
-    void loadSettings(const json &cmd)
+    std::string loadSettings(const json &cmd)
     {
         json data;
         if (cmd.contains("settings") && cmd["settings"].is_object())
@@ -569,11 +591,11 @@ private:
             data = json::parse(cmd["settings"].get<std::string>(), nullptr, false);
         else {
             std::cerr << "CMD load_settings: missing 'settings' field\n";
-            return;
+            return R"({"error":"missing settings field"})";
         }
         if (data.is_discarded()) {
             std::cerr << "CMD load_settings: failed to parse settings JSON\n";
-            return;
+            return R"({"error":"invalid JSON"})";
         }
 
         std::string format = data.value("format", "");
@@ -585,7 +607,7 @@ private:
         auto &ch_arr = data["channels"];
         if (!ch_arr.is_array()) {
             std::cerr << "CMD load_settings: 'channels' is not an array\n";
-            return;
+            return R"({"error":"channels is not an array"})";
         }
 
         int restored = 0, skipped = 0, errors = 0;
@@ -640,6 +662,13 @@ private:
         }
         std::cout << fmt::format("CMD load_settings: {} restored, {} skipped, {} errors\n",
             restored, skipped, errors);
+
+        // Build result for client feedback
+        json result;
+        result["restored"] = restored;
+        result["skipped"]  = skipped;
+        result["errors"]   = errors;
+        return result.dump();
     }
 
     struct PendingOverride {

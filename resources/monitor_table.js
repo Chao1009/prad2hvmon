@@ -135,8 +135,15 @@ function initTableUI() {
                     alert('Invalid settings file: missing "format" or "channels" field.');
                     return;
                 }
-                hvMonitor.loadSettings(settings);
-                console.log('Settings loaded:', settings.channels.length, 'channels');
+                hvMonitor.loadSettings(settings, result => {
+                    if (result && result.error) {
+                        alert('Load failed: ' + result.error);
+                    } else if (result) {
+                        console.log('Load result:', result);
+                        alert(`Settings applied: ${result.restored} restored, ${result.skipped} skipped, ${result.errors} errors`);
+                    }
+                });
+                console.log('Settings sent:', settings.channels.length, 'channels');
             } catch (err) {
                 alert('Failed to parse JSON: ' + err.message);
             }
