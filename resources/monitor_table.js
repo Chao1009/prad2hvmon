@@ -230,6 +230,9 @@ function getFilteredChannels() {
 }
 
 function renderTable() {
+    // Don't re-render while a cell is being edited — moving the row
+    // through a DocumentFragment would detach the input and kill focus.
+    if (document.querySelector('#ch-body td.editing')) return;
 
     // ── Filter & sort ─────────────────────────────────────────────────
     let data = allChannels;
