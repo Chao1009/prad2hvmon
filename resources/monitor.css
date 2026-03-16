@@ -127,11 +127,11 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .tab-spacer { flex: 1; }
 .tab-action-btn {
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
-    padding: 9px 16px; background: transparent; color: var(--text-dim);
-    border: none; border-bottom: 2px solid transparent;
-    cursor: pointer; transition: all var(--transition); text-transform: uppercase;
+    padding: 6px 14px; margin: 4px 2px; background: var(--accent-dim); color: var(--accent);
+    border: 1px solid var(--accent); border-radius: var(--radius);
+    cursor: pointer; transition: all var(--transition); text-transform: uppercase; font-weight: 600;
 }
-.tab-action-btn:hover { color: var(--text); background: var(--bg-card-alt); }
+.tab-action-btn:hover { background: var(--accent); color: #fff; }
 
 /* Red fault indicator dot on tab buttons */
 .tab-btn.has-fault { position: relative; }
