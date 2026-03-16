@@ -445,36 +445,15 @@ function renderTable() {
         if (!isEditing) fragment.appendChild(tr);
     }
 
-    // Remove rows no longer in filtered set
-    existingRows.forEach(tr => tr.remove());
+    // Remove rows no longer in filtered set (but never remove the editing row)
+    existingRows.forEach(tr => {
+        if (!tr.querySelector('td.editing')) tr.remove();
+    });
 
-    // Re-append in sorted order (moves don't re-parse HTML, just reorder)
+    // Re-append in sorted order (moves don't re-parse HTML, just reorder).
+    // The editing row stays where it is — it'll snap to correct position
+    // once the edit completes and the next render runs.
     tbody.appendChild(fragment);
-
-    // If a row was being edited and left in the tbody, move it to
-    // the correct sort position now that all other rows are in place.
-    const editingTr = tbody.querySelector('td.editing')?.closest('tr');
-    if (editingTr) {
-        const editKey = editingTr.dataset.key;
-        // Find the row that should come after the editing row
-        let placed = false;
-        for (const ch of data) {
-            const k = ch.crate + '|' + ch.slot + '|' + ch.channel;
-            if (k === editKey) { placed = true; continue; }
-            if (placed) {
-                // Find this row in the tbody and insert before it
-                for (const r of tbody.rows) {
-                    if (r.dataset.key === k) {
-                        tbody.insertBefore(editingTr, r);
-                        placed = false; // mark as inserted
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-        // If editing row is last in sort order, it's already at the end
-    }
 
     dataDirty = false;
 
