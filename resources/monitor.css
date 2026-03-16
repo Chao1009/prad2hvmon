@@ -132,6 +132,7 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
     cursor: pointer; transition: all var(--transition); text-transform: uppercase; font-weight: 600;
 }
 .tab-action-btn:hover { background: var(--accent); color: #fff; }
+.tab-action-btn:last-child { margin-right: 18px; }
 
 /* Red fault indicator dot on tab buttons */
 .tab-btn.has-fault { position: relative; }
