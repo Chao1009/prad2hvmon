@@ -119,7 +119,7 @@ target_link_libraries(prad2hvd PRIVATE
 option(BUILD_GUI "Build the Qt WebEngine GUI client (prad2hvmon)" OFF)
 
 if(BUILD_GUI)
-    find_package(Qt5 REQUIRED COMPONENTS Widgets WebEngineWidgets)
+    find_package(Qt5 REQUIRED COMPONENTS Widgets WebEngineWidgets WebSockets)
 
     set(RESOURCE_DIR "${CMAKE_SOURCE_DIR}/resources")
     get_filename_component(RESOURCE_DIR "${RESOURCE_DIR}" ABSOLUTE)
@@ -131,7 +131,6 @@ if(BUILD_GUI)
     target_include_directories(prad2hvmon PRIVATE
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/src
-        ${CAEN_LIB_DIR}
     )
 
     target_compile_definitions(prad2hvmon PRIVATE
@@ -142,9 +141,7 @@ if(BUILD_GUI)
     target_link_libraries(prad2hvmon PRIVATE
         Qt5::Widgets
         Qt5::WebEngineWidgets
-        caen_lib
-        nlohmann_json::nlohmann_json
-        fmt::fmt
+        Qt5::WebSockets
     )
 
     message(STATUS "Qt GUI client: ON (resources: ${RESOURCE_DIR})")

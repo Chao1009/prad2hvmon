@@ -360,116 +360,53 @@ private:
 
         if (type == "set_power") {
             auto *ch = findChannel(crate, slot, ch_idx);
-            if (ch) {
-                bool on = cmd.value("on", false);
-                std::cout << fmt::format("CMD set_power: {} s{} ch{} ({}) → {}\n",
-                    crate, slot, ch_idx, ch->GetName(), on ? "ON" : "OFF");
-                ch->SetPower(on);
-            } else {
-                std::cerr << fmt::format("CMD set_power: {} s{} ch{} — channel not found\n",
-                    crate, slot, ch_idx);
-            }
+            if (ch) ch->SetPower(cmd.value("on", false));
         }
         else if (type == "set_all_power") {
             bool on = cmd.value("on", false);
-            int count = 0;
             for (auto *cr : crates_)
                 for (auto *bd : cr->GetBoardList())
-                    for (auto *ch : bd->GetChannelList()) {
+                    for (auto *ch : bd->GetChannelList())
                         ch->SetPower(on);
-                        ++count;
-                    }
-            std::cout << fmt::format("CMD set_all_power: {} → {} channels\n",
-                on ? "ON" : "OFF", count);
         }
         else if (type == "set_voltage") {
             auto *ch = findChannel(crate, slot, ch_idx);
             if (ch) {
                 float v = cmd.value("value", 0.0f);
-                float limit = ch->GetLimit();
-                float actual = std::min(v, limit);
-                float before = ch->GetVSet();
-                std::cout << fmt::format("CMD set_voltage: {} s{} ch{} ({}) "
-                    "requested={:.2f} limit={:.2f} actual={:.2f} before={:.2f}\n",
-                    crate, slot, ch_idx, ch->GetName(), v, limit, actual, before);
                 ch->SetVoltage(v);
-                float after = ch->GetVSet();
-                std::cout << fmt::format("  → cache after SetVoltage: {:.2f}\n", after);
+                float actual = std::min(v, ch->GetLimit());
                 addPendingOverride(crate, slot, ch_idx, "V0Set", actual);
-            } else {
-                std::cerr << fmt::format("CMD set_voltage: {} s{} ch{} — channel not found\n",
-                    crate, slot, ch_idx);
             }
         }
         else if (type == "set_current") {
             auto *ch = findChannel(crate, slot, ch_idx);
             if (ch) {
                 float v = cmd.value("value", 0.0f);
-                float before = ch->GetISet();
-                std::cout << fmt::format("CMD set_current: {} s{} ch{} ({}) "
-                    "value={:.3f} before={:.3f}\n",
-                    crate, slot, ch_idx, ch->GetName(), v, before);
                 ch->SetCurrent(v);
-                float after = ch->GetISet();
-                std::cout << fmt::format("  → cache after SetCurrent: {:.3f}\n", after);
                 addPendingOverride(crate, slot, ch_idx, "I0Set", v);
-            } else {
-                std::cerr << fmt::format("CMD set_current: {} s{} ch{} — channel not found\n",
-                    crate, slot, ch_idx);
             }
         }
         else if (type == "set_svmax") {
             auto *ch = findChannel(crate, slot, ch_idx);
             if (ch) {
                 float v = cmd.value("value", 0.0f);
-                float before = ch->GetSVMax();
-                std::cout << fmt::format("CMD set_svmax: {} s{} ch{} ({}) "
-                    "value={:.2f} before={:.2f}\n",
-                    crate, slot, ch_idx, ch->GetName(), v, before);
                 ch->SetSVMax(v);
-                float after = ch->GetSVMax();
-                std::cout << fmt::format("  → cache after SetSVMax: {:.2f}\n", after);
                 addPendingOverride(crate, slot, ch_idx, "SVMax", v);
-            } else {
-                std::cerr << fmt::format("CMD set_svmax: {} s{} ch{} — channel not found\n",
-                    crate, slot, ch_idx);
             }
         }
         else if (type == "set_name") {
             auto *ch = findChannel(crate, slot, ch_idx);
-            if (ch) {
-                std::string name = cmd.value("name", "");
-                std::cout << fmt::format("CMD set_name: {} s{} ch{} ({}) → \"{}\"\n",
-                    crate, slot, ch_idx, ch->GetName(), name);
-                ch->SetName(name);
-            } else {
-                std::cerr << fmt::format("CMD set_name: {} s{} ch{} — channel not found\n",
-                    crate, slot, ch_idx);
-            }
+            if (ch) ch->SetName(cmd.value("name", ""));
         }
         else if (type == "set_poll_interval") {
-            int ms = cmd.value("ms", 3000);
-            std::cout << fmt::format("CMD set_poll_interval: {} ms\n", ms);
-            setPollInterval(ms);
+            setPollInterval(cmd.value("ms", 3000));
         }
         else if (type == "set_all_voltage") {
             float v = cmd.value("value", 0.0f);
-            int count = 0;
             for (auto *cr : crates_)
                 for (auto *bd : cr->GetBoardList())
-                    for (auto *ch : bd->GetChannelList()) {
+                    for (auto *ch : bd->GetChannelList())
                         ch->SetVoltage(v);
-                        ++count;
-                    }
-            std::cout << fmt::format("CMD set_all_voltage: {:.2f} V → {} channels\n", v, count);
-        }
-        else if (type == "save_settings") {
-            // Build settings JSON and store in SnapshotStore for WsServer to pick up
-            // The cmd contains a pointer to the store (set by WsServer before pushing)
-            std::cout << "CMD save_settings: building settings snapshot\n";
-            // We can't access the store here directly, so we store the result
-            // in a special field. The caller must pass the store pointer via the command.
-            // Instead, buildSettingsSnapshot() is called by the run() loop after dispatch.
         }
         else if (type == "load_settings") {
             loadSettings(cmd);
@@ -741,32 +678,17 @@ private:
             auto *ch = findChannel(it->crate, it->slot, it->channel);
             if (!ch) { it = pending_overrides_.erase(it); continue; }
 
-            // Check if hardware readback now matches the pending value
             float hw = ch->GetFloat(it->param);
             if (!std::isnan(hw) && std::fabs(hw - it->value) < OVERRIDE_TOL) {
-                std::cout << fmt::format("OVERRIDE converged: {} s{} ch{} {} "
-                    "hw={:.2f} == pending={:.2f} (ttl={})\n",
-                    it->crate, it->slot, it->channel, it->param,
-                    hw, it->value, it->ttl);
                 it = pending_overrides_.erase(it);
                 continue;
             }
 
             if (--it->ttl <= 0) {
-                std::cerr << fmt::format("OVERRIDE expired: {} s{} ch{} {} "
-                    "hw={:.2f} != pending={:.2f}\n",
-                    it->crate, it->slot, it->channel, it->param,
-                    hw, it->value);
                 it = pending_overrides_.erase(it);
                 continue;
             }
 
-            // Re-stamp the pending value into the param cache so the
-            // snapshot builder picks it up
-            std::cout << fmt::format("OVERRIDE active: {} s{} ch{} {} "
-                "hw={:.2f} → stamping {:.2f} (ttl={})\n",
-                it->crate, it->slot, it->channel, it->param,
-                hw, it->value, it->ttl);
             ch->SetParamDirect(it->param, it->value);
             ++it;
         }
@@ -884,37 +806,20 @@ private:
         int idx = cmd.value("idx", -1);
 
         if (type == "booster_set_output" && validIdx(idx)) {
-            bool on = cmd.value("on", false);
-            std::cout << fmt::format("CMD booster_set_output: idx={} ({}) → {}\n",
-                idx, supplies_[idx]->name, on ? "ON" : "OFF");
-            supplies_[idx]->setOutput(on);
+            supplies_[idx]->setOutput(cmd.value("on", false));
         }
         else if (type == "booster_set_voltage" && validIdx(idx)) {
             double v = cmd.value("value", 0.0);
-            double before = supplies_[idx]->vset;
-            std::cout << fmt::format("CMD booster_set_voltage: idx={} ({}) "
-                "value={:.2f} before={:.2f}\n",
-                idx, supplies_[idx]->name, v, before);
             supplies_[idx]->setVoltage(v);
-            std::cout << fmt::format("  → after setVoltage: vset={:.2f}\n",
-                supplies_[idx]->vset);
             addPendingOverride(idx, "vset", v);
         }
         else if (type == "booster_set_current" && validIdx(idx)) {
             double v = cmd.value("value", 0.0);
-            double before = supplies_[idx]->iset;
-            std::cout << fmt::format("CMD booster_set_current: idx={} ({}) "
-                "value={:.3f} before={:.3f}\n",
-                idx, supplies_[idx]->name, v, before);
             supplies_[idx]->setCurrent(v);
-            std::cout << fmt::format("  → after setCurrent: iset={:.3f}\n",
-                supplies_[idx]->iset);
             addPendingOverride(idx, "iset", v);
         }
         else if (type == "set_poll_interval") {
-            int ms = cmd.value("ms", 3000);
-            std::cout << fmt::format("CMD booster set_poll_interval: {} ms\n", ms);
-            setPollInterval(ms);
+            setPollInterval(cmd.value("ms", 3000));
         }
         else {
             std::cerr << "BoosterPoller: unknown command type: " << type << "\n";

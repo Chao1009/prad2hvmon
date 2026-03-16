@@ -1,296 +1,46 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// prad2hvmon – PRad-II HV Monitor (Qt GUI client + CLI read/write tool)
+// prad2hvmon – PRad-II HV Monitor (Qt GUI + CLI read/write via daemon)
+//
+// All modes connect to the prad2hvd daemon via WebSocket — no direct
+// hardware access.  The daemon must be running for all modes.
 //
 // Modes:
 //   gui (default)              – launch Qt WebEngine dashboard
 //   read  [-s file.json]       – save all writable params to JSON
 //   write -f file.json         – restore writable params from JSON
 //
-// GUI mode connects to the prad2hvd daemon via WebSocket.
-// CLI read/write modes connect directly to CAEN crates (no daemon needed).
-//
 // Usage:
 //   prad2hvmon                              # GUI mode (default)
-//   prad2hvmon -H clonpc19                 # GUI: connect to daemon on clonpc19
-//   prad2hvmon read -s snapshot.json        # save settings
-//   prad2hvmon write -f snapshot.json       # restore settings
+//   prad2hvmon -H clonpc19                 # GUI: daemon on clonpc19
+//   prad2hvmon read -s snapshot.json        # save settings via daemon
+//   prad2hvmon write -f snapshot.json       # restore settings via daemon
+//   prad2hvmon read -H clonpc19 -s out.json # read from remote daemon
 //
 // Author: Chao Peng — Argonne National Laboratory
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QWebEngineView>
 #include <QWebEnginePage>
+#include <QWebSocket>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QFile>
 #include <QDir>
-#include <QCoreApplication>
+#include <QTimer>
 #include <QShortcut>
 #include <QKeySequence>
 #include <QPixmap>
 #include <QDateTime>
-
-#include <caen_channel.h>
-#include <nlohmann/json.hpp>
-#include <fmt/format.h>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <vector>
-#include <map>
-#include <cstring>
-#include <cmath>
-#include <chrono>
 #include <unistd.h>
-
-using json = nlohmann::json;
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Shared helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-static std::vector<std::pair<std::string, std::string>>
-loadCrateList(const std::string &path)
-{
-    std::vector<std::pair<std::string, std::string>> list;
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        std::cerr << "ERROR: cannot open crate config: " << path << "\n";
-        return list;
-    }
-    json doc = json::parse(f, nullptr, false);
-    if (doc.is_discarded() || !doc.is_array()) {
-        std::cerr << "ERROR: invalid JSON in crate config\n";
-        return list;
-    }
-    for (const auto &val : doc)
-        list.emplace_back(val.value("name", ""), val.value("ip", ""));
-    std::cout << fmt::format("Loaded {} crate(s) from {}\n", list.size(), path);
-    return list;
-}
-
-static void loadVoltageLimits(const std::string &path)
-{
-    if (path.empty()) return;
-    std::ifstream f(path);
-    if (!f.is_open()) return;
-    json doc = json::parse(f, nullptr, false);
-    if (doc.is_discarded()) return;
-    CAEN_Channel::ClearVoltageLimits();
-    int count = 0;
-    if (doc.contains("limits")) {
-        for (const auto &val : doc["limits"]) {
-            std::string pattern = val.value("pattern", "");
-            double voltage      = val.value("voltage", 0.0);
-            if (pattern.empty() || voltage <= 0) continue;
-            CAEN_Channel::SetVoltageLimit(pattern, static_cast<float>(voltage));
-            ++count;
-        }
-    }
-    if (count > 0)
-        std::cout << fmt::format("Loaded {} voltage-limit rule(s) from {}\n", count, path);
-}
-
-static void loadErrorIgnoreRules(const std::string &path)
-{
-    if (path.empty()) return;
-    std::ifstream f(path);
-    if (!f.is_open()) return;
-    json doc = json::parse(f, nullptr, false);
-    if (doc.is_discarded()) return;
-    std::vector<CAEN_Channel::ErrorIgnoreRule> rules;
-    if (doc.contains("ignore")) {
-        for (const auto &val : doc["ignore"]) {
-            CAEN_Channel::ErrorIgnoreRule rule;
-            rule.pattern = val.value("name", "");
-            if (val.contains("errors"))
-                for (const auto &e : val["errors"])
-                    rule.errors.push_back(e.get<std::string>());
-            if (!rule.pattern.empty() && !rule.errors.empty())
-                rules.push_back(rule);
-        }
-    }
-    CAEN_Channel::SetErrorIgnoreRules(rules);
-    if (!rules.empty())
-        std::cout << fmt::format("Loaded {} error-ignore rule(s)\n", rules.size());
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  CLI crate init
-// ─────────────────────────────────────────────────────────────────────────────
-static bool initCratesCLI(
-    const std::vector<std::pair<std::string, std::string>> &defs,
-    std::vector<CAEN_Crate*> &crates,
-    std::map<std::string, CAEN_Crate*> &crate_map)
-{
-    int crid = 0;
-    for (const auto &[name, ip] : defs) {
-        auto *cr = new CAEN_Crate(crid++, name, ip,
-                                  CAENHV::SY1527, LINKTYPE_TCPIP,
-                                  "admin", "admin");
-        crates.push_back(cr);
-        crate_map[name] = cr;
-    }
-    int ok = 0;
-    for (auto *cr : crates) {
-        if (cr->Initialize()) {
-            std::cout << fmt::format("Connected to {} @ {}\n", cr->GetName(), cr->GetIP());
-            cr->PrintCrateMap();
-            ++ok;
-        } else {
-            std::cerr << fmt::format("Cannot connect to {} @ {}\n", cr->GetName(), cr->GetIP());
-        }
-    }
-    std::cout << fmt::format("Init DONE — {}/{} crates OK\n", ok, crates.size());
-    return (ok == static_cast<int>(crates.size()));
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  CLI read: save all writable params to JSON
-// ─────────────────────────────────────────────────────────────────────────────
-static void doRead(const std::vector<CAEN_Crate*> &crates,
-                   const std::string &save_path)
-{
-    for (auto *cr : crates) cr->ReadAllParams();
-
-    json root;
-    root["format"]    = "prad2hvmon_settings_v1";
-    auto now = std::chrono::system_clock::now();
-    auto tt  = std::chrono::system_clock::to_time_t(now);
-    char tbuf[32];
-    std::strftime(tbuf, sizeof(tbuf), "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
-    root["timestamp"] = tbuf;
-
-    json channels = json::array();
-    int total = 0;
-
-    for (auto *cr : crates) {
-        for (auto *bd : cr->GetBoardList()) {
-            const auto &paramInfo = bd->GetChParamInfo();
-            for (auto *ch : bd->GetChannelList()) {
-                json entry;
-                entry["crate"]   = cr->GetName();
-                entry["slot"]    = bd->GetSlot();
-                entry["channel"] = ch->GetChannel();
-                entry["name"]    = ch->GetName();
-
-                json params;
-                for (const auto &pi : paramInfo) {
-                    if (!pi.isWritable()) continue;
-                    if (pi.isFloat()) {
-                        float v = ch->GetFloat(pi.name);
-                        if (!std::isnan(v)) params[pi.name] = v;
-                    } else if (pi.isUInt()) {
-                        if (ch->HasParam(pi.name))
-                            params[pi.name] = ch->GetUInt(pi.name);
-                    }
-                }
-                entry["params"] = params;
-                channels.push_back(std::move(entry));
-                ++total;
-            }
-        }
-    }
-    root["channels"] = channels;
-
-    std::string jsonStr = root.dump(2);
-    std::cout << fmt::format("Read {} channels from {} crate(s)\n", total, crates.size());
-
-    if (!save_path.empty()) {
-        std::ofstream f(save_path);
-        f << jsonStr;
-        std::cout << "Saved to " << save_path << "\n";
-    } else {
-        std::cout << jsonStr << std::endl;
-    }
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  CLI write: restore writable params from JSON
-// ─────────────────────────────────────────────────────────────────────────────
-static void doWrite(const std::vector<CAEN_Crate*> &crates,
-                    const std::map<std::string, CAEN_Crate*> &crate_map,
-                    const std::string &path)
-{
-    std::ifstream f(path);
-    if (!f.is_open()) {
-        std::cerr << "ERROR: cannot open settings file: " << path << "\n";
-        return;
-    }
-    json doc = json::parse(f, nullptr, false);
-    if (doc.is_discarded()) {
-        std::cerr << "ERROR: invalid JSON in settings file\n";
-        return;
-    }
-
-    std::string format = doc.value("format", "");
-    if (format != "prad2hvmon_settings_v1")
-        std::cerr << "WARNING: unknown format '" << format << "'\n";
-    std::cout << "Settings file timestamp: " << doc.value("timestamp", "?") << "\n";
-
-    if (!doc.contains("channels") || !doc["channels"].is_array()) {
-        std::cerr << "ERROR: 'channels' array not found\n";
-        return;
-    }
-
-    // Read current params first for board param info
-    for (auto *cr : crates) cr->ReadAllParams();
-
-    int restored = 0, skipped = 0, errors = 0;
-
-    for (const auto &entry : doc["channels"]) {
-        std::string crate_name = entry.value("crate", "");
-        int slot    = entry.value("slot", -1);
-        int channel = entry.value("channel", -1);
-        std::string ch_name = entry.value("name", "");
-
-        auto cit = crate_map.find(crate_name);
-        if (cit == crate_map.end()) { ++skipped; continue; }
-        auto *board = cit->second->GetBoard(static_cast<unsigned short>(slot));
-        if (!board) { ++skipped; continue; }
-        auto *ch = board->GetChannel(channel);
-        if (!ch) { ++skipped; continue; }
-
-        if (!ch_name.empty() && ch->GetName() != ch_name) {
-            ch->SetName(ch_name);
-            std::cout << fmt::format("  {}/s{}/ch{} name → {}\n",
-                crate_name, slot, channel, ch_name);
-        }
-
-        if (!entry.contains("params") || !entry["params"].is_object()) continue;
-        const auto &paramInfo = board->GetChParamInfo();
-
-        for (auto it = entry["params"].begin(); it != entry["params"].end(); ++it) {
-            std::string pname = it.key();
-            const ParamInfo *pi = nullptr;
-            for (const auto &info : paramInfo)
-                if (info.name == pname && info.isWritable()) { pi = &info; break; }
-            if (!pi) continue;
-
-            bool ok = false;
-            if (pi->isFloat()) {
-                float v = it.value().get<float>();
-                ok = ch->SetFloat(pname, v);
-                if (ok) std::cout << fmt::format("  {}/s{}/ch{} {} → {:.2f}\n",
-                    crate_name, slot, channel, pname, v);
-            } else if (pi->isUInt()) {
-                unsigned int v = it.value().get<unsigned int>();
-                ok = ch->SetUInt(pname, v);
-                if (ok) std::cout << fmt::format("  {}/s{}/ch{} {} → {}\n",
-                    crate_name, slot, channel, pname, v);
-            }
-            if (ok) ++restored; else ++errors;
-        }
-    }
-    std::cout << fmt::format("\nDone — {} params restored, {} skipped, {} errors\n",
-        restored, skipped, errors);
-}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -302,19 +52,213 @@ static void printUsage(const char *prog)
         << "Usage:\n"
         << "  " << prog << "                              # GUI mode (default)\n"
         << "  " << prog << " [gui] [-H host] [-p port]    # GUI with daemon address\n"
-        << "  " << prog << " read  [-s file.json]          # save all writable params\n"
-        << "  " << prog << " write -f file.json            # restore params from JSON\n"
-        << "\nGUI options:\n"
+        << "  " << prog << " read  [-s file.json]          # save settings via daemon\n"
+        << "  " << prog << " write -f file.json            # restore settings via daemon\n"
+        << "\nOptions:\n"
         << "  -H <host>   Daemon hostname (default: localhost)\n"
         << "  -p <port>   Daemon WebSocket port (default: 8765)\n"
-        << "  -r <dir>    Resources directory\n"
-        << "\nCLI options:\n"
-        << "  -c <file>   Crate config JSON (default: database/crates.json)\n"
-        << "  -l <file>   Voltage-limits JSON\n"
-        << "  -i <file>   Error-ignore JSON\n"
+        << "  -r <dir>    Resources directory (GUI mode)\n"
         << "  -s <file>   Save output path (read mode)\n"
         << "  -f <file>   Settings file to load (write mode)\n"
-        << "  -h          Show this help\n";
+        << "  -t <sec>    Timeout in seconds (CLI modes, default: 10)\n"
+        << "  -h          Show this help\n"
+        << "\nThe daemon (prad2hvd) must be running. CLI read/write connects\n"
+        << "to the daemon via WebSocket — same path as the GUI dashboard.\n";
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CLI read: connect to daemon, send save_settings, receive response, write file
+// ─────────────────────────────────────────────────────────────────────────────
+static int doRead(const std::string &host, const std::string &port,
+                  const std::string &savePath, int timeoutSec)
+{
+    QCoreApplication *app = QCoreApplication::instance();
+    QWebSocket ws;
+    bool done = false;
+    int  exitCode = 0;
+
+    QObject::connect(&ws, &QWebSocket::connected, [&]() {
+        std::cout << "Connected to daemon at " << host << ":" << port << "\n";
+        // Send save_settings command
+        ws.sendTextMessage(R"({"type":"save_settings"})");
+        std::cout << "Requesting settings snapshot…\n";
+    });
+
+    QObject::connect(&ws, &QWebSocket::textMessageReceived, [&](const QString &msg) {
+        QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+        if (doc.isNull()) return;
+        QJsonObject obj = doc.object();
+        QString type = obj["type"].toString();
+
+        if (type == "settings_snapshot") {
+            // Extract the settings data
+            QJsonValue data = obj["data"];
+            QJsonDocument outDoc;
+            if (data.isObject())
+                outDoc = QJsonDocument(data.toObject());
+            else if (data.isString())
+                outDoc = QJsonDocument::fromJson(data.toString().toUtf8());
+
+            QByteArray jsonBytes = outDoc.toJson(QJsonDocument::Indented);
+
+            if (!savePath.empty()) {
+                std::ofstream f(savePath);
+                f.write(jsonBytes.constData(), jsonBytes.size());
+                std::cout << "Saved to " << savePath << "\n";
+            } else {
+                std::cout << jsonBytes.constData() << std::endl;
+            }
+
+            // Count channels
+            QJsonObject root = outDoc.object();
+            int nch = root["channels"].toArray().size();
+            std::cout << "Read " << nch << " channels\n";
+
+            done = true;
+            exitCode = 0;
+            ws.close();
+            app->quit();
+        }
+        // Ignore other message types (init, hv_snapshot, etc.)
+    });
+
+    QObject::connect(&ws, &QWebSocket::disconnected, [&]() {
+        if (!done) {
+            std::cerr << "Disconnected from daemon before receiving settings\n";
+            exitCode = 1;
+            app->quit();
+        }
+    });
+
+    QObject::connect(&ws, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+                     [&](QAbstractSocket::SocketError err) {
+        std::cerr << "WebSocket error: " << ws.errorString().toStdString() << "\n";
+        exitCode = 1;
+        app->quit();
+    });
+
+    // Timeout
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, [&]() {
+        if (!done) {
+            std::cerr << "Timeout waiting for daemon response (" << timeoutSec << "s)\n";
+            exitCode = 1;
+            ws.close();
+            app->quit();
+        }
+    });
+    timeout.start(timeoutSec * 1000);
+
+    // Connect
+    QString url = QString("ws://%1:%2").arg(
+        QString::fromStdString(host), QString::fromStdString(port));
+    ws.open(QUrl(url));
+
+    app->exec();
+    return exitCode;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CLI write: connect to daemon, send load_settings with file contents
+// ─────────────────────────────────────────────────────────────────────────────
+static int doWrite(const std::string &host, const std::string &port,
+                   const std::string &settingsPath, int timeoutSec)
+{
+    // Read the settings file
+    std::ifstream f(settingsPath);
+    if (!f.is_open()) {
+        std::cerr << "ERROR: cannot open settings file: " << settingsPath << "\n";
+        return 1;
+    }
+    std::string fileContent((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+
+    // Validate JSON
+    QJsonParseError parseErr;
+    QJsonDocument settingsDoc = QJsonDocument::fromJson(
+        QByteArray::fromStdString(fileContent), &parseErr);
+    if (settingsDoc.isNull()) {
+        std::cerr << "ERROR: invalid JSON: " << parseErr.errorString().toStdString() << "\n";
+        return 1;
+    }
+
+    QJsonObject root = settingsDoc.object();
+    if (!root.contains("channels") || !root["channels"].isArray()) {
+        std::cerr << "ERROR: missing 'channels' array in settings file\n";
+        return 1;
+    }
+
+    int nch = root["channels"].toArray().size();
+    std::cout << "Settings file: " << root["timestamp"].toString("?").toStdString()
+              << " (" << nch << " channels)\n";
+
+    QCoreApplication *app = QCoreApplication::instance();
+    QWebSocket ws;
+    bool done = false;
+    int  exitCode = 0;
+
+    QObject::connect(&ws, &QWebSocket::connected, [&]() {
+        std::cout << "Connected to daemon at " << host << ":" << port << "\n";
+
+        // Build the load_settings command with the settings object embedded
+        QJsonObject cmd;
+        cmd["type"] = "load_settings";
+        cmd["settings"] = settingsDoc.object();
+
+        QByteArray payload = QJsonDocument(cmd).toJson(QJsonDocument::Compact);
+        ws.sendTextMessage(QString::fromUtf8(payload));
+
+        std::cout << "Sent load_settings (" << nch << " channels)\n";
+        std::cout << "Settings are being applied by the daemon…\n";
+
+        // Give the daemon a moment to process, then disconnect.
+        // The daemon logs progress to its own console.
+        QTimer::singleShot(2000, [&]() {
+            done = true;
+            exitCode = 0;
+            std::cout << "Done — check daemon console for detailed restore log.\n";
+            ws.close();
+            app->quit();
+        });
+    });
+
+    QObject::connect(&ws, &QWebSocket::disconnected, [&]() {
+        if (!done) {
+            std::cerr << "Disconnected from daemon unexpectedly\n";
+            exitCode = 1;
+            app->quit();
+        }
+    });
+
+    QObject::connect(&ws, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+                     [&](QAbstractSocket::SocketError) {
+        std::cerr << "WebSocket error: " << ws.errorString().toStdString() << "\n";
+        exitCode = 1;
+        app->quit();
+    });
+
+    // Timeout
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    QObject::connect(&timeout, &QTimer::timeout, [&]() {
+        if (!done) {
+            std::cerr << "Timeout connecting to daemon (" << timeoutSec << "s)\n";
+            exitCode = 1;
+            ws.close();
+            app->quit();
+        }
+    });
+    timeout.start(timeoutSec * 1000);
+
+    QString url = QString("ws://%1:%2").arg(
+        QString::fromStdString(host), QString::fromStdString(port));
+    ws.open(QUrl(url));
+
+    app->exec();
+    return exitCode;
 }
 
 
@@ -334,7 +278,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Remove mode argument from argv so getopt doesn't choke on it
+    // Remove mode argument from argv so getopt doesn't choke
     int eff_argc = argc;
     if (mode_arg_idx > 0) {
         for (int i = mode_arg_idx; i < argc - 1; i++)
@@ -344,32 +288,29 @@ int main(int argc, char *argv[])
 
     // Parse options
     std::string host = "localhost", port_str = "8765", resourceDir;
-    std::string crateFile, limitsFile, ignoreFile, saveFile, settingsFile;
+    std::string saveFile, settingsFile;
+    int timeoutSec = 10;
 
     optind = 1;
     int opt;
-    while ((opt = getopt(eff_argc, argv, "H:p:r:c:l:i:s:f:h")) != -1) {
+    while ((opt = getopt(eff_argc, argv, "H:p:r:s:f:t:h")) != -1) {
         switch (opt) {
         case 'H': host         = optarg; break;
         case 'p': port_str     = optarg; break;
         case 'r': resourceDir  = optarg; break;
-        case 'c': crateFile    = optarg; break;
-        case 'l': limitsFile   = optarg; break;
-        case 'i': ignoreFile   = optarg; break;
         case 's': saveFile     = optarg; break;
         case 'f': settingsFile = optarg; break;
+        case 't': timeoutSec   = std::atoi(optarg); break;
         case 'h': printUsage(argv[0]); return 0;
         default:  printUsage(argv[0]); return 1;
         }
     }
 
-    std::string dbDir = DATABASE_DIR;
-
     // ══════════════════════════════════════════════════════════════════════
     //  GUI mode
     // ══════════════════════════════════════════════════════════════════════
     if (mode == "gui") {
-        QApplication app(argc, argv);  // pass original argc/argv for Qt
+        QApplication app(argc, argv);
         app.setApplicationName("PRad-II HV Monitor");
 
         if (resourceDir.empty()) {
@@ -411,6 +352,7 @@ int main(int argc, char *argv[])
         view.setUrl(url);
 
         // Screenshot shortcut (Ctrl+S)
+        std::string dbDir = DATABASE_DIR;
         auto *sc = new QShortcut(QKeySequence("Ctrl+S"), &view);
         QObject::connect(sc, &QShortcut::activated, [&view, &dbDir]() {
             const QString dir = QString::fromStdString(dbDir) + "/screenshots";
@@ -428,7 +370,7 @@ int main(int argc, char *argv[])
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  CLI modes (read / write)
+    //  CLI modes (read / write) — via daemon WebSocket
     // ══════════════════════════════════════════════════════════════════════
     if (mode != "read" && mode != "write") {
         std::cerr << "Unknown mode: " << mode << "\n";
@@ -441,34 +383,11 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Locate config files
-    if (crateFile.empty())  crateFile  = dbDir + "/crates.json";
-    if (limitsFile.empty()) limitsFile = dbDir + "/voltage_limits.json";
-    if (ignoreFile.empty()) ignoreFile = dbDir + "/error_ignore.json";
-
-    auto crateList = loadCrateList(crateFile);
-    if (crateList.empty()) {
-        std::cerr << "ERROR: no crates defined\n";
-        return 1;
-    }
-
-    loadVoltageLimits(limitsFile);
-    loadErrorIgnoreRules(ignoreFile);
-
-    std::vector<CAEN_Crate*> crates;
-    std::map<std::string, CAEN_Crate*> crate_map;
-
-    if (!initCratesCLI(crateList, crates, crate_map)) {
-        std::cerr << "ERROR: crate initialisation failed\n";
-        for (auto *c : crates) delete c;
-        return 1;
-    }
+    // CLI modes need a QCoreApplication for the event loop (QWebSocket)
+    QCoreApplication app(argc, argv);
 
     if (mode == "read")
-        doRead(crates, saveFile);
+        return doRead(host, port_str, saveFile, timeoutSec);
     else
-        doWrite(crates, crate_map, settingsFile);
-
-    for (auto *c : crates) delete c;
-    return 0;
+        return doWrite(host, port_str, settingsFile, timeoutSec);
 }
