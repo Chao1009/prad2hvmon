@@ -114,17 +114,35 @@ function initTableUI() {
         const btn = document.getElementById('btn-save-settings');
         btn.textContent = 'Saving…';
         btn.disabled = true;
-        hvMonitor.saveSettings(data => {
+        hvMonitor.saveSettings(async data => {
             btn.textContent = 'Save';
             btn.disabled = false;
-            // Download as JSON file
             const jsonStr = (typeof data === 'string') ? data : JSON.stringify(data, null, 2);
             const blob = new Blob([jsonStr], { type: 'application/json' });
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            const defaultName = `hv_settings_${ts}.json`;
+
+            // Use native save dialog if available (Chrome/Edge/Qt WebEngine)
+            if (window.showSaveFilePicker) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: defaultName,
+                        types: [{ description: 'JSON files', accept: { 'application/json': ['.json'] } }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    return;
+                } catch (e) {
+                    if (e.name === 'AbortError') return; // user cancelled
+                    console.warn('showSaveFilePicker failed, falling back:', e);
+                }
+            }
+            // Fallback: auto-download
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
             a.href = url;
-            a.download = `hv_settings_${ts}.json`;
+            a.download = defaultName;
             a.click();
             URL.revokeObjectURL(url);
         });
