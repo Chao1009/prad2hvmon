@@ -52,6 +52,10 @@ make -j$(nproc)
 
 # Run Qt client (loads dashboard from daemon's HTTP server)
 ./bin/prad2hvmon -H localhost -p 8765
+
+# Save/restore settings via daemon (no GUI needed)
+./bin/prad2hvmon read -s snapshot.json
+./bin/prad2hvmon write -f snapshot.json
 ```
 
 ## Daemon (`prad2hvd`)
@@ -115,17 +119,43 @@ tmux kill-session -t hvd
 
 ## Qt GUI Client (`prad2hvmon`)
 
-Optional thin client — a `QWebEngineView` window that loads `monitor.html` and connects to the daemon via WebSocket. No hardware access, no QWebChannel.
+Optional thin client — a `QWebEngineView` window that loads `monitor.html` and connects to the daemon via WebSocket. No direct hardware access — all commands go through the daemon.
+
+### GUI mode (default)
 
 | Option | Description |
 |--------|-------------|
 | `-H <host>` | Daemon hostname (default: localhost) |
 | `-p <port>` | Daemon WebSocket port (default: 8765) |
 | `-r <dir>` | Resources directory (default: auto-discover) |
-| `--width <px>` | Window width (default: 1400) |
-| `--height <px>` | Window height (default: 900) |
 
 `Ctrl+S` saves a timestamped PNG screenshot to `database/screenshots/`.
+
+### CLI read/write modes
+
+Save and restore all writable channel parameters (VSet, ISet, SVMax, etc.) via the daemon — same code path as the GUI Save/Load buttons.
+
+```bash
+# Save current settings to JSON
+./bin/prad2hvmon read -s snapshot.json
+
+# Restore settings from JSON
+./bin/prad2hvmon write -f snapshot.json
+
+# Remote daemon
+./bin/prad2hvmon read -H clonpc19 -s snapshot.json
+./bin/prad2hvmon write -H clonpc19 -f snapshot.json
+```
+
+| Option | Description |
+|--------|-------------|
+| `-s <file>` | Save output path (read mode; prints to stdout if omitted) |
+| `-f <file>` | Settings file to load (write mode; required) |
+| `-H <host>` | Daemon hostname (default: localhost) |
+| `-p <port>` | Daemon port (default: 8765) |
+| `-t <sec>` | Timeout in seconds (default: 10) |
+
+The daemon must be running. Unchanged parameters are skipped (no unnecessary hardware writes). The write command reports `restored / unchanged / skipped / errors`.
 
 ## Web Client
 
@@ -158,7 +188,8 @@ The tunnel must stay open while you use the dashboard.
 
 ## Dashboard Features
 
-- **Channel Table** — Sortable, filterable, live-updating. Inline VSet/ISet/SVMax/Name editing in expert mode (apply button appears only when value changes; Enter or click to apply). Bulk ON/OFF. Summary strip with fault/warning counts.
+- **Channel Table** — Sortable, filterable, live-updating. Inline VSet/ISet/SVMax/Name editing in expert mode (click ✏ to edit, Enter/✓ to apply, Escape/✕ to cancel). Bulk ON/OFF and bulk Set V on filtered channels. Summary strip with fault/warning counts.
+- **Save / Load** — Save all writable parameters to JSON, or restore from a previously saved file. Available from the tab bar (GUI) or command line (`prad2hvmon read`/`write`). Both paths go through the daemon — same logic, same format.
 - **Board Status** — Per-board temperature, HVMax, firmware, status.
 - **HyCal Geometry Map** — 2D canvas at physical positions. Color by VMon, VSet, |ΔV|, or Status. Click for draggable live popups with controls.
 - **Booster HV Panel** — TDK-Lambda GEN supply cards with live readback, VSet/ISet controls, ON/OFF. Connection managed by daemon.
@@ -203,7 +234,7 @@ First matching pattern wins. Same wildcard scheme as `voltage_limits.json` and `
 - Auto-fetched: nlohmann/json, fmt, websocketpp, standalone Asio
 
 **Qt GUI client** (optional):
-- Qt 5 (Widgets, WebEngineWidgets)
+- Qt 5 (Widgets, WebEngineWidgets, WebSockets)
 
 ## Author
 
