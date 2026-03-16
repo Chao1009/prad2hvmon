@@ -225,10 +225,12 @@ static int doWrite(const std::string &host, const std::string &port,
             std::cerr << "ERROR: " << data["error"].toString().toStdString() << "\n";
             exitCode = 1;
         } else {
-            int restored = data["restored"].toInt();
-            int skip     = data["skipped"].toInt();
-            int errs     = data["errors"].toInt();
+            int restored  = data["restored"].toInt();
+            int unch      = data["unchanged"].toInt();
+            int skip      = data["skipped"].toInt();
+            int errs      = data["errors"].toInt();
             std::cout << "Done — " << restored << " restored, "
+                      << unch << " unchanged, "
                       << skip << " skipped, " << errs << " errors\n";
             exitCode = (errs > 0) ? 1 : 0;
         }

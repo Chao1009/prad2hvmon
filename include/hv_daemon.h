@@ -427,8 +427,11 @@ private:
             float v = cmd.value("value", 0.0f);
             for (auto *cr : crates_)
                 for (auto *bd : cr->GetBoardList())
-                    for (auto *ch : bd->GetChannelList())
+                    for (auto *ch : bd->GetChannelList()) {
+                        float cur = ch->GetVSet();
+                        if (!std::isnan(cur) && std::fabs(cur - v) < 0.01f) continue;
                         ch->SetVoltage(v);
+                    }
         }
         else if (type == "load_settings") {
             loadSettings(cmd);
@@ -564,7 +567,11 @@ private:
                         if (!pi.isWritable()) continue;
                         if (pi.isFloat()) {
                             float v = ch->GetFloat(pi.name);
-                            if (!std::isnan(v)) params[pi.name] = v;
+                            if (!std::isnan(v)) {
+                                // Round to 2 decimal places for clean JSON
+                                float rounded = std::round(v * 100.0f) / 100.0f;
+                                params[pi.name] = rounded;
+                            }
                         } else if (pi.isUInt()) {
                             if (ch->HasParam(pi.name))
                                 params[pi.name] = ch->GetUInt(pi.name);
@@ -610,7 +617,7 @@ private:
             return R"({"error":"channels is not an array"})";
         }
 
-        int restored = 0, skipped = 0, errors = 0;
+        int restored = 0, skipped = 0, errors = 0, unchanged = 0;
 
         for (const auto &entry : ch_arr) {
             std::string crate_name = entry.value("crate", "");
@@ -648,11 +655,15 @@ private:
                 bool ok = false;
                 if (pi->isFloat()) {
                     float v = it.value().get<float>();
+                    float cur = ch->GetFloat(pname);
+                    if (!std::isnan(cur) && std::fabs(cur - v) < 0.01f) { ++unchanged; continue; }
                     ok = ch->SetFloat(pname, v);
                     if (ok) std::cout << fmt::format("  {}/s{}/ch{} {} → {:.2f}\n",
                         crate_name, slot_n, channel_n, pname, v);
                 } else if (pi->isUInt()) {
                     unsigned int v = it.value().get<unsigned int>();
+                    unsigned int cur = ch->GetUInt(pname);
+                    if (ch->HasParam(pname) && cur == v) { ++unchanged; continue; }
                     ok = ch->SetUInt(pname, v);
                     if (ok) std::cout << fmt::format("  {}/s{}/ch{} {} → {}\n",
                         crate_name, slot_n, channel_n, pname, v);
@@ -660,12 +671,13 @@ private:
                 if (ok) ++restored; else ++errors;
             }
         }
-        std::cout << fmt::format("CMD load_settings: {} restored, {} skipped, {} errors\n",
-            restored, skipped, errors);
+        std::cout << fmt::format("CMD load_settings: {} restored, {} unchanged, {} skipped, {} errors\n",
+            restored, unchanged, skipped, errors);
 
         // Build result for client feedback
         json result;
-        result["restored"] = restored;
+        result["restored"]  = restored;
+        result["unchanged"] = unchanged;
         result["skipped"]  = skipped;
         result["errors"]   = errors;
         return result.dump();

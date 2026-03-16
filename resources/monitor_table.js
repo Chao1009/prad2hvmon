@@ -140,7 +140,8 @@ function initTableUI() {
                         alert('Load failed: ' + result.error);
                     } else if (result) {
                         console.log('Load result:', result);
-                        alert(`Settings applied: ${result.restored} restored, ${result.skipped} skipped, ${result.errors} errors`);
+                        const u = result.unchanged || 0;
+                        alert(`Settings applied: ${result.restored} restored, ${u} unchanged, ${result.skipped} skipped, ${result.errors} errors`);
                     }
                 });
                 console.log('Settings sent:', settings.channels.length, 'channels');
