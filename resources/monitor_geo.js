@@ -573,10 +573,15 @@ function openModPopup(mod) {
             html += `<span class="plbl">Pwr</span><span class="pval">${pwrHtml(c)}</span>`;
             const ppSt = classifyChannel(c).badgesHtml;
             if (ppSt) html += `<span class="plbl">Status</span><span class="pval">${ppSt}</span>`;
-            vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
-            vsetInput.dataset.orig = vsetInput.value;
-            isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
-            isetInput.dataset.orig = isetInput.value;
+            // Don't overwrite inputs the user is currently editing
+            if (document.activeElement !== vsetInput) {
+                vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
+                vsetInput.dataset.orig = vsetInput.value;
+            }
+            if (document.activeElement !== isetInput) {
+                isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
+                isetInput.dataset.orig = isetInput.value;
+            }
         } else {
             html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
             const daqC = daqByName[mod.n];
