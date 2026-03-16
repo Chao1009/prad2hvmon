@@ -38,19 +38,29 @@ function initTableUI() {
     // ── Bulk ON / OFF buttons ───────────────────────────────────────────
     document.getElementById('btn-all-on').addEventListener('click', () => {
         if (!hvMonitor || allChannels.length === 0) return;
-        const n = allChannels.length;
-        if (!confirm(`Turn ON all ${n} channels?\n\nThis will energise every HV channel across all crates.`)) return;
-        hvMonitor.setAllPower(true);
-        allChannels.forEach(ch => { ch.on = true; });
+        const filtered = getFilteredChannels();
+        const n = filtered.length;
+        if (n === 0) return;
+        const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
+        if (!confirm(`Turn ON ${scope} channels?`)) return;
+        filtered.forEach(ch => {
+            hvMonitor.setChannelPower(ch.crate, ch.slot, ch.channel, true);
+            ch.on = true;
+        });
         dataDirty = true; renderActiveTab();
     });
 
     document.getElementById('btn-all-off').addEventListener('click', () => {
         if (!hvMonitor || allChannels.length === 0) return;
-        const n = allChannels.length;
-        if (!confirm(`Turn OFF all ${n} channels?\n\nThis will de-energise every HV channel across all crates.`)) return;
-        hvMonitor.setAllPower(false);
-        allChannels.forEach(ch => { ch.on = false; });
+        const filtered = getFilteredChannels();
+        const n = filtered.length;
+        if (n === 0) return;
+        const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
+        if (!confirm(`Turn OFF ${scope} channels?`)) return;
+        filtered.forEach(ch => {
+            hvMonitor.setChannelPower(ch.crate, ch.slot, ch.channel, false);
+            ch.on = false;
+        });
         dataDirty = true; renderActiveTab();
     });
 
@@ -87,10 +97,15 @@ function initTableUI() {
         const v = parseFloat(input.value);
         if (isNaN(v) || v < 0) { input.style.borderColor = 'var(--red)'; return; }
         input.style.borderColor = '';
-        const n = allChannels.length;
-        if (!confirm(`Set VSet = ${v.toFixed(1)} V on ALL ${n} channels?\n\nThis will change every HV channel across all crates.`)) return;
-        hvMonitor.setAllVoltage(v);
-        allChannels.forEach(ch => { ch.vset = v; });
+        const filtered = getFilteredChannels();
+        const n = filtered.length;
+        if (n === 0) return;
+        const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
+        if (!confirm(`Set VSet = ${v.toFixed(1)} V on ${scope} channels?`)) return;
+        filtered.forEach(ch => {
+            hvMonitor.setChannelVoltage(ch.crate, ch.slot, ch.channel, v);
+            ch.vset = v;
+        });
         dataDirty = true; renderActiveTab();
     });
 
@@ -180,6 +195,33 @@ function selectCrateChip(chip, name) {
 
 function isPrimary(ch) {
     return ch.channel === 0 && ch.name && ch.name.toUpperCase().includes('PRIMARY');
+}
+
+// Return the currently filtered/visible channel list (same logic as renderTable)
+function getFilteredChannels() {
+    let data = allChannels;
+    if (filterStatus === 'on')           data = data.filter(c => c.on);
+    else if (filterStatus === 'off')     data = data.filter(c => !c.on);
+    else if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
+    else if (filterStatus === 'warn')    data = data.filter(c => classifyChannel(c).isWarn);
+    else if (filterStatus === 'fault')   data = data.filter(c => classifyChannel(c).isFault);
+    if (filterCrate) data = data.filter(c => c.crate === filterCrate);
+    if (searchText) {
+        const colonIdx = searchText.indexOf(':');
+        if (colonIdx > 0) {
+            const col = searchText.slice(0, colonIdx).trim();
+            const val = searchText.slice(colonIdx + 1).trim();
+            const colMap = { crate:'crate', slot:'slot', ch:'channel', channel:'channel',
+                             name:'name', model:'model', vmon:'vmon', vset:'vset', svmax:'svmax' };
+            const field = colMap[col];
+            data = field
+                ? data.filter(c => String(c[field]).toLowerCase().includes(val))
+                : data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+        } else {
+            data = data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+        }
+    }
+    return data;
 }
 
 function renderTable() {
