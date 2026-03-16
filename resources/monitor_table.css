@@ -139,8 +139,7 @@ tr.primary-row td {
     font-family: var(--mono); font-size: 10.5px; color: var(--text-dim);
 }
 
-/* ─── Save/Load and All Set V controls ────────────────────────────── */
-.settings-group { display: flex; gap: 4px; margin-left: 4px; }
+/* ─── All Set V controls ──────────────────────────────────────────── */
 .bulk-setv-group { display: flex; gap: 4px; margin-left: 4px; align-items: center; }
 .bulk-setv-input {
     font-family: var(--mono); font-size: 11px;

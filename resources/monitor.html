@@ -61,6 +61,9 @@
         <button class="tab-btn" data-tab="geo-tab">HyCal Geometry</button>
         <button class="tab-btn" data-tab="booster-tab">Booster HV</button>
         <button class="tab-btn" data-tab="faultlog-tab">Fault Log</button>
+        <span class="tab-spacer"></span>
+        <button class="tab-action-btn" id="btn-save-settings" title="Save all channel settings to JSON file">Save</button>
+        <button class="tab-action-btn" id="btn-load-settings" title="Load channel settings from JSON file">Load</button>
     </div>
 
     <!-- ═══════════════ TABLE TAB ═══════════════ -->
@@ -91,8 +94,6 @@
                 <button class="bulk-btn bulk-setv" id="btn-all-setv" title="Apply VSet to all visible channels">⚡ All Set V</button>
             </div>
             <div class="settings-group">
-                <button class="btn" id="btn-save-settings" title="Save all channel settings to JSON file">💾 Save</button>
-                <button class="btn" id="btn-load-settings" title="Load channel settings from JSON file">📂 Load</button>
                 <input type="file" id="load-settings-file" accept=".json" style="display:none">
             </div>
         </div>

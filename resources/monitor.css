@@ -124,6 +124,15 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
 .tab-btn:hover { color: var(--text); background: var(--bg-card-alt); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-card-alt); }
 
+.tab-spacer { flex: 1; }
+.tab-action-btn {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    padding: 9px 16px; background: transparent; color: var(--text-dim);
+    border: none; border-bottom: 2px solid transparent;
+    cursor: pointer; transition: all var(--transition); text-transform: uppercase;
+}
+.tab-action-btn:hover { color: var(--text); background: var(--bg-card-alt); }
+
 /* Red fault indicator dot on tab buttons */
 .tab-btn.has-fault { position: relative; }
 .tab-btn.has-fault::after {

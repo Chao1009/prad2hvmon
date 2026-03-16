@@ -112,10 +112,10 @@ function initTableUI() {
     document.getElementById('btn-save-settings').addEventListener('click', () => {
         if (!hvMonitor) return;
         const btn = document.getElementById('btn-save-settings');
-        btn.textContent = '⏳ Saving…';
+        btn.textContent = 'Saving…';
         btn.disabled = true;
         hvMonitor.saveSettings(data => {
-            btn.textContent = '💾 Save';
+            btn.textContent = 'Save';
             btn.disabled = false;
             // Download as JSON file
             const jsonStr = (typeof data === 'string') ? data : JSON.stringify(data, null, 2);
