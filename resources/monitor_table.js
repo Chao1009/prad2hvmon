@@ -230,9 +230,6 @@ function getFilteredChannels() {
 }
 
 function renderTable() {
-    // Don't re-render while a cell is being edited — moving the row
-    // through a DocumentFragment would detach the input and kill focus.
-    if (document.querySelector('#ch-body td.editing')) return;
 
     // ── Filter & sort ─────────────────────────────────────────────────
     let data = allChannels;
@@ -442,7 +439,10 @@ function renderTable() {
                 pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
             }
         }
-        fragment.appendChild(tr);
+        // Don't move the editing row through the fragment — it would
+        // detach from the DOM and the input would lose focus.
+        const isEditing = tr.querySelector('td.editing');
+        if (!isEditing) fragment.appendChild(tr);
     }
 
     // Remove rows no longer in filtered set
@@ -450,6 +450,31 @@ function renderTable() {
 
     // Re-append in sorted order (moves don't re-parse HTML, just reorder)
     tbody.appendChild(fragment);
+
+    // If a row was being edited and left in the tbody, move it to
+    // the correct sort position now that all other rows are in place.
+    const editingTr = tbody.querySelector('td.editing')?.closest('tr');
+    if (editingTr) {
+        const editKey = editingTr.dataset.key;
+        // Find the row that should come after the editing row
+        let placed = false;
+        for (const ch of data) {
+            const k = ch.crate + '|' + ch.slot + '|' + ch.channel;
+            if (k === editKey) { placed = true; continue; }
+            if (placed) {
+                // Find this row in the tbody and insert before it
+                for (const r of tbody.rows) {
+                    if (r.dataset.key === k) {
+                        tbody.insertBefore(editingTr, r);
+                        placed = false; // mark as inserted
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+        // If editing row is last in sort order, it's already at the end
+    }
 
     dataDirty = false;
 
