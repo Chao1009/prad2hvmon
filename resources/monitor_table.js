@@ -133,13 +133,18 @@ function initTableUI() {
         });
     });
 
-    // ── Load settings ───────────────────────────────────────────────────
+    // ── Load settings (expert mode only) ────────────────────────────────
     document.getElementById('btn-load-settings').addEventListener('click', () => {
+        if (!expertMode) {
+            alert('Enable Expert Mode to load settings.');
+            return;
+        }
         document.getElementById('load-settings-file').click();
     });
     document.getElementById('load-settings-file').addEventListener('change', e => {
         const file = e.target.files[0];
         if (!file) return;
+        if (!expertMode) { e.target.value = ''; return; }
         if (!confirm(`Load settings from "${file.name}"?\n\nThis will write all saved parameters to the HV hardware.`)) {
             e.target.value = '';
             return;
@@ -160,6 +165,9 @@ function initTableUI() {
                         const u = result.unchanged || 0;
                         alert(`Settings applied: ${result.restored} restored, ${u} unchanged, ${result.skipped} skipped, ${result.errors} errors`);
                     }
+                    // Force full table rebuild to reflect loaded values
+                    document.getElementById('ch-body').innerHTML = '';
+                    dataDirty = true; renderActiveTab();
                 });
                 console.log('Settings sent:', settings.channels.length, 'channels');
             } catch (err) {
