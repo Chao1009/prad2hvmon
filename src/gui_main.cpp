@@ -211,18 +211,30 @@ static int doWrite(const std::string &host, const std::string &port,
         QByteArray payload = QJsonDocument(cmd).toJson(QJsonDocument::Compact);
         ws.sendTextMessage(QString::fromUtf8(payload));
 
-        std::cout << "Sent load_settings (" << nch << " channels)\n";
-        std::cout << "Settings are being applied by the daemon…\n";
+        std::cout << "Sent load_settings (" << nch << " channels), waiting for daemon…\n";
+    });
 
-        // Give the daemon a moment to process, then disconnect.
-        // The daemon logs progress to its own console.
-        QTimer::singleShot(2000, [&]() {
-            done = true;
-            exitCode = 0;
-            std::cout << "Done — check daemon console for detailed restore log.\n";
-            ws.close();
-            app->quit();
-        });
+    QObject::connect(&ws, &QWebSocket::textMessageReceived, [&](const QString &msg) {
+        QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
+        if (doc.isNull()) return;
+        QJsonObject obj = doc.object();
+        if (obj["type"].toString() != "load_settings_done") return;
+
+        QJsonObject data = obj["data"].toObject();
+        if (data.contains("error")) {
+            std::cerr << "ERROR: " << data["error"].toString().toStdString() << "\n";
+            exitCode = 1;
+        } else {
+            int restored = data["restored"].toInt();
+            int skip     = data["skipped"].toInt();
+            int errs     = data["errors"].toInt();
+            std::cout << "Done — " << restored << " restored, "
+                      << skip << " skipped, " << errs << " errors\n";
+            exitCode = (errs > 0) ? 1 : 0;
+        }
+        done = true;
+        ws.close();
+        app->quit();
     });
 
     QObject::connect(&ws, &QWebSocket::disconnected, [&]() {
