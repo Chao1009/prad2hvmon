@@ -616,8 +616,10 @@ function openModPopup(mod) {
         if (!hvMonitor || !expertMode) return;
         const c = chByName[mod.n]; if (!c) return;
         const v = parseFloat(vsetInput.value); if (isNaN(v)) return;
+        const orig = c.vset;
         hvMonitor.setChannelVoltage(c.crate, c.slot, c.channel, v);
         c.vset = v; dataDirty = true;
+        addPendingSet(c.crate, c.slot, c.channel, 'vset', v, orig);
         vsetInput.dataset.orig = vsetInput.value;
         btnSetV.style.display = 'none';
         refresh();
@@ -638,8 +640,10 @@ function openModPopup(mod) {
         if (!hvMonitor || !expertMode) return;
         const c = chByName[mod.n]; if (!c || c.iSupported === false) return;
         const v = parseFloat(isetInput.value); if (isNaN(v) || v < 0) return;
+        const orig = c.iset;
         hvMonitor.setChannelCurrent(c.crate, c.slot, c.channel, v);
         c.iset = v; dataDirty = true;
+        addPendingSet(c.crate, c.slot, c.channel, 'iset', v, orig);
         isetInput.dataset.orig = isetInput.value;
         btnSetI.style.display = 'none';
         refresh();

@@ -79,6 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (boosterMonitor) {
             boosterMonitor.boosterUpdated.connect(jsonStr => {
                 boosterSupplies = JSON.parse(jsonStr);
+                applyPendingBoosterSets();
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
                 boosterDirty = true;
                 evaluateAlarm();
@@ -94,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Data update only — no render; the render loop handles display
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
+            applyPendingSets();
             lastPollTime = performance.now();
             rebuildChMap();
             const crateKey = [...new Set(allChannels.map(c => c.crate))].sort().join('|');
@@ -164,7 +166,10 @@ document.addEventListener('DOMContentLoaded', () => {
     client._listeners.onConnect.push(() => {
         bootstrap(client.hvMonitor, client.boosterMonitor);
     });
-    client._listeners.onDisconnect.push(() => setPillConnected(false));
+    client._listeners.onDisconnect.push(() => {
+        setPillConnected(false);
+        clearAllPendingSets();
+    });
 
     initTableUI();
     initTabs();

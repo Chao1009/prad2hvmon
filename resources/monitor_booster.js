@@ -137,8 +137,10 @@ function openBoosterPopup(mod) {
         if (isNaN(v) || v < 0) { vsetInput.style.borderColor = 'var(--red)'; return; }
         vsetInput.style.borderColor = '';
         const idx = supplyIdx(); if (idx < 0) return;
+        const origV = boosterByName[mod.n] ? boosterByName[mod.n].vset : null;
         boosterMonitor.setVoltage(idx, v);
         const bs = boosterByName[mod.n]; if (bs) bs.vset = v;
+        addPendingBoosterSet(idx, 'vset', v, origV);
         vsetInput.dataset.orig = vsetInput.value;
         btnSetV.style.display = 'none';
         boosterDirty = true; refresh();
@@ -161,8 +163,10 @@ function openBoosterPopup(mod) {
         if (isNaN(v) || v < 0) { isetInput.style.borderColor = 'var(--red)'; return; }
         isetInput.style.borderColor = '';
         const idx = supplyIdx(); if (idx < 0) return;
+        const origI = boosterByName[mod.n] ? boosterByName[mod.n].iset : null;
         boosterMonitor.setCurrent(idx, v);
         const bs = boosterByName[mod.n]; if (bs) bs.iset = v;
+        addPendingBoosterSet(idx, 'iset', v, origI);
         isetInput.dataset.orig = isetInput.value;
         btnSetI.style.display = 'none';
         boosterDirty = true; refresh();
@@ -364,7 +368,9 @@ function wireBoosterCard(card, idx) {
         const v = parseFloat(vsetInp.value);
         if (isNaN(v) || v < 0) { vsetInp.style.borderColor = 'var(--red)'; return; }
         vsetInp.style.borderColor = '';
+        const origV = boosterSupplies[idx] ? boosterSupplies[idx].vset : null;
         boosterMonitor.setVoltage(idx, v);
+        addPendingBoosterSet(idx, 'vset', v, origV);
         vsetInp.dataset.orig = vsetInp.value;
         setVBtn.style.display = 'none';
     });
@@ -386,7 +392,9 @@ function wireBoosterCard(card, idx) {
         const v = parseFloat(isetInp.value);
         if (isNaN(v) || v < 0) { isetInp.style.borderColor = 'var(--red)'; return; }
         isetInp.style.borderColor = '';
+        const origI = boosterSupplies[idx] ? boosterSupplies[idx].iset : null;
         boosterMonitor.setCurrent(idx, v);
+        addPendingBoosterSet(idx, 'iset', v, origI);
         isetInp.dataset.orig = isetInp.value;
         setIBtn.style.display = 'none';
     });

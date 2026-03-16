@@ -493,18 +493,22 @@ function inlineSetVoltage(crate, slot, channel, value) {
     if (!hvMonitor || !expertMode) return;
     const v = parseFloat(value);
     if (isNaN(v) || v < 0) return;
-    hvMonitor.setChannelVoltage(crate, slot, channel, v);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+    const orig = ch ? ch.vset : null;
+    hvMonitor.setChannelVoltage(crate, slot, channel, v);
     if (ch) { ch.vset = v; dataDirty = true; }
+    addPendingSet(crate, slot, channel, 'vset', v, orig);
 }
 
 function inlineSetSVMax(crate, slot, channel, value) {
     if (!hvMonitor || !expertMode) return;
     const v = parseFloat(value);
     if (isNaN(v) || v < 0) return;
-    hvMonitor.setChannelSVMax(crate, slot, channel, v);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+    const orig = ch ? ch.svmax : null;
+    hvMonitor.setChannelSVMax(crate, slot, channel, v);
     if (ch) { ch.svmax = v; dataDirty = true; }
+    addPendingSet(crate, slot, channel, 'svmax', v, orig);
 }
 
 function inlineSetCurrent(crate, slot, channel, value) {
@@ -513,8 +517,10 @@ function inlineSetCurrent(crate, slot, channel, value) {
     if (!ch || ch.iSupported === false) return;
     const v = parseFloat(value);
     if (isNaN(v) || v < 0) return;
+    const orig = ch.iset;
     hvMonitor.setChannelCurrent(crate, slot, channel, v);
     ch.iset = v; dataDirty = true;
+    addPendingSet(crate, slot, channel, 'iset', v, orig);
 }
 
 function inlineSetName(crate, slot, channel, value) {
