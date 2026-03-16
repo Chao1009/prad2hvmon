@@ -278,7 +278,11 @@ function renderTable() {
         if (k) existingRows.set(k, tr);
     }
 
-    const fragment = document.createDocumentFragment();
+    // If a cell is being edited, skip all row reordering to preserve
+    // the editing input's DOM position and focus.  Values still update.
+    const lockOrder = !!document.querySelector('#ch-body td.editing');
+
+    const fragment = lockOrder ? null : document.createDocumentFragment();
 
     for (const ch of data) {
         const key = ch.crate + '|' + ch.slot + '|' + ch.channel;
@@ -439,10 +443,12 @@ function renderTable() {
                 pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
             }
         }
-        // Don't move the editing row through the fragment — it would
-        // detach from the DOM and the input would lose focus.
-        const isEditing = tr.querySelector('td.editing');
-        if (!isEditing) fragment.appendChild(tr);
+        if (fragment) {
+            fragment.appendChild(tr);
+        } else if (!tr.parentNode) {
+            // lockOrder mode: only add genuinely new rows to tbody
+            tbody.appendChild(tr);
+        }
     }
 
     // Remove rows no longer in filtered set (but never remove the editing row)
@@ -450,10 +456,8 @@ function renderTable() {
         if (!tr.querySelector('td.editing')) tr.remove();
     });
 
-    // Re-append in sorted order (moves don't re-parse HTML, just reorder).
-    // The editing row stays where it is — it'll snap to correct position
-    // once the edit completes and the next render runs.
-    tbody.appendChild(fragment);
+    // Reorder only when not editing
+    if (fragment) tbody.appendChild(fragment);
 
     dataDirty = false;
 
