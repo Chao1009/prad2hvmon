@@ -407,15 +407,26 @@ function renderTable() {
                 pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
             }
 
-            // Expert mode cells (name td5, vset td7, svmax td8, iset td11) — rebuild if mode changed
+            // Expert mode cells (name td5, vset td7, svmax td8, iset td11)
             const trExpert = tr.dataset.expert === '1';
             if (trExpert !== expertMode) {
+                // Mode just changed — rebuild input↔span cells
                 tr.cells[5].innerHTML  = buildNameCell(ch, prim);
                 tr.cells[7].innerHTML  = buildVsetCell(ch);
                 tr.cells[8].innerHTML  = buildSvmaxCell(ch);
                 tr.cells[11].innerHTML = buildIsetCell(ch);
                 tr.dataset.expert = expertMode ? '1' : '0';
+            } else if (!expertMode) {
+                // Non-expert data update — patch plain text values
+                const vsetTxt = fmt(ch.vset, 2);
+                const svmaxTxt = ch.svmax != null ? fmt(ch.svmax, 2) : '—';
+                const isetTxt = ch.iSupported === false ? 'N/A' : fmt(ch.iset, 1);
+                if (tr.cells[7].textContent !== vsetTxt)  tr.cells[7].textContent = vsetTxt;
+                if (tr.cells[8].textContent !== svmaxTxt) tr.cells[8].textContent = svmaxTxt;
+                if (tr.cells[11].textContent !== isetTxt) tr.cells[11].textContent = isetTxt;
             }
+            // In expert mode with no mode change: leave input cells alone
+            // (avoid clobbering in-progress edits)
         }
         fragment.appendChild(tr);
     }
