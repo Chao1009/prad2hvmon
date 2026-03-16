@@ -254,6 +254,10 @@ public:
             // Poll all crates
             doPoll();
 
+            // Re-apply any pending set-value overrides so the snapshot
+            // reflects recent user edits even if hardware readback lags.
+            applyPendingOverrides();
+
             // Publish snapshots
             store.setHV(buildChannelSnapshot());
             store.setBoard(buildBoardSnapshot());
@@ -338,19 +342,39 @@ private:
             auto *ch = findChannel(cmd.value("crate", ""),
                                    cmd.value("slot", -1),
                                    cmd.value("ch", -1));
-            if (ch) ch->SetVoltage(cmd.value("value", 0.0f));
+            if (ch) {
+                float v = cmd.value("value", 0.0f);
+                ch->SetVoltage(v);
+                // Store the clamped value (what hardware actually received)
+                float actual = std::min(v, ch->GetLimit());
+                addPendingOverride(cmd.value("crate", ""),
+                                   cmd.value("slot", -1),
+                                   cmd.value("ch", -1), "V0Set", actual);
+            }
         }
         else if (type == "set_current") {
             auto *ch = findChannel(cmd.value("crate", ""),
                                    cmd.value("slot", -1),
                                    cmd.value("ch", -1));
-            if (ch) ch->SetCurrent(cmd.value("value", 0.0f));
+            if (ch) {
+                float v = cmd.value("value", 0.0f);
+                ch->SetCurrent(v);
+                addPendingOverride(cmd.value("crate", ""),
+                                   cmd.value("slot", -1),
+                                   cmd.value("ch", -1), "I0Set", v);
+            }
         }
         else if (type == "set_svmax") {
             auto *ch = findChannel(cmd.value("crate", ""),
                                    cmd.value("slot", -1),
                                    cmd.value("ch", -1));
-            if (ch) ch->SetSVMax(cmd.value("value", 0.0f));
+            if (ch) {
+                float v = cmd.value("value", 0.0f);
+                ch->SetSVMax(v);
+                addPendingOverride(cmd.value("crate", ""),
+                                   cmd.value("slot", -1),
+                                   cmd.value("ch", -1), "SVMax", v);
+            }
         }
         else if (type == "set_name") {
             auto *ch = findChannel(cmd.value("crate", ""),
@@ -463,6 +487,66 @@ private:
         return arr.dump();
     }
 
+    // ── Pending overrides ────────────────────────────────────────────────
+    // After a set_voltage/set_current/set_svmax command, hold the written
+    // value for a few poll cycles so the snapshot reflects the user's intent
+    // even if hardware readback hasn't caught up yet.
+
+    struct PendingOverride {
+        std::string crate;
+        int         slot;
+        int         channel;
+        std::string param;      // "V0Set", "I0Set", "SVMax"
+        float       value;
+        int         ttl;        // poll cycles remaining
+    };
+
+    static constexpr int   OVERRIDE_TTL = 6;       // ~6 poll cycles
+    static constexpr float OVERRIDE_TOL = 0.01f;   // match tolerance
+
+    void addPendingOverride(const std::string &crate, int slot, int ch,
+                            const std::string &param, float value)
+    {
+        // Replace existing override for the same channel+param
+        for (auto &po : pending_overrides_) {
+            if (po.crate == crate && po.slot == slot &&
+                po.channel == ch && po.param == param) {
+                po.value = value;
+                po.ttl   = OVERRIDE_TTL;
+                return;
+            }
+        }
+        pending_overrides_.push_back({crate, slot, ch, param, value, OVERRIDE_TTL});
+    }
+
+    // Call once per poll cycle, AFTER doPoll() and BEFORE buildChannelSnapshot().
+    // Decrements TTL, removes expired/converged entries, then re-applies
+    // surviving overrides into the CAEN param cache.
+    void applyPendingOverrides()
+    {
+        for (auto it = pending_overrides_.begin(); it != pending_overrides_.end(); ) {
+            auto *ch = findChannel(it->crate, it->slot, it->channel);
+            if (!ch) { it = pending_overrides_.erase(it); continue; }
+
+            // Check if hardware readback now matches the pending value
+            float hw = ch->GetFloat(it->param);
+            if (!std::isnan(hw) && std::fabs(hw - it->value) < OVERRIDE_TOL) {
+                it = pending_overrides_.erase(it);
+                continue;
+            }
+
+            if (--it->ttl <= 0) {
+                it = pending_overrides_.erase(it);
+                continue;
+            }
+
+            // Re-stamp the pending value into the param cache so the
+            // snapshot builder picks it up
+            ch->SetParamDirect(it->param, it->value);
+            ++it;
+        }
+    }
+
     // ── Data ─────────────────────────────────────────────────────────────
     std::vector<CrateDef> crate_defs_;
     std::vector<CAEN_Crate*> crates_;
@@ -470,6 +554,7 @@ private:
     std::atomic<int> poll_interval_ms_;
     FaultTracker fault_tracker_;
     ChannelClassifier classifier_;
+    std::vector<PendingOverride> pending_overrides_;
 };
 
 
@@ -548,6 +633,9 @@ public:
             }
             fault_tracker_.endCycle();
 
+            // Re-apply any pending set-value overrides
+            applyPendingOverrides();
+
             // Publish snapshot
             store.setBooster(buildSnapshot());
 
@@ -574,10 +662,14 @@ private:
             supplies_[idx]->setOutput(cmd.value("on", false));
         }
         else if (type == "booster_set_voltage" && validIdx(idx)) {
-            supplies_[idx]->setVoltage(cmd.value("value", 0.0));
+            double v = cmd.value("value", 0.0);
+            supplies_[idx]->setVoltage(v);
+            addPendingOverride(idx, "vset", v);
         }
         else if (type == "booster_set_current" && validIdx(idx)) {
-            supplies_[idx]->setCurrent(cmd.value("value", 0.0));
+            double v = cmd.value("value", 0.0);
+            supplies_[idx]->setCurrent(v);
+            addPendingOverride(idx, "iset", v);
         }
         else if (type == "set_poll_interval") {
             setPollInterval(cmd.value("ms", 3000));
@@ -617,4 +709,51 @@ private:
     std::atomic<int> poll_interval_ms_;
     FaultTracker fault_tracker_;
     std::unordered_set<std::string> prev_booster_logged_;  // suppresses repeat "cannot connect" msgs
+
+    // ── Pending overrides (same concept as HVPoller) ─────────────────────
+    struct PendingOverride {
+        int         idx;
+        std::string param;      // "vset" or "iset"
+        double      value;
+        int         ttl;
+    };
+
+    static constexpr int    OVERRIDE_TTL = 4;
+    static constexpr double OVERRIDE_TOL = 0.01;
+
+    std::vector<PendingOverride> pending_overrides_;
+
+    void addPendingOverride(int idx, const std::string &param, double value)
+    {
+        for (auto &po : pending_overrides_) {
+            if (po.idx == idx && po.param == param) {
+                po.value = value;
+                po.ttl   = OVERRIDE_TTL;
+                return;
+            }
+        }
+        pending_overrides_.push_back({idx, param, value, OVERRIDE_TTL});
+    }
+
+    void applyPendingOverrides()
+    {
+        for (auto it = pending_overrides_.begin(); it != pending_overrides_.end(); ) {
+            if (!validIdx(it->idx)) { it = pending_overrides_.erase(it); continue; }
+            auto *s = supplies_[it->idx];
+
+            double hw = (it->param == "vset") ? s->vset : s->iset;
+            if (!std::isnan(hw) && std::fabs(hw - it->value) < OVERRIDE_TOL) {
+                it = pending_overrides_.erase(it);
+                continue;
+            }
+            if (--it->ttl <= 0) {
+                it = pending_overrides_.erase(it);
+                continue;
+            }
+            // Re-stamp the pending value
+            if (it->param == "vset") s->vset = it->value;
+            else                     s->iset = it->value;
+            ++it;
+        }
+    }
 };
