@@ -104,10 +104,7 @@ function initTableUI() {
         if (!confirm(`Set VSet = ${v.toFixed(1)} V on ${scope} channels?`)) return;
         filtered.forEach(ch => {
             hvMonitor.setChannelVoltage(ch.crate, ch.slot, ch.channel, v);
-            ch.vset = v;
         });
-        // Force full table rebuild so expert-mode input cells get new values
-        document.getElementById('ch-body').innerHTML = '';
         dataDirty = true; renderActiveTab();
     });
 
@@ -165,8 +162,6 @@ function initTableUI() {
                         const u = result.unchanged || 0;
                         alert(`Settings applied: ${result.restored} restored, ${u} unchanged, ${result.skipped} skipped, ${result.errors} errors`);
                     }
-                    // Force full table rebuild to reflect loaded values
-                    document.getElementById('ch-body').innerHTML = '';
                     dataDirty = true; renderActiveTab();
                 });
                 console.log('Settings sent:', settings.channels.length, 'channels');
@@ -235,10 +230,6 @@ function getFilteredChannels() {
 }
 
 function renderTable() {
-    // Don't clobber an in-progress edit
-    if (document.activeElement && (
-            document.activeElement.classList.contains('vset-inline') ||
-            document.activeElement.classList.contains('name-inline'))) return;
 
     // ── Filter & sort ─────────────────────────────────────────────────
     let data = allChannels;
@@ -300,11 +291,10 @@ function renderTable() {
 
         let tr = existingRows.get(key);
         if (!tr) {
-            // ── Create new row (first render, or row newly visible after filter) ──
+            // ── Create new row ──────────────────────────────────────────────
             tr = document.createElement('tr');
             tr.dataset.key = key;
-            tr.dataset.expert = expertMode ? '1' : '0';
-            existingRows.delete(key);  // mark as still-needed (same as patch branch)
+            existingRows.delete(key);
 
             // td0: status dot
             const td0 = document.createElement('td');
@@ -319,10 +309,9 @@ function renderTable() {
                 td.textContent = txt;
                 tr.appendChild(td);
             }
-            // td1 gets the IP title
             tr.cells[1].title = ch.ip;
 
-            // td5: name
+            // td5: name (plain text + edit icon)
             const td5 = document.createElement('td');
             td5.innerHTML = buildNameCell(ch, prim);
             tr.appendChild(td5);
@@ -333,16 +322,16 @@ function renderTable() {
             td6.textContent = fmt(ch.vmon, 2);
             tr.appendChild(td6);
 
-            // td7: vset
+            // td7: vset (plain text + edit icon)
             const td7 = document.createElement('td');
             td7.style.textAlign = 'right';
-            td7.innerHTML = buildVsetCell(ch);
+            td7.innerHTML = buildEditableCell(ch.vset, 2, expertMode, ch, 'vset');
             tr.appendChild(td7);
 
-            // td8: svmax
+            // td8: svmax (plain text + edit icon)
             const td8 = document.createElement('td');
             td8.style.textAlign = 'right';
-            td8.innerHTML = buildSvmaxCell(ch);
+            td8.innerHTML = buildEditableCell(ch.svmax, 2, expertMode, ch, 'svmax');
             tr.appendChild(td8);
 
             // td9: diff
@@ -359,13 +348,17 @@ function renderTable() {
             td10.textContent = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
             tr.appendChild(td10);
 
-            // td11: iset
+            // td11: iset (plain text + edit icon)
             const td11 = document.createElement('td');
             td11.style.textAlign = 'right';
-            td11.innerHTML = buildIsetCell(ch);
+            if (ch.iSupported === false) {
+                td11.innerHTML = '<span style="color:var(--text-dim)">N/A</span>';
+            } else {
+                td11.innerHTML = buildEditableCell(ch.iset, 1, expertMode, ch, 'iset');
+            }
             tr.appendChild(td11);
 
-            // td12: status badges (no ON/OFF — Pwr column covers power state)
+            // td12: status badges
             const td12 = document.createElement('td');
             td12.innerHTML = cc.badgesHtml;
             tr.appendChild(td12);
@@ -382,19 +375,37 @@ function renderTable() {
 
             tr.className = prim ? 'primary-row' : '';
         } else {
-            // ── Patch only what changed ───────────────────────────────────────
-            existingRows.delete(key);  // mark as still-needed
+            // ── Patch existing row ─────────────────────────────────────────
+            existingRows.delete(key);
 
-            // status dot
+            // status dot (td0)
             const dot = tr.cells[0].firstElementChild;
             const wantDot = 'status-dot ' + dotCls;
             if (dot.className !== wantDot) dot.className = wantDot;
+
+            // name (td5) — skip if being edited
+            if (!tr.cells[5].classList.contains('editing')) {
+                const nameHtml = buildNameCell(ch, prim);
+                if (tr.cells[5].innerHTML !== nameHtml) tr.cells[5].innerHTML = nameHtml;
+            }
 
             // vmon (td6)
             const vmonTxt = fmt(ch.vmon, 2);
             if (tr.cells[6].textContent !== vmonTxt) tr.cells[6].textContent = vmonTxt;
 
-            // diff class + value (td9)
+            // vset (td7) — skip if being edited
+            if (!tr.cells[7].classList.contains('editing')) {
+                const vsetHtml = buildEditableCell(ch.vset, 2, expertMode, ch, 'vset');
+                if (tr.cells[7].innerHTML !== vsetHtml) tr.cells[7].innerHTML = vsetHtml;
+            }
+
+            // svmax (td8) — skip if being edited
+            if (!tr.cells[8].classList.contains('editing')) {
+                const svmaxHtml = buildEditableCell(ch.svmax, 2, expertMode, ch, 'svmax');
+                if (tr.cells[8].innerHTML !== svmaxHtml) tr.cells[8].innerHTML = svmaxHtml;
+            }
+
+            // diff (td9)
             if (tr.cells[9].className !== dcls) tr.cells[9].className = dcls;
             const diffTxt = fmt(diff, 2);
             if (tr.cells[9].textContent !== diffTxt) tr.cells[9].textContent = diffTxt;
@@ -402,6 +413,17 @@ function renderTable() {
             // imon (td10)
             const imonTxt = ch.iSupported === false ? 'N/A' : fmt(ch.imon, 3);
             if (tr.cells[10].textContent !== imonTxt) tr.cells[10].textContent = imonTxt;
+
+            // iset (td11) — skip if being edited
+            if (!tr.cells[11].classList.contains('editing')) {
+                let isetHtml;
+                if (ch.iSupported === false) {
+                    isetHtml = '<span style="color:var(--text-dim)">N/A</span>';
+                } else {
+                    isetHtml = buildEditableCell(ch.iset, 1, expertMode, ch, 'iset');
+                }
+                if (tr.cells[11].innerHTML !== isetHtml) tr.cells[11].innerHTML = isetHtml;
+            }
 
             // status badges (td12)
             const stHtml = cc.badgesHtml;
@@ -416,27 +438,6 @@ function renderTable() {
                 pbtn.textContent = pwrTxt;
                 pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
             }
-
-            // Expert mode cells (name td5, vset td7, svmax td8, iset td11)
-            const trExpert = tr.dataset.expert === '1';
-            if (trExpert !== expertMode) {
-                // Mode just changed — rebuild input↔span cells
-                tr.cells[5].innerHTML  = buildNameCell(ch, prim);
-                tr.cells[7].innerHTML  = buildVsetCell(ch);
-                tr.cells[8].innerHTML  = buildSvmaxCell(ch);
-                tr.cells[11].innerHTML = buildIsetCell(ch);
-                tr.dataset.expert = expertMode ? '1' : '0';
-            } else if (!expertMode) {
-                // Non-expert data update — patch plain text values
-                const vsetTxt = fmt(ch.vset, 2);
-                const svmaxTxt = ch.svmax != null ? fmt(ch.svmax, 2) : '—';
-                const isetTxt = ch.iSupported === false ? 'N/A' : fmt(ch.iset, 1);
-                if (tr.cells[7].textContent !== vsetTxt)  tr.cells[7].textContent = vsetTxt;
-                if (tr.cells[8].textContent !== svmaxTxt) tr.cells[8].textContent = svmaxTxt;
-                if (tr.cells[11].textContent !== isetTxt) tr.cells[11].textContent = isetTxt;
-            }
-            // In expert mode with no mode change: leave input cells alone
-            // (avoid clobbering in-progress edits)
         }
         fragment.appendChild(tr);
     }
@@ -477,100 +478,113 @@ function makeToggle(crate, slot, channel, currentOn) {
 
 function buildNameCell(ch, prim) {
     const badge = prim ? '<span class="primary-badge">Primary</span>' : '';
+    const name = ch.name || '—';
     if (expertMode) {
-        return `<input class="name-inline" type="text" maxlength="12" value="${ch.name||''}"
-                     data-orig="${ch.name||''}"
-                     oninput="dirtyCheck(this)"
-                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
-                     onblur="revertInline(this)"
-                     data-apply="inlineSetName('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                   ><button class="vset-apply" style="display:none"
-                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
-                   >✓</button>${badge}`;
+        return `${escHtml(name)}${badge}<button class="edit-icon" onclick="enterEdit(this.parentElement,'${ch.crate}',${ch.slot},${ch.channel},'name')" title="Edit name">✏</button>`;
     }
-    return (ch.name||'—') + badge;
+    return escHtml(name) + badge;
 }
 
-function buildVsetCell(ch) {
-    if (expertMode) {
-        return `<input class="vset-inline" type="text" value="${fmt(ch.vset, 2)}"
-                     data-orig="${fmt(ch.vset, 2)}"
-                     oninput="dirtyCheck(this)"
-                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
-                     onblur="revertInline(this)"
-                     data-apply="inlineSetVoltage('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                   ><button class="vset-apply" style="display:none"
-                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
-                   >✓</button>`;
+// Generic builder for editable numeric cells (vset, svmax, iset)
+function buildEditableCell(value, decimals, expert, ch, param) {
+    if (value == null) return '<span style="color:var(--text-dim)">—</span>';
+    const txt = fmt(value, decimals);
+    if (expert) {
+        return `<span style="color:var(--text-dim)">${txt}</span><button class="edit-icon" onclick="enterEdit(this.parentElement,'${ch.crate}',${ch.slot},${ch.channel},'${param}')" title="Edit ${param}">✏</button>`;
     }
-    return `<span style="color:var(--text-dim)">${fmt(ch.vset, 2)}</span>`;
+    return `<span style="color:var(--text-dim)">${txt}</span>`;
 }
 
-function buildSvmaxCell(ch) {
-    if (ch.svmax == null) return `<span style="color:var(--text-dim)">—</span>`;
-    if (expertMode) {
-        return `<input class="vset-inline" type="text" value="${fmt(ch.svmax, 2)}"
-                     data-orig="${fmt(ch.svmax, 2)}"
-                     oninput="dirtyCheck(this)"
-                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
-                     onblur="revertInline(this)"
-                     data-apply="inlineSetSVMax('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                   ><button class="vset-apply" style="display:none"
-                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
-                   >✓</button>`;
+// ── Edit mode: click ✏ to enter, ✓/Enter to commit, ✕/Escape to cancel ──
+
+function enterEdit(td, crate, slot, channel, param) {
+    if (td.classList.contains('editing')) return;
+    const ch = allChannels.find(c => c.crate === crate && c.slot === slot && c.channel === channel);
+    if (!ch) return;
+
+    let currentVal = '', placeholder = '';
+    if (param === 'vset')       { currentVal = ch.vset  != null ? ch.vset.toFixed(2) : ''; placeholder = 'VSet (V)'; }
+    else if (param === 'svmax') { currentVal = ch.svmax != null ? ch.svmax.toFixed(2) : ''; placeholder = 'SVMax (V)'; }
+    else if (param === 'iset')  { currentVal = ch.iset  != null ? ch.iset.toFixed(1) : ''; placeholder = 'ISet (µA)'; }
+    else if (param === 'name')  { currentVal = ch.name || ''; placeholder = 'Name'; }
+
+    td.classList.add('editing');
+    td.innerHTML = '';
+
+    const input = document.createElement('input');
+    input.className = param === 'name' ? 'name-inline' : 'vset-inline';
+    input.type = 'text';
+    input.value = currentVal;
+    input.placeholder = placeholder;
+    input.dataset.crate = crate;
+    input.dataset.slot = slot;
+    input.dataset.channel = channel;
+    input.dataset.param = param;
+
+    const commitBtn = document.createElement('button');
+    commitBtn.className = 'vset-apply';
+    commitBtn.style.display = 'inline-block';
+    commitBtn.textContent = '✓';
+    commitBtn.onmousedown = e => e.preventDefault();
+    commitBtn.onclick = () => commitEdit(td, input);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'vset-apply';
+    cancelBtn.style.display = 'inline-block';
+    cancelBtn.style.color = 'var(--red)';
+    cancelBtn.style.borderColor = 'var(--red-dim)';
+    cancelBtn.style.background = 'var(--red-dim)';
+    cancelBtn.textContent = '✕';
+    cancelBtn.onmousedown = e => e.preventDefault();
+    cancelBtn.onclick = () => cancelEdit(td);
+
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') commitEdit(td, input);
+        else if (e.key === 'Escape') cancelEdit(td);
+    });
+
+    td.appendChild(input);
+    td.appendChild(commitBtn);
+    td.appendChild(cancelBtn);
+    input.focus();
+    input.select();
+}
+
+function commitEdit(td, input) {
+    if (!input) return;
+    const crate   = input.dataset.crate;
+    const slot    = parseInt(input.dataset.slot, 10);
+    const channel = parseInt(input.dataset.channel, 10);
+    const param   = input.dataset.param;
+    const rawVal  = input.value.trim();
+
+    if (param === 'name') {
+        if (rawVal) {
+            hvMonitor.setChannelName(crate, slot, channel, rawVal);
+            const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+            if (ch) ch.name = rawVal;
+            rebuildChMap();
+        }
+    } else {
+        const v = parseFloat(rawVal);
+        if (!isNaN(v) && v >= 0) {
+            if (param === 'vset')       hvMonitor.setChannelVoltage(crate, slot, channel, v);
+            else if (param === 'svmax') hvMonitor.setChannelSVMax(crate, slot, channel, v);
+            else if (param === 'iset')  hvMonitor.setChannelCurrent(crate, slot, channel, v);
+        }
     }
-    return `<span style="color:var(--text-dim)">${fmt(ch.svmax, 2)}</span>`;
+
+    td.classList.remove('editing');
+    td.innerHTML = '';
+    dataDirty = true;
+    renderActiveTab();
 }
 
-function buildIsetCell(ch) {
-    if (ch.iSupported === false) {
-        return `<span style="color:var(--text-dim)">N/A</span>`;
-    }
-    if (expertMode) {
-        return `<input class="vset-inline" type="text" value="${fmt(ch.iset, 1)}"
-                     data-orig="${fmt(ch.iset, 1)}"
-                     oninput="dirtyCheck(this)"
-                     onkeydown="if(event.key==='Enter'){applyInline(this);}"
-                     onblur="revertInline(this)"
-                     data-apply="inlineSetCurrent('${ch.crate}',${ch.slot},${ch.channel},this.value)"
-                   ><button class="vset-apply" style="display:none"
-                     onmousedown="event.preventDefault();applyInline(this.previousElementSibling)"
-                   >✓</button>`;
-    }
-    return `<span style="color:var(--text-dim)">${fmt(ch.iset, 1)}</span>`;
-}
-
-// ── Inline edit helpers (show/hide ✓ button, apply on Enter) ─────
-function dirtyCheck(input) {
-    const btn = input.nextElementSibling;
-    if (!btn || !btn.classList.contains('vset-apply')) return;
-    const dirty = input.value !== input.dataset.orig;
-    btn.style.display = dirty ? 'inline-block' : 'none';
-    input.classList.toggle('dirty', dirty);
-}
-
-function applyInline(input) {
-    if (!input || !input.dataset.apply) return;
-    const btn = input.nextElementSibling;
-    // Execute the apply action — bind `this` to the input element
-    // so that data-apply expressions like "inlineSetVoltage(...,this.value)"
-    // can reference the input's current value.
-    new Function(input.dataset.apply).call(input);
-    // Update orig to new value so it's no longer dirty
-    input.dataset.orig = input.value;
-    input.classList.remove('dirty');
-    if (btn && btn.classList.contains('vset-apply')) btn.style.display = 'none';
-}
-
-function revertInline(input) {
-    // Delay slightly so mousedown on the ✓ button fires first
-    setTimeout(() => {
-        if (document.activeElement === input) return;
-        input.value = input.dataset.orig || '';
-        input.classList.remove('dirty');
-        const btn = input.nextElementSibling;
-        if (btn && btn.classList.contains('vset-apply')) btn.style.display = 'none';
-    }, 150);
+function cancelEdit(td) {
+    td.classList.remove('editing');
+    td.innerHTML = '';
+    dataDirty = true;
+    renderActiveTab();
 }
 
 // shownRows / totalRows are passed in by renderTable to avoid re-filtering.
@@ -627,51 +641,6 @@ function togglePower(crate, slot, channel, on) {
     hvMonitor.setChannelPower(crate, slot, channel, on);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) ch.on = on;
-    dataDirty = true; renderActiveTab();
-}
-
-function inlineSetVoltage(crate, slot, channel, value) {
-    if (!hvMonitor || !expertMode) return;
-    const v = parseFloat(value);
-    if (isNaN(v) || v < 0) return;
-    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
-    const orig = ch ? ch.vset : null;
-    hvMonitor.setChannelVoltage(crate, slot, channel, v);
-    if (ch) { ch.vset = v; dataDirty = true; }
-    addPendingSet(crate, slot, channel, 'vset', v, orig);
-}
-
-function inlineSetSVMax(crate, slot, channel, value) {
-    if (!hvMonitor || !expertMode) return;
-    const v = parseFloat(value);
-    if (isNaN(v) || v < 0) return;
-    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
-    const orig = ch ? ch.svmax : null;
-    hvMonitor.setChannelSVMax(crate, slot, channel, v);
-    if (ch) { ch.svmax = v; dataDirty = true; }
-    addPendingSet(crate, slot, channel, 'svmax', v, orig);
-}
-
-function inlineSetCurrent(crate, slot, channel, value) {
-    if (!hvMonitor || !expertMode) return;
-    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
-    if (!ch || ch.iSupported === false) return;
-    const v = parseFloat(value);
-    if (isNaN(v) || v < 0) return;
-    const orig = ch.iset;
-    hvMonitor.setChannelCurrent(crate, slot, channel, v);
-    ch.iset = v; dataDirty = true;
-    addPendingSet(crate, slot, channel, 'iset', v, orig);
-}
-
-function inlineSetName(crate, slot, channel, value) {
-    if (!hvMonitor || !expertMode) return;
-    const n = value.trim();
-    if (!n) return;
-    hvMonitor.setChannelName(crate, slot, channel, n);
-    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
-    if (ch) ch.name = n;
-    rebuildChMap();   // chByName keyed by name — must rebuild after rename
     dataDirty = true; renderActiveTab();
 }
 

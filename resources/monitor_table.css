@@ -208,3 +208,13 @@ tr.primary-row td {
     outline: none;
     border-color: var(--red);
 }
+
+/* ─── Edit icon (expert mode) ─────────────────────────────────────── */
+.edit-icon {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-dim); font-size: 10px; padding: 0 2px;
+    margin-left: 4px; opacity: 0.4; transition: opacity var(--transition);
+    vertical-align: middle;
+}
+.edit-icon:hover { opacity: 1; color: var(--accent); }
+td.editing { background: var(--bg-card-alt); }
