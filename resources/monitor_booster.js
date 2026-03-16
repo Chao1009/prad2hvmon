@@ -43,7 +43,6 @@ function openBoosterPopup(mod) {
     vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
-    btnSetV.style.display = 'none';
     rowV.append(vsetInput, btnSetV);
 
     const rowI = document.createElement('div');
@@ -53,7 +52,6 @@ function openBoosterPopup(mod) {
     isetInput.placeholder = 'ISet (A)';
     const btnSetI = document.createElement('button');
     btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
-    btnSetI.style.display = 'none';
     rowI.append(isetInput, btnSetI);
 
     const rowPwr = document.createElement('div');
@@ -110,15 +108,14 @@ function openBoosterPopup(mod) {
         }
         grid.innerHTML = html;
         const hasConn = !!(bs && bs.connected);
-        // SetV / SetI require both connection and expert mode
         vsetInput.disabled = !hasConn || !expertMode;
         btnSetV.disabled   = !hasConn || !expertMode;
+        btnSetV.style.display = (hasConn && expertMode) ? '' : 'none';
         vsetInput.style.opacity = (hasConn && expertMode) ? '1' : '0.35';
-        btnSetV.style.opacity   = (hasConn && expertMode) ? '1' : '0.35';
         isetInput.disabled = !hasConn || !expertMode;
         btnSetI.disabled   = !hasConn || !expertMode;
+        btnSetI.style.display = (hasConn && expertMode) ? '' : 'none';
         isetInput.style.opacity = (hasConn && expertMode) ? '1' : '0.35';
-        btnSetI.style.opacity   = (hasConn && expertMode) ? '1' : '0.35';
         // ON/OFF only requires connection
         btnOn.disabled  = !hasConn;
         btnOff.disabled = !hasConn;
@@ -142,19 +139,9 @@ function openBoosterPopup(mod) {
         const bs = boosterByName[mod.n]; if (bs) bs.vset = v;
         addPendingBoosterSet(idx, 'vset', v, origV);
         vsetInput.dataset.orig = vsetInput.value;
-        btnSetV.style.display = 'none';
         boosterDirty = true; refresh();
     });
-    vsetInput.addEventListener('input', () => {
-        btnSetV.style.display = vsetInput.value !== (vsetInput.dataset.orig || '') ? '' : 'none';
-    });
     vsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetV.click(); });
-    vsetInput.addEventListener('blur', () => {
-        setTimeout(() => {
-            vsetInput.value = vsetInput.dataset.orig || '';
-            btnSetV.style.display = 'none';
-        }, 150);
-    });
 
     btnSetI.addEventListener('mousedown', e => e.preventDefault());
     btnSetI.addEventListener('click', () => {
@@ -168,19 +155,9 @@ function openBoosterPopup(mod) {
         const bs = boosterByName[mod.n]; if (bs) bs.iset = v;
         addPendingBoosterSet(idx, 'iset', v, origI);
         isetInput.dataset.orig = isetInput.value;
-        btnSetI.style.display = 'none';
         boosterDirty = true; refresh();
     });
-    isetInput.addEventListener('input', () => {
-        btnSetI.style.display = isetInput.value !== (isetInput.dataset.orig || '') ? '' : 'none';
-    });
     isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
-    isetInput.addEventListener('blur', () => {
-        setTimeout(() => {
-            isetInput.value = isetInput.dataset.orig || '';
-            btnSetI.style.display = 'none';
-        }, 150);
-    });
 
     btnOn.addEventListener('click', () => {
         if (!boosterMonitor) return;
@@ -284,14 +261,14 @@ function boosterCardInnerHtml(s) {
     <input class="booster-vset-input" type="text" inputmode="decimal"
            placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input data-orig="${escHtml(vsetVal)}"
            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
-    <button class="booster-btn b-btn-set" data-set-v style="display:none"
+    <button class="booster-btn b-btn-set" data-set-v style="display:${expertMode ? '' : 'none'}"
             ${!expertMode ? 'disabled' : ''}>Set V</button>
   </div>
   <div class="booster-controls-iset">
     <input class="booster-iset-input" type="text" inputmode="decimal"
            placeholder="ISet (A)" value="${escHtml(isetVal)}" data-iset-input data-orig="${escHtml(isetVal)}"
            ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
-    <button class="booster-btn b-btn-seti" data-set-i style="display:none"
+    <button class="booster-btn b-btn-seti" data-set-i style="display:${expertMode ? '' : 'none'}"
             ${!expertMode ? 'disabled' : ''}>Set I</button>
     <span class="booster-controls-spacer"></span>
     <button class="booster-btn b-btn-on"  data-on>ON</button>
@@ -345,7 +322,7 @@ function updateBoosterCard(card, idx, s) {
             vsetEl.dataset.orig = newV;
         }
     }
-    if (setVEl) { setVEl.disabled = !expertMode; setVEl.style.opacity = expertMode ? '1' : '0.35'; }
+    if (setVEl) { setVEl.disabled = !expertMode; setVEl.style.display = expertMode ? '' : 'none'; }
     const isetEl = card.querySelector('[data-iset-input]');
     const setIEl = card.querySelector('[data-set-i]');
     if (isetEl) {
@@ -356,7 +333,7 @@ function updateBoosterCard(card, idx, s) {
             isetEl.dataset.orig = newI;
         }
     }
-    if (setIEl) { setIEl.disabled = !expertMode; setIEl.style.opacity = expertMode ? '1' : '0.35'; }
+    if (setIEl) { setIEl.disabled = !expertMode; setIEl.style.display = expertMode ? '' : 'none'; }
 }
 
 function wireBoosterCard(card, idx) {
@@ -365,17 +342,8 @@ function wireBoosterCard(card, idx) {
     const isetInp = card.querySelector('[data-iset-input]');
     const setIBtn = card.querySelector('[data-set-i]');
 
-    // VSet: show button on dirty, apply on click/Enter, revert on blur
-    vsetInp.addEventListener('input', () => {
-        setVBtn.style.display = vsetInp.value !== (vsetInp.dataset.orig || '') ? '' : 'none';
-    });
+    // VSet: apply on click/Enter
     vsetInp.addEventListener('keydown', e => { if (e.key === 'Enter') setVBtn.click(); });
-    vsetInp.addEventListener('blur', () => {
-        setTimeout(() => {
-            vsetInp.value = vsetInp.dataset.orig || '';
-            setVBtn.style.display = 'none';
-        }, 150);
-    });
     setVBtn.addEventListener('mousedown', e => e.preventDefault());
     setVBtn.addEventListener('click', () => {
         if (!boosterMonitor || !expertMode) return;
@@ -386,20 +354,10 @@ function wireBoosterCard(card, idx) {
         boosterMonitor.setVoltage(idx, v);
         addPendingBoosterSet(idx, 'vset', v, origV);
         vsetInp.dataset.orig = vsetInp.value;
-        setVBtn.style.display = 'none';
     });
 
-    // ISet: same pattern
-    isetInp.addEventListener('input', () => {
-        setIBtn.style.display = isetInp.value !== (isetInp.dataset.orig || '') ? '' : 'none';
-    });
+    // ISet: apply on click/Enter
     isetInp.addEventListener('keydown', e => { if (e.key === 'Enter') setIBtn.click(); });
-    isetInp.addEventListener('blur', () => {
-        setTimeout(() => {
-            isetInp.value = isetInp.dataset.orig || '';
-            setIBtn.style.display = 'none';
-        }, 150);
-    });
     setIBtn.addEventListener('mousedown', e => e.preventDefault());
     setIBtn.addEventListener('click', () => {
         if (!boosterMonitor || !expertMode) return;
@@ -410,7 +368,6 @@ function wireBoosterCard(card, idx) {
         boosterMonitor.setCurrent(idx, v);
         addPendingBoosterSet(idx, 'iset', v, origI);
         isetInp.dataset.orig = isetInp.value;
-        setIBtn.style.display = 'none';
     });
 
     // ON/OFF — unchanged

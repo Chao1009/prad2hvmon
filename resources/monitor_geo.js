@@ -525,7 +525,6 @@ function openModPopup(mod) {
     vsetInput.type = 'text'; vsetInput.placeholder = 'VSet (V)';
     const btnSetV = document.createElement('button');
     btnSetV.className = 'btn-sm btn-set'; btnSetV.textContent = 'Set V';
-    btnSetV.style.display = 'none';
     rowV.append(vsetInput, btnSetV);
 
     const rowI = document.createElement('div');
@@ -534,7 +533,6 @@ function openModPopup(mod) {
     isetInput.type = 'text'; isetInput.placeholder = 'ISet (µA)';
     const btnSetI = document.createElement('button');
     btnSetI.className = 'btn-sm btn-set'; btnSetI.textContent = 'Set I';
-    btnSetI.style.display = 'none';
     rowI.append(isetInput, btnSetI);
 
     const rowPwr = document.createElement('div');
@@ -596,15 +594,15 @@ function openModPopup(mod) {
         const hasChannel = !!c;
         vsetInput.disabled = !hasChannel || !expertMode;
         btnSetV.disabled   = !hasChannel || !expertMode;
-        vsetInput.style.opacity = (hasChannel && !expertMode) ? '0.35' : '1';
-        btnSetV.style.opacity   = (hasChannel && !expertMode) ? '0.35' : '1';
+        btnSetV.style.display = (hasChannel && expertMode) ? '' : 'none';
+        vsetInput.style.opacity = (hasChannel && expertMode) ? '1' : '0.35';
 
         const iOK = hasChannel && c.iSupported !== false;
         isetInput.disabled = !iOK || !expertMode;
         btnSetI.disabled   = !iOK || !expertMode;
+        btnSetI.style.display = (iOK && expertMode) ? '' : 'none';
         rowI.style.display = (hasChannel && c.iSupported === false) ? 'none' : '';
-        isetInput.style.opacity = (iOK && !expertMode) ? '0.35' : '1';
-        btnSetI.style.opacity   = (iOK && !expertMode) ? '0.35' : '1';
+        isetInput.style.opacity = (iOK && expertMode) ? '1' : '0.35';
 
         btnOn.disabled     = !hasChannel;
         btnOff.disabled    = !hasChannel;
@@ -616,7 +614,7 @@ function openModPopup(mod) {
     header.querySelector('.popup-close').addEventListener('click', () => closeModPopup(mod.n));
 
     // Action buttons
-    btnSetV.addEventListener('mousedown', e => e.preventDefault()); // keep focus on input
+    btnSetV.addEventListener('mousedown', e => e.preventDefault());
     btnSetV.addEventListener('click', () => {
         if (!hvMonitor || !expertMode) return;
         const c = chByName[mod.n]; if (!c) return;
@@ -626,19 +624,9 @@ function openModPopup(mod) {
         c.vset = v; dataDirty = true;
         addPendingSet(c.crate, c.slot, c.channel, 'vset', v, orig);
         vsetInput.dataset.orig = vsetInput.value;
-        btnSetV.style.display = 'none';
         refresh();
     });
-    vsetInput.addEventListener('input', () => {
-        btnSetV.style.display = vsetInput.value !== (vsetInput.dataset.orig || '') ? '' : 'none';
-    });
     vsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetV.click(); });
-    vsetInput.addEventListener('blur', () => {
-        setTimeout(() => {
-            vsetInput.value = vsetInput.dataset.orig || '';
-            btnSetV.style.display = 'none';
-        }, 150);
-    });
 
     btnSetI.addEventListener('mousedown', e => e.preventDefault());
     btnSetI.addEventListener('click', () => {
@@ -650,19 +638,9 @@ function openModPopup(mod) {
         c.iset = v; dataDirty = true;
         addPendingSet(c.crate, c.slot, c.channel, 'iset', v, orig);
         isetInput.dataset.orig = isetInput.value;
-        btnSetI.style.display = 'none';
         refresh();
     });
-    isetInput.addEventListener('input', () => {
-        btnSetI.style.display = isetInput.value !== (isetInput.dataset.orig || '') ? '' : 'none';
-    });
     isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
-    isetInput.addEventListener('blur', () => {
-        setTimeout(() => {
-            isetInput.value = isetInput.dataset.orig || '';
-            btnSetI.style.display = 'none';
-        }, 150);
-    });
     btnOn.addEventListener('click', () => {
         if (!hvMonitor) return;
         const c = chByName[mod.n]; if (!c) return;
