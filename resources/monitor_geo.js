@@ -8,8 +8,10 @@ function initGeoMap() {
     geoWrap   = document.getElementById('geo-canvas-wrap');
 
     // Pan
+    let geoDownPos = null;   // captured on mousedown, survives into click handler
     geoWrap.addEventListener('mousedown', e => {
         if (e.button !== 0) return;
+        geoDownPos = { x: e.clientX, y: e.clientY };
         geoDrag = { sx: e.clientX, sy: e.clientY, ox: geoTransform.x, oy: geoTransform.y };
     });
     // Throttle mousemove to one rAF per frame — avoids running a 1731-module
@@ -47,9 +49,10 @@ function initGeoMap() {
         renderGeo();
     }, { passive: false });
 
-    // Click -> popup
+    // Click -> popup  (mouseup clears geoDrag before click fires,
+    // so use geoDownPos to detect whether the user was panning)
     geoWrap.addEventListener('click', e => {
-        if (geoDrag && (Math.abs(e.clientX - geoDrag?.sx) > 4 || Math.abs(e.clientY - geoDrag?.sy) > 4)) return;
+        if (geoDownPos && (Math.abs(e.clientX - geoDownPos.x) > 4 || Math.abs(e.clientY - geoDownPos.y) > 4)) return;
         const mod = hitTestGeo(e);
         if (mod) openModPopup(mod);
     });
