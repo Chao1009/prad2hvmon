@@ -1,7 +1,7 @@
 {
     "deltaV": {
-        "table_ok":   0.5,
-        "table_warn": 2.0
+        "table_ok":   2.0,
+        "table_warn": 5.0
     },
     "colorRange": {
         "vmon_max": 2100,
