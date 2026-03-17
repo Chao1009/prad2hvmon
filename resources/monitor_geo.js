@@ -173,18 +173,20 @@ function _computeModuleColor(mod, mode) {
         return vmonColorScale(t);
     }
 
-    // diff
+    // diff (signed: VMon - VSet)
     if (!ch.on) return '#333';
     if (ch.vmon == null || ch.vset == null) return '#333';
-    const diff = Math.abs(ch.vmon - ch.vset);
-    const t = Math.min(1, Math.max(0, diff / CR.diff_max));
+    const diff = ch.vmon - ch.vset;
+    const t = Math.max(-1, Math.min(1, diff / CR.diff_max));
     return diffColorScale(t);
 }
 
 function diffColorScale(t) {
-    // 0 -> #2dd4a0 (green), 0.5 -> #eab308 (amber), 1.0 -> #f56565 (red)
-    if (t < 0.5) return lerpColor('#2dd4a0', '#eab308', t * 2);
-    else         return lerpColor('#eab308', '#f56565', (t - 0.5) * 2);
+    // Diverging: -1 → deep blue, -0.5 → blue, 0 → green, +0.5 → yellow, +1 → red
+    if (t < -0.5) return lerpColor('#1e3a5f', '#3b82f6', (t + 1) * 2);
+    if (t < 0)    return lerpColor('#3b82f6', '#2dd4a0', (t + 0.5) * 2);
+    if (t < 0.5)  return lerpColor('#2dd4a0', '#eab308', t * 2);
+    return lerpColor('#eab308', '#f56565', (t - 0.5) * 2);
 }
 
 function vmonColorScale(t) {
@@ -230,13 +232,14 @@ function drawGeoLegend() {
         document.getElementById('leg-lo').textContent = '0 V';
         document.getElementById('leg-hi').textContent = rangeMax + ' V';
     } else {
-        // diff: continuous green -> amber -> red
+        // diff: diverging purple → blue → green → yellow → red
         for (let i = 0; i < w; i++) {
-            ctx.fillStyle = diffColorScale(i / w);
+            const t = (i / w) * 2 - 1;  // -1 to +1
+            ctx.fillStyle = diffColorScale(t);
             ctx.fillRect(i, 0, 1, h);
         }
-        document.getElementById('leg-lo').textContent = '0 V';
-        document.getElementById('leg-hi').textContent = CR.diff_max + '+ V';
+        document.getElementById('leg-lo').textContent = '−' + CR.diff_max + ' V';
+        document.getElementById('leg-hi').textContent = '+' + CR.diff_max + ' V';
     }
 }
 
@@ -446,10 +449,11 @@ function updateGeoHover(e) {
             const daqStr = daqEntry ? ('c' + daqEntry.crate + ' s' + daqEntry.slot + ' ch' + daqEntry.channel) : '<span style="color:var(--text-dim)">—</span>';
             html += `<div class="tt-row"><span class="tt-label">DAQ</span><span class="tt-val">${daqStr}</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">VMon / VSet</span><span class="tt-val"><span class="tt-live">${fmt(ch.vmon, 2)}</span> / ${fmt(ch.vset, 2)} V</span></div>`;
-            const diff = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
-            const diffColor = (diff != null && ch.on) ? diffColorScale(Math.min(1, diff / CR.diff_max)) : null;
+            const diff = (ch.vmon != null && ch.vset != null) ? (ch.vmon - ch.vset) : null;
+            const diffColor = (diff != null && ch.on) ? diffColorScale(Math.max(-1, Math.min(1, diff / CR.diff_max))) : null;
             const diffStyle = diffColor ? (' style="color:' + diffColor + ';font-weight:600"') : '';
-            html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val"${diffStyle}>${fmt(diff, 2)} V</span></div>`;
+            const diffSign = (diff != null && diff > 0) ? '+' : '';
+            html += `<div class="tt-row"><span class="tt-label">ΔV</span><span class="tt-val"${diffStyle}>${diffSign}${fmt(diff, 2)} V</span></div>`;
             if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${pwrHtml(ch)}</span></div>`;
@@ -559,10 +563,11 @@ function openModPopup(mod) {
             const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
             html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
             html += `<span class="plbl">VMon / VSet</span><span class="pval"><span class="pval-live">${fmt(c.vmon, 2)}</span> / ${fmt(c.vset, 2)} V</span>`;
-            const popupDiff = (c.vmon != null && c.vset != null) ? Math.abs(c.vmon - c.vset) : null;
-            const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.min(1, popupDiff / CR.diff_max)) : null;
+            const popupDiff = (c.vmon != null && c.vset != null) ? (c.vmon - c.vset) : null;
+            const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.max(-1, Math.min(1, popupDiff / CR.diff_max))) : null;
             const popupDiffStyle = popupDiffColor ? ('color:' + popupDiffColor + ';font-weight:600') : '';
-            html += `<span class="plbl">ΔV</span><span class="pval" ${popupDiffStyle ? ('style="' + popupDiffStyle + '"') : ''}>${fmt(popupDiff, 2)} V</span>`;
+            const popupDiffSign = (popupDiff != null && popupDiff > 0) ? '+' : '';
+            html += `<span class="plbl">ΔV</span><span class="pval" ${popupDiffStyle ? ('style="' + popupDiffStyle + '"') : ''}>${popupDiffSign}${fmt(popupDiff, 2)} V</span>`;
             if (c.iSupported === false) {
                 html += `<span class="plbl">IMon / ISet</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
             } else {
