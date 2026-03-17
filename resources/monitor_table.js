@@ -275,8 +275,8 @@ function renderTable() {
     data = data.slice().sort((a, b) => {
         let va = a[sortCol], vb = b[sortCol];
         if (sortCol === 'diff') {
-            va = (a.vmon != null && a.vset != null) ? Math.abs(a.vmon - a.vset) : -1;
-            vb = (b.vmon != null && b.vset != null) ? Math.abs(b.vmon - b.vset) : -1;
+            va = (a.vmon != null && a.vset != null) ? (a.vmon - a.vset) : -Infinity;
+            vb = (b.vmon != null && b.vset != null) ? (b.vmon - b.vset) : -Infinity;
         }
         if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
         if (typeof va === 'boolean') { va = va?1:0; vb = vb?1:0; }
@@ -304,8 +304,9 @@ function renderTable() {
 
     for (const ch of data) {
         const key = ch.crate + '|' + ch.slot + '|' + ch.channel;
-        const diff   = (ch.vmon != null && ch.vset != null) ? Math.abs(ch.vmon - ch.vset) : null;
-        const dcls   = !ch.on ? 'diff-ok' : (diff == null || diff < DV.table_ok) ? 'diff-ok' : diff < DV.table_warn ? 'diff-warn' : 'diff-bad';
+        const diff   = (ch.vmon != null && ch.vset != null) ? (ch.vmon - ch.vset) : null;
+        const adiff  = diff != null ? Math.abs(diff) : null;
+        const dcls   = !ch.on ? 'diff-ok' : (adiff == null || adiff < DV.table_ok) ? 'diff-ok' : adiff < DV.table_warn ? 'diff-warn' : 'diff-bad';
         const cc     = classifyChannel(ch);
         const dotCls = cc.dot;
         const pwrCls = ch.on ? 'on' : 'off';
@@ -360,7 +361,7 @@ function renderTable() {
             const td9 = document.createElement('td');
             td9.className = dcls;
             td9.style.textAlign = 'right';
-            td9.textContent = fmt(diff, 2);
+            td9.textContent = fmtSigned(diff, 2);
             tr.appendChild(td9);
 
             // td10: imon
@@ -429,7 +430,7 @@ function renderTable() {
 
             // diff (td9)
             if (tr.cells[9].className !== dcls) tr.cells[9].className = dcls;
-            const diffTxt = fmt(diff, 2);
+            const diffTxt = fmtSigned(diff, 2);
             if (tr.cells[9].textContent !== diffTxt) tr.cells[9].textContent = diffTxt;
 
             // imon (td10)
@@ -498,6 +499,13 @@ function renderTable() {
 
     // Pass filtered count to footer without re-filtering
     updateFooter(data.length, total);
+}
+
+// Format a signed number with +/− prefix
+function fmtSigned(val, decimals) {
+    if (val == null || isNaN(val)) return '—';
+    const sign = val > 0 ? '+' : '';
+    return sign + val.toFixed(decimals);
 }
 
 // Helper: creates a closure for the power button onclick (avoids string eval)
