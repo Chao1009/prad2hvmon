@@ -600,20 +600,26 @@ function openModPopup(mod) {
         }
         grid.innerHTML = html;
         const hasChannel = !!c;
-        vsetInput.disabled = !hasChannel || !expertMode;
-        btnSetV.disabled   = !hasChannel || !expertMode;
-        btnSetV.style.display = (hasChannel && expertMode) ? '' : 'none';
-        vsetInput.style.opacity = (hasChannel && expertMode) ? '1' : '0.35';
+        // VSet editing requires Expert (level >= 2)
+        const canEdit = (accessLevel >= 2);
+        vsetInput.disabled = !hasChannel || !canEdit;
+        btnSetV.disabled   = !hasChannel || !canEdit;
+        btnSetV.style.display = (hasChannel && canEdit) ? '' : 'none';
+        vsetInput.style.opacity = (hasChannel && canEdit) ? '1' : '0.35';
 
         const iOK = hasChannel && c.iSupported !== false;
-        isetInput.disabled = !iOK || !expertMode;
-        btnSetI.disabled   = !iOK || !expertMode;
-        btnSetI.style.display = (iOK && expertMode) ? '' : 'none';
+        isetInput.disabled = !iOK || !canEdit;
+        btnSetI.disabled   = !iOK || !canEdit;
+        btnSetI.style.display = (iOK && canEdit) ? '' : 'none';
         rowI.style.display = (hasChannel && c.iSupported === false) ? 'none' : '';
-        isetInput.style.opacity = (iOK && expertMode) ? '1' : '0.35';
+        isetInput.style.opacity = (iOK && canEdit) ? '1' : '0.35';
 
-        btnOn.disabled     = !hasChannel;
-        btnOff.disabled    = !hasChannel;
+        // ON/OFF requires User (level >= 1)
+        const canPwr = (accessLevel >= 1);
+        btnOn.disabled     = !hasChannel || !canPwr;
+        btnOff.disabled    = !hasChannel || !canPwr;
+        btnOn.style.opacity  = (hasChannel && canPwr) ? '1' : '0.35';
+        btnOff.style.opacity = (hasChannel && canPwr) ? '1' : '0.35';
     }
     refresh();
     popups.set(mod.n, { el, refresh });
@@ -624,7 +630,7 @@ function openModPopup(mod) {
     // Action buttons
     btnSetV.addEventListener('mousedown', e => e.preventDefault());
     btnSetV.addEventListener('click', () => {
-        if (!hvMonitor || !expertMode) return;
+        if (!hvMonitor || accessLevel < 2) return;
         const c = chByName[mod.n]; if (!c) return;
         const v = parseFloat(vsetInput.value); if (isNaN(v)) return;
         const orig = c.vset;
@@ -638,7 +644,7 @@ function openModPopup(mod) {
 
     btnSetI.addEventListener('mousedown', e => e.preventDefault());
     btnSetI.addEventListener('click', () => {
-        if (!hvMonitor || !expertMode) return;
+        if (!hvMonitor || accessLevel < 2) return;
         const c = chByName[mod.n]; if (!c || c.iSupported === false) return;
         const v = parseFloat(isetInput.value); if (isNaN(v) || v < 0) return;
         const orig = c.iset;
@@ -650,13 +656,13 @@ function openModPopup(mod) {
     });
     isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
     btnOn.addEventListener('click', () => {
-        if (!hvMonitor) return;
+        if (!hvMonitor || accessLevel < 1) return;
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, true);
         c.on = true; dataDirty = true; refresh();
     });
     btnOff.addEventListener('click', () => {
-        if (!hvMonitor) return;
+        if (!hvMonitor || accessLevel < 1) return;
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, false);
         c.on = false; dataDirty = true; refresh();

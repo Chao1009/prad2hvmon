@@ -37,7 +37,7 @@ function initTableUI() {
 
     // ── Bulk ON / OFF buttons ───────────────────────────────────────────
     document.getElementById('btn-all-on').addEventListener('click', () => {
-        if (!hvMonitor || allChannels.length === 0) return;
+        if (!hvMonitor || allChannels.length === 0 || accessLevel < 1) return;
         const filtered = getFilteredChannels();
         const n = filtered.length;
         if (n === 0) return;
@@ -51,7 +51,7 @@ function initTableUI() {
     });
 
     document.getElementById('btn-all-off').addEventListener('click', () => {
-        if (!hvMonitor || allChannels.length === 0) return;
+        if (!hvMonitor || allChannels.length === 0 || accessLevel < 1) return;
         const filtered = getFilteredChannels();
         const n = filtered.length;
         if (n === 0) return;
@@ -70,29 +70,17 @@ function initTableUI() {
         toggleMute();
     });
 
-    // ── Expert mode toggle ──────────────────────────────────────────────
-    document.getElementById('expert-switch').addEventListener('change', e => {
-        if (e.target.checked) {
-            const ok = confirm(
-                '⚠ EXPERT MODE ⚠\n\n' +
-                'This enables direct VSet editing on all channels.\n' +
-                'Incorrect voltage settings can damage detector modules.\n\n' +
-                'You must know what you are doing before enabling this.\n\n' +
-                'Continue?'
-            );
-            if (!ok) { e.target.checked = false; return; }
-        }
-        expertMode = e.target.checked;
-        document.getElementById('expert-label').classList.toggle('active', expertMode);
-        // Show/hide All Set V group (expert only)
-        const setvGroup = document.getElementById('bulk-setv-group');
-        if (setvGroup) setvGroup.style.display = expertMode ? 'flex' : 'none';
-        dataDirty = true; boosterDirty = true; renderActiveTab();
-    });
+    // Expert toggle removed — access level is controlled via the login modal.
+    // Show/hide bulk-setv-group based on initial access level
+    const setvGroup = document.getElementById('bulk-setv-group');
+    if (setvGroup) setvGroup.style.display = expertMode ? 'flex' : 'none';
+    // Gate Load button based on initial access level
+    const btnLoad = document.getElementById('btn-load-settings');
+    if (btnLoad) { btnLoad.disabled = (accessLevel < 2); btnLoad.style.opacity = (accessLevel < 2) ? '0.35' : '1'; }
 
     // ── All Set V (expert mode bulk voltage set) ────────────────────────
     document.getElementById('btn-all-setv').addEventListener('click', () => {
-        if (!hvMonitor || !expertMode) return;
+        if (!hvMonitor || accessLevel < 2) return;
         const input = document.getElementById('bulk-setv-input');
         const v = parseFloat(input.value);
         if (isNaN(v) || v < 0) { input.style.borderColor = 'var(--red)'; return; }
@@ -150,8 +138,8 @@ function initTableUI() {
 
     // ── Load settings (expert mode only) ────────────────────────────────
     document.getElementById('btn-load-settings').addEventListener('click', () => {
-        if (!expertMode) {
-            alert('Enable Expert Mode to load settings.');
+        if (accessLevel < 2) {
+            alert('Expert access required to load settings.');
             return;
         }
         document.getElementById('load-settings-file').click();
@@ -159,7 +147,7 @@ function initTableUI() {
     document.getElementById('load-settings-file').addEventListener('change', e => {
         const file = e.target.files[0];
         if (!file) return;
-        if (!expertMode) { e.target.value = ''; return; }
+        if (accessLevel < 2) { e.target.value = ''; return; }
         if (!confirm(`Load settings from "${file.name}"?\n\nThis will write all saved parameters to the HV hardware.`)) {
             e.target.value = '';
             return;
@@ -461,6 +449,8 @@ function renderTable() {
                 pbtn.textContent = pwrTxt;
                 pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
             }
+            pbtn.disabled = (accessLevel < 1);
+            pbtn.style.opacity = (accessLevel < 1) ? '0.35' : '1';
         }
         if (fragment) {
             fragment.appendChild(tr);
@@ -674,7 +664,7 @@ function updatePollAge(sec) {
 }
 
 function togglePower(crate, slot, channel, on) {
-    if (!hvMonitor) return;
+    if (!hvMonitor || accessLevel < 1) return;
     hvMonitor.setChannelPower(crate, slot, channel, on);
     const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
     if (ch) ch.on = on;

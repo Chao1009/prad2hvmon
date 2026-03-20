@@ -250,6 +250,8 @@ static void printUsage(const char *prog)
               << "  -t <ms>     Poll interval in ms      (default: 2000)\n"
               << "  -n <count>  Fault log buffer size     (default: 200)\n"
               << "  -v <level>  Console verbosity: 0=silent, 1=faults only, 2=warn+fault (default: 2)\n"
+              << "  -U <pass>   User-level password      (default: none — full access)\n"
+              << "  -E <pass>   Expert-level password     (default: none — same as user)\n"
               << "  -h          Show this help\n";
 }
 
@@ -262,6 +264,8 @@ int main(int argc, char *argv[])
     int         pollInterval = 2000;
     int         faultLogCap  = 200;
     int         verbosity    = 2;  // 0=silent, 1=fault, 2=warn+fault
+    std::string userPass;              // -U: user-level access password
+    std::string expertPass;            // -E: expert-level access password
 
     // DATABASE_DIR is a compile-time define (same as the original project)
 #ifdef DATABASE_DIR
@@ -272,7 +276,7 @@ int main(int argc, char *argv[])
 
     // ── Parse command-line ───────────────────────────────────────────────
     int opt;
-    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:n:v:h")) != -1) {
+    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:n:v:U:E:h")) != -1) {
         switch (opt) {
         case 'c': crateFile     = optarg; break;
         case 'm': moduleFile    = optarg; break;
@@ -286,6 +290,8 @@ int main(int argc, char *argv[])
         case 't': pollInterval  = std::atoi(optarg); break;
         case 'n': faultLogCap   = std::atoi(optarg); break;
         case 'v': verbosity     = std::atoi(optarg); break;
+        case 'U': userPass      = optarg; break;
+        case 'E': expertPass    = optarg; break;
         case 'h':
         default:  printUsage(argv[0]); return (opt == 'h') ? 0 : 1;
         }
@@ -384,7 +390,8 @@ int main(int argc, char *argv[])
 
     // ── Start WebSocket + HTTP server (blocks on main thread) ────────────
     WsServer server(wsPort, store, cmdq, resourceDir,
-                    moduleFile, guiConfigFile, daqMapFile);
+                    moduleFile, guiConfigFile, daqMapFile,
+                    userPass, expertPass);
     g_server = &server;
 
     server.run();   // blocks until stop() is called

@@ -38,12 +38,9 @@
         </div>
         <div id="header-clock"></div>
         <div class="controls">
-            <div class="expert-toggle">
-                <span class="expert-label" id="expert-label">Expert</span>
-                <label class="switch">
-                    <input type="checkbox" id="expert-switch">
-                    <span class="slider"></span>
-                </label>
+            <div class="access-pill" id="access-pill" title="Click to change access level">
+                <span class="access-icon" id="access-icon">👁</span>
+                <span id="access-label">Guest</span>
             </div>
             <div class="status-pill" id="conn-pill">
                 <span class="dot"></span>
@@ -214,5 +211,37 @@
 <script src="monitor_geo.js"></script>
 <script src="monitor_booster.js"></script>
 <script src="monitor_faultlog.js"></script>
+<!-- Login modal -->
+<div id="login-overlay" class="login-overlay hidden">
+  <div class="login-modal">
+    <h2>Access Level</h2>
+    <div class="login-levels">
+      <label class="login-level">
+        <input type="radio" name="login-level" value="0" checked>
+        <span class="login-level-name">Guest</span>
+        <span class="login-level-desc">Watch only</span>
+      </label>
+      <label class="login-level">
+        <input type="radio" name="login-level" value="1">
+        <span class="login-level-name">User</span>
+        <span class="login-level-desc">Power control</span>
+      </label>
+      <label class="login-level">
+        <input type="radio" name="login-level" value="2">
+        <span class="login-level-name">Expert</span>
+        <span class="login-level-desc">Full control</span>
+      </label>
+    </div>
+    <div class="login-pw-row" id="login-pw-row" style="display:none">
+      <input type="password" id="login-pw" placeholder="Password" autocomplete="off">
+    </div>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-buttons">
+      <button class="btn login-btn" id="login-cancel">Cancel</button>
+      <button class="btn login-btn login-btn-go" id="login-go">Login</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

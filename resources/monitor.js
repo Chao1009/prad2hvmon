@@ -7,7 +7,9 @@ const MOD_MAP = {};
 // ═════════════════════════════════════════════════════════════════════
 //  Global state
 // ═════════════════════════════════════════════════════════════════════
-let expertMode   = false;
+let accessLevel  = 0;        // 0=guest, 1=user, 2=expert
+let authRequired = false;    // true if daemon has passwords configured
+let expertMode   = false;    // computed alias: accessLevel >= 2
 let hvMonitor    = null;
 let allChannels  = [];
 let sortCol      = 'crate';
@@ -165,16 +167,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const client = new DaemonClient(`ws://${wsHost}:${wsPort}`);
     client._listeners.onConnect.push(() => {
         bootstrap(client.hvMonitor, client.boosterMonitor);
+        // Read initial auth state from daemon
+        client._withInit(init => {
+            authRequired = !!init.auth_required;
+            accessLevel = init.access_level != null ? init.access_level : 2;
+            expertMode = (accessLevel >= 2);
+            updateAccessPill();
+            updateAccessUI();
+        });
     });
     client._listeners.onDisconnect.push(() => {
         setPillConnected(false);
         clearAllPendingSets();
+        // Reset to guest on disconnect — daemon will send fresh access_level on reconnect
+        accessLevel = 0;
+        expertMode = false;
+        updateAccessPill();
+        dataDirty = true;
+        boosterDirty = true;
     });
+    client._listeners.onAuthResult.push(onAuthResult);
 
     initTableUI();
     initTabs();
     initGeoMap();
     initBoosterTab();
+    initLoginModal(client);
 
     // Render loop — driven by requestAnimationFrame so it never stacks,
     // skips hidden tabs automatically, and self-throttles to display rate.
@@ -217,6 +235,117 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 });
+
+// ═════════════════════════════════════════════════════════════════════
+//  Access control — auth result handler + login modal
+// ═════════════════════════════════════════════════════════════════════
+
+function onAuthResult(msg) {
+    accessLevel = msg.granted;
+    expertMode = (accessLevel >= 2);
+    updateAccessPill();
+    updateAccessUI();
+
+    const modal   = document.getElementById('login-overlay');
+    const errorEl = document.getElementById('login-error');
+
+    if (msg.granted === msg.requested) {
+        // Success — close modal
+        modal.classList.add('hidden');
+        errorEl.textContent = '';
+    } else if (msg.reason) {
+        // Denied — show error, keep modal open
+        errorEl.textContent = msg.reason;
+        errorEl.classList.add('shake');
+        setTimeout(() => errorEl.classList.remove('shake'), 400);
+    }
+}
+
+function updateAccessPill() {
+    const icon  = document.getElementById('access-icon');
+    const label = document.getElementById('access-label');
+    const pill  = document.getElementById('access-pill');
+    if (!pill) return;
+    const names = ['Guest', 'User', 'Expert'];
+    const icons = ['👁', '⚡', '🔧'];
+    const cls   = ['access-guest', 'access-user', 'access-expert'];
+    label.textContent = names[accessLevel] || 'Guest';
+    icon.textContent  = icons[accessLevel] || '👁';
+    pill.className    = 'access-pill ' + (cls[accessLevel] || 'access-guest');
+}
+
+// Update all access-gated UI elements when accessLevel changes
+function updateAccessUI() {
+    dataDirty = true;
+    boosterDirty = true;
+    boardDirty = true;
+    // Load button: Expert only
+    const btnLoad = document.getElementById('btn-load-settings');
+    if (btnLoad) { btnLoad.disabled = (accessLevel < 2); btnLoad.style.opacity = (accessLevel < 2) ? '0.35' : '1'; }
+    // Bulk ON/OFF: User or higher
+    const btnAllOn  = document.getElementById('btn-all-on');
+    const btnAllOff = document.getElementById('btn-all-off');
+    if (btnAllOn)  { btnAllOn.disabled  = (accessLevel < 1); btnAllOn.style.opacity  = (accessLevel < 1) ? '0.35' : '1'; }
+    if (btnAllOff) { btnAllOff.disabled = (accessLevel < 1); btnAllOff.style.opacity = (accessLevel < 1) ? '0.35' : '1'; }
+    // Bulk Set V group: Expert only
+    const bulkSetv = document.getElementById('bulk-setv-group');
+    if (bulkSetv) bulkSetv.style.display = expertMode ? '' : 'none';
+}
+
+function initLoginModal(client) {
+    const pill    = document.getElementById('access-pill');
+    const overlay = document.getElementById('login-overlay');
+    if (!pill || !overlay) return;
+    const radios    = overlay.querySelectorAll('input[name="login-level"]');
+    const pwRow     = document.getElementById('login-pw-row');
+    const pwInput   = document.getElementById('login-pw');
+    const errorEl   = document.getElementById('login-error');
+    const btnGo     = document.getElementById('login-go');
+    const btnCancel = document.getElementById('login-cancel');
+
+    function getSelectedLevel() {
+        const checked = overlay.querySelector('input[name="login-level"]:checked');
+        return checked ? parseInt(checked.value) : 0;
+    }
+
+    pill.addEventListener('click', () => {
+        // Pre-select current level
+        radios.forEach(r => { r.checked = (parseInt(r.value) === accessLevel); });
+        pwInput.value = '';
+        errorEl.textContent = '';
+        pwRow.style.display = getSelectedLevel() > 0 ? '' : 'none';
+        overlay.classList.remove('hidden');
+        if (getSelectedLevel() > 0) pwInput.focus();
+    });
+
+    radios.forEach(r => r.addEventListener('change', () => {
+        const lv = getSelectedLevel();
+        pwRow.style.display = lv > 0 ? '' : 'none';
+        errorEl.textContent = '';
+        if (lv > 0) setTimeout(() => pwInput.focus(), 0);
+    }));
+
+    btnGo.addEventListener('click', () => {
+        const lv = getSelectedLevel();
+        if (lv === 0) {
+            client.authenticate(0);
+        } else {
+            client.authenticate(lv, pwInput.value);
+        }
+    });
+
+    pwInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') btnGo.click();
+    });
+
+    btnCancel.addEventListener('click', () => {
+        overlay.classList.add('hidden');
+    });
+
+    overlay.addEventListener('click', e => {
+        if (e.target === overlay) overlay.classList.add('hidden');
+    });
+}
 
 function rebuildChMap() {
     chByName = {};

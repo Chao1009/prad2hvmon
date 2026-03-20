@@ -108,19 +108,22 @@ function openBoosterPopup(mod) {
         }
         grid.innerHTML = html;
         const hasConn = !!(bs && bs.connected);
-        vsetInput.disabled = !hasConn || !expertMode;
-        btnSetV.disabled   = !hasConn || !expertMode;
-        btnSetV.style.display = (hasConn && expertMode) ? '' : 'none';
-        vsetInput.style.opacity = (hasConn && expertMode) ? '1' : '0.35';
-        isetInput.disabled = !hasConn || !expertMode;
-        btnSetI.disabled   = !hasConn || !expertMode;
-        btnSetI.style.display = (hasConn && expertMode) ? '' : 'none';
-        isetInput.style.opacity = (hasConn && expertMode) ? '1' : '0.35';
-        // ON/OFF only requires connection
-        btnOn.disabled  = !hasConn;
-        btnOff.disabled = !hasConn;
-        btnOn.style.opacity  = hasConn ? '1' : '0.35';
-        btnOff.style.opacity = hasConn ? '1' : '0.35';
+        // VSet/ISet editing requires Expert (level >= 2)
+        const canEdit = (accessLevel >= 2);
+        vsetInput.disabled = !hasConn || !canEdit;
+        btnSetV.disabled   = !hasConn || !canEdit;
+        btnSetV.style.display = (hasConn && canEdit) ? '' : 'none';
+        vsetInput.style.opacity = (hasConn && canEdit) ? '1' : '0.35';
+        isetInput.disabled = !hasConn || !canEdit;
+        btnSetI.disabled   = !hasConn || !canEdit;
+        btnSetI.style.display = (hasConn && canEdit) ? '' : 'none';
+        isetInput.style.opacity = (hasConn && canEdit) ? '1' : '0.35';
+        // ON/OFF requires User (level >= 1)
+        const canPwr = (accessLevel >= 1);
+        btnOn.disabled  = !hasConn || !canPwr;
+        btnOff.disabled = !hasConn || !canPwr;
+        btnOn.style.opacity  = (hasConn && canPwr) ? '1' : '0.35';
+        btnOff.style.opacity = (hasConn && canPwr) ? '1' : '0.35';
     }
     refresh();
     popups.set(mod.n, { el, refresh });
@@ -129,7 +132,7 @@ function openBoosterPopup(mod) {
 
     btnSetV.addEventListener('mousedown', e => e.preventDefault());
     btnSetV.addEventListener('click', () => {
-        if (!boosterMonitor || !expertMode) return;
+        if (!boosterMonitor || accessLevel < 2) return;
         const v = parseFloat(vsetInput.value);
         if (isNaN(v) || v < 0) { vsetInput.style.borderColor = 'var(--red)'; return; }
         vsetInput.style.borderColor = '';
@@ -145,7 +148,7 @@ function openBoosterPopup(mod) {
 
     btnSetI.addEventListener('mousedown', e => e.preventDefault());
     btnSetI.addEventListener('click', () => {
-        if (!boosterMonitor || !expertMode) return;
+        if (!boosterMonitor || accessLevel < 2) return;
         const v = parseFloat(isetInput.value);
         if (isNaN(v) || v < 0) { isetInput.style.borderColor = 'var(--red)'; return; }
         isetInput.style.borderColor = '';
@@ -160,14 +163,14 @@ function openBoosterPopup(mod) {
     isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
 
     btnOn.addEventListener('click', () => {
-        if (!boosterMonitor) return;
+        if (!boosterMonitor || accessLevel < 1) return;
         const idx = supplyIdx(); if (idx < 0) return;
         boosterMonitor.setOutput(idx, true);
         const bs = boosterByName[mod.n]; if (bs) bs.on = true;
         boosterDirty = true; refresh();
     });
     btnOff.addEventListener('click', () => {
-        if (!boosterMonitor) return;
+        if (!boosterMonitor || accessLevel < 1) return;
         const idx = supplyIdx(); if (idx < 0) return;
         boosterMonitor.setOutput(idx, false);
         const bs = boosterByName[mod.n]; if (bs) bs.on = false;
@@ -260,19 +263,19 @@ function boosterCardInnerHtml(s) {
   <div class="booster-controls-vset">
     <input class="booster-vset-input" type="text" inputmode="decimal"
            placeholder="VSet (V)" value="${escHtml(vsetVal)}" data-vset-input data-orig="${escHtml(vsetVal)}"
-           ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
-    <button class="booster-btn b-btn-set" data-set-v style="display:${expertMode ? '' : 'none'}"
-            ${!expertMode ? 'disabled' : ''}>Set V</button>
+           ${accessLevel < 2 ? 'disabled' : ''} style="opacity:${accessLevel >= 2 ? '1' : '0.35'}">
+    <button class="booster-btn b-btn-set" data-set-v style="display:${accessLevel >= 2 ? '' : 'none'}"
+            ${accessLevel < 2 ? 'disabled' : ''}>Set V</button>
   </div>
   <div class="booster-controls-iset">
     <input class="booster-iset-input" type="text" inputmode="decimal"
            placeholder="ISet (A)" value="${escHtml(isetVal)}" data-iset-input data-orig="${escHtml(isetVal)}"
-           ${!expertMode ? 'disabled' : ''} style="opacity:${expertMode ? '1' : '0.35'}">
-    <button class="booster-btn b-btn-seti" data-set-i style="display:${expertMode ? '' : 'none'}"
-            ${!expertMode ? 'disabled' : ''}>Set I</button>
+           ${accessLevel < 2 ? 'disabled' : ''} style="opacity:${accessLevel >= 2 ? '1' : '0.35'}">
+    <button class="booster-btn b-btn-seti" data-set-i style="display:${accessLevel >= 2 ? '' : 'none'}"
+            ${accessLevel < 2 ? 'disabled' : ''}>Set I</button>
     <span class="booster-controls-spacer"></span>
-    <button class="booster-btn b-btn-on"  data-on>ON</button>
-    <button class="booster-btn b-btn-off" data-off>OFF</button>
+    <button class="booster-btn b-btn-on"  data-on ${accessLevel < 1 ? 'disabled' : ''} style="opacity:${accessLevel >= 1 ? '1' : '0.35'}">ON</button>
+    <button class="booster-btn b-btn-off" data-off ${accessLevel < 1 ? 'disabled' : ''} style="opacity:${accessLevel >= 1 ? '1' : '0.35'}">OFF</button>
   </div>
 </div>
 <div class="booster-status" data-field="status">${boosterStatusHtml(s)}</div>`;
@@ -311,29 +314,36 @@ function updateBoosterCard(card, idx, s) {
         if (statusEl.innerHTML !== wantStatus) statusEl.innerHTML = wantStatus;
     }
 
-    // Expert mode guard + update input values when not being edited
+    // Access level guard + update input values when not being edited
+    const canEdit = (accessLevel >= 2);
+    const canPwr  = (accessLevel >= 1);
     const vsetEl = card.querySelector('[data-vset-input]');
     const setVEl = card.querySelector('[data-set-v]');
     if (vsetEl) {
-        vsetEl.disabled = !expertMode; vsetEl.style.opacity = expertMode ? '1' : '0.35';
+        vsetEl.disabled = !canEdit; vsetEl.style.opacity = canEdit ? '1' : '0.35';
         if (document.activeElement !== vsetEl) {
             const newV = s.vset != null ? s.vset.toFixed(2) : '';
             vsetEl.value = newV;
             vsetEl.dataset.orig = newV;
         }
     }
-    if (setVEl) { setVEl.disabled = !expertMode; setVEl.style.display = expertMode ? '' : 'none'; }
+    if (setVEl) { setVEl.disabled = !canEdit; setVEl.style.display = canEdit ? '' : 'none'; }
     const isetEl = card.querySelector('[data-iset-input]');
     const setIEl = card.querySelector('[data-set-i]');
     if (isetEl) {
-        isetEl.disabled = !expertMode; isetEl.style.opacity = expertMode ? '1' : '0.35';
+        isetEl.disabled = !canEdit; isetEl.style.opacity = canEdit ? '1' : '0.35';
         if (document.activeElement !== isetEl) {
             const newI = s.iset != null ? s.iset.toFixed(3) : '';
             isetEl.value = newI;
             isetEl.dataset.orig = newI;
         }
     }
-    if (setIEl) { setIEl.disabled = !expertMode; setIEl.style.display = expertMode ? '' : 'none'; }
+    if (setIEl) { setIEl.disabled = !canEdit; setIEl.style.display = canEdit ? '' : 'none'; }
+    // ON/OFF requires User (level >= 1)
+    const btnOnEl  = card.querySelector('[data-on]');
+    const btnOffEl = card.querySelector('[data-off]');
+    if (btnOnEl)  { btnOnEl.disabled  = !canPwr; btnOnEl.style.opacity  = canPwr ? '1' : '0.35'; }
+    if (btnOffEl) { btnOffEl.disabled = !canPwr; btnOffEl.style.opacity = canPwr ? '1' : '0.35'; }
 }
 
 function wireBoosterCard(card, idx) {
@@ -346,7 +356,7 @@ function wireBoosterCard(card, idx) {
     vsetInp.addEventListener('keydown', e => { if (e.key === 'Enter') setVBtn.click(); });
     setVBtn.addEventListener('mousedown', e => e.preventDefault());
     setVBtn.addEventListener('click', () => {
-        if (!boosterMonitor || !expertMode) return;
+        if (!boosterMonitor || accessLevel < 2) return;
         const v = parseFloat(vsetInp.value);
         if (isNaN(v) || v < 0) { vsetInp.style.borderColor = 'var(--red)'; return; }
         vsetInp.style.borderColor = '';
@@ -360,7 +370,7 @@ function wireBoosterCard(card, idx) {
     isetInp.addEventListener('keydown', e => { if (e.key === 'Enter') setIBtn.click(); });
     setIBtn.addEventListener('mousedown', e => e.preventDefault());
     setIBtn.addEventListener('click', () => {
-        if (!boosterMonitor || !expertMode) return;
+        if (!boosterMonitor || accessLevel < 2) return;
         const v = parseFloat(isetInp.value);
         if (isNaN(v) || v < 0) { isetInp.style.borderColor = 'var(--red)'; return; }
         isetInp.style.borderColor = '';
@@ -370,12 +380,14 @@ function wireBoosterCard(card, idx) {
         isetInp.dataset.orig = isetInp.value;
     });
 
-    // ON/OFF — unchanged
+    // ON/OFF requires User (level >= 1)
     card.querySelector('[data-on]').addEventListener('click', () => {
-        if (boosterMonitor) boosterMonitor.setOutput(idx, true);
+        if (!boosterMonitor || accessLevel < 1) return;
+        boosterMonitor.setOutput(idx, true);
     });
     card.querySelector('[data-off]').addEventListener('click', () => {
-        if (boosterMonitor) boosterMonitor.setOutput(idx, false);
+        if (!boosterMonitor || accessLevel < 1) return;
+        boosterMonitor.setOutput(idx, false);
     });
 }
 

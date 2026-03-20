@@ -35,6 +35,8 @@ class DaemonClient {
             boosterUpdated:  [],
             onConnect:       [],
             onDisconnect:    [],
+            onAuthResult:    [],
+            onError:         [],
         };
 
         // Cached data for request-response style calls
@@ -55,9 +57,15 @@ class DaemonClient {
         this._connect();
     }
 
+    // ── Authentication ───────────────────────────────────────────────────
+    authenticate(level, password) {
+        this._send({ type: 'auth', level, password: password || '' });
+    }
+
     // ── WebSocket lifecycle ──────────────────────────────────────────────
 
     _connect() {
+        this._initData = null;  // clear stale data so _withInit queues until fresh init
         this._ws = new WebSocket(this._url);
 
         this._ws.onopen = () => {
@@ -132,6 +140,15 @@ class DaemonClient {
                 this._loadCb = null;
                 cb(msg.data);
             }
+            break;
+
+        case 'auth_result':
+            this._listeners.onAuthResult.forEach(fn => fn(msg));
+            break;
+
+        case 'error':
+            console.warn('Daemon error:', msg.code, msg.message);
+            this._listeners.onError.forEach(fn => fn(msg));
             break;
 
         default:

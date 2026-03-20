@@ -10,6 +10,7 @@
 //   - Periodically check SnapshotStore for new data and broadcast
 //   - Receive JSON commands from clients and push to CommandQueue
 //   - Serve static config files on initial connect (module geometry, etc.)
+//   - Enforce three-tier access control (Guest / User / Expert)
 // ─────────────────────────────────────────────────────────────────────────────
 
 #ifndef ASIO_STANDALONE
@@ -22,7 +23,7 @@
 
 #include "hv_daemon.h"
 
-#include <set>
+#include <map>
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -43,9 +44,13 @@ public:
              const std::string &resource_dir    = "",
              const std::string &module_geo_path = "",
              const std::string &gui_config_path = "",
-             const std::string &daq_map_path    = "")
+             const std::string &daq_map_path    = "",
+             const std::string &user_password   = "",
+             const std::string &expert_password = "")
         : port_(port), store_(store), cmdq_(cmdq),
-          resource_dir_(resource_dir)
+          resource_dir_(resource_dir),
+          user_pass_(user_password),
+          expert_pass_(expert_password)
     {
         // Pre-load static config files into memory
         module_geo_json_ = readFile(module_geo_path, "[]");
@@ -87,6 +92,10 @@ public:
         std::cout << fmt::format("WebSocket + HTTP server listening on port {}\n", port_);
         if (!resource_dir_.empty())
             std::cout << fmt::format("  Dashboard: http://localhost:{}/\n", port_);
+        if (authRequired())
+            std::cout << "  Access control: ENABLED (passwords configured)\n";
+        else
+            std::cout << "  Access control: DISABLED (no passwords — full access for all)\n";
 
         // Set up a recurring timer to broadcast snapshots
         scheduleBroadcast();
@@ -98,7 +107,7 @@ public:
     {
         server_.stop_listening();
         // Close all connections gracefully
-        for (auto &hdl : connections_) {
+        for (auto &[hdl, info] : connections_) {
             try {
                 server_.close(hdl, websocketpp::close::status::going_away,
                               "daemon shutting down");
@@ -110,21 +119,36 @@ public:
     size_t clientCount() const { return connections_.size(); }
 
 private:
+    // ── Per-connection state ─────────────────────────────────────────────
+
+    struct ClientInfo {
+        int accessLevel = 0;  // 0=guest, 1=user, 2=expert
+    };
+
+    // True if at least one password is configured
+    bool authRequired() const { return !user_pass_.empty() || !expert_pass_.empty(); }
+
     // ── Connection lifecycle ─────────────────────────────────────────────
 
     void onOpen(connection_hdl hdl)
     {
-        connections_.insert(hdl);
-        std::cout << fmt::format("Client connected ({} total)\n",
-                                 connections_.size());
+        // Default: guest if passwords configured, full expert otherwise
+        ClientInfo info;
+        info.accessLevel = authRequired() ? 0 : 2;
+        connections_[hdl] = info;
+
+        std::cout << fmt::format("Client connected ({} total, level={})\n",
+                                 connections_.size(), info.accessLevel);
 
         // Send static config to the new client immediately
         json init;
         init["type"]               = "init";
-        init["module_geometry"]     = json::parse(module_geo_json_, nullptr, false);
+        init["module_geometry"]    = json::parse(module_geo_json_, nullptr, false);
         init["gui_config"]         = json::parse(gui_config_json_, nullptr, false);
         init["daq_map"]            = json::parse(daq_map_json_,    nullptr, false);
         init["fault_log_capacity"] = store_.faultLogCapacity();
+        init["auth_required"]      = authRequired();
+        init["access_level"]       = info.accessLevel;
 
         try {
             server_.send(hdl, init.dump(), websocketpp::frame::opcode::text);
@@ -158,6 +182,45 @@ private:
             json cmd = json::parse(msg->get_payload());
             std::string type = cmd.value("type", "");
 
+            // ── Authentication request (handled directly, not queued) ────
+            if (type == "auth") {
+                handleAuth(hdl, cmd);
+                return;
+            }
+
+            // ── Access control gating ───────────────────────────────────
+            int level = 0;
+            auto it = connections_.find(hdl);
+            if (it != connections_.end())
+                level = it->second.accessLevel;
+
+            // Power commands require level >= 1 (User)
+            if (type == "set_power" || type == "set_all_power" ||
+                type == "booster_set_output")
+            {
+                if (level < 1) {
+                    sendError(hdl, "access_denied",
+                              "Power control requires User access or higher");
+                    return;
+                }
+            }
+
+            // Parameter edits + load require level >= 2 (Expert)
+            if (type == "set_voltage" || type == "set_current" ||
+                type == "set_svmax"   || type == "set_name"    ||
+                type == "set_all_voltage" ||
+                type == "load_settings" ||
+                type == "booster_set_voltage" || type == "booster_set_current")
+            {
+                if (level < 2) {
+                    sendError(hdl, "access_denied",
+                              "Parameter editing requires Expert access");
+                    return;
+                }
+            }
+
+            // save_settings (snapshot export) is ungated — safe for all levels
+
             // save_settings / load_settings: route to HV queue, remember who asked
             if (type == "save_settings") {
                 std::lock_guard lk(settings_mu_);
@@ -186,6 +249,77 @@ private:
         } catch (const json::parse_error &e) {
             std::cerr << "Invalid JSON from client: " << e.what() << "\n";
         }
+    }
+
+    // ── Authentication handler ───────────────────────────────────────────
+
+    void handleAuth(connection_hdl hdl, const json &cmd)
+    {
+        int requested = cmd.value("level", 0);
+        std::string pw = cmd.value("password", "");
+
+        int granted = 0;
+        std::string reason;
+
+        if (requested <= 0) {
+            // Guest — always succeeds (also used for "log out")
+            granted = 0;
+        }
+        else if (!authRequired()) {
+            // No passwords configured — grant whatever is requested
+            granted = std::min(requested, 2);
+        }
+        else if (requested == 1) {
+            // User level — either password grants at least user access
+            if (pw == user_pass_ || (!expert_pass_.empty() && pw == expert_pass_)) {
+                granted = 1;
+            } else {
+                reason = "incorrect password";
+            }
+        }
+        else {
+            // Expert level
+            if (!expert_pass_.empty() && pw == expert_pass_) {
+                granted = 2;
+            } else if (expert_pass_.empty() && pw == user_pass_) {
+                // No separate expert password — user password grants expert
+                granted = 2;
+            } else {
+                reason = "incorrect password";
+            }
+        }
+
+        connections_[hdl].accessLevel = granted;
+
+        json resp;
+        resp["type"]      = "auth_result";
+        resp["granted"]   = granted;
+        resp["requested"] = requested;
+        if (!reason.empty()) resp["reason"] = reason;
+
+        try {
+            server_.send(hdl, resp.dump(), websocketpp::frame::opcode::text);
+        } catch (...) {}
+
+        const char *labels[] = { "Guest", "User", "Expert" };
+        std::cout << fmt::format("Auth: client requested={}, granted={} ({})\n",
+                                 labels[std::min(requested, 2)],
+                                 labels[std::min(granted, 2)],
+                                 reason.empty() ? "ok" : reason);
+    }
+
+    // ── Error response helper ────────────────────────────────────────────
+
+    void sendError(connection_hdl hdl, const std::string &code,
+                   const std::string &message)
+    {
+        json err;
+        err["type"]    = "error";
+        err["code"]    = code;
+        err["message"] = message;
+        try {
+            server_.send(hdl, err.dump(), websocketpp::frame::opcode::text);
+        } catch (...) {}
     }
 
     // ── Broadcast timer ──────────────────────────────────────────────────
@@ -279,7 +413,7 @@ private:
         // Copy handles — a failed send could trigger an async close that
         // modifies connections_ on the next event-loop tick.
         auto hdls = connections_;
-        for (auto &hdl : hdls) {
+        for (auto &[hdl, info] : hdls) {
             try {
                 server_.send(hdl, msg, websocketpp::frame::opcode::text);
             } catch (const std::exception &e) {
@@ -383,7 +517,7 @@ private:
             return a.owner_before(b);
         }
     };
-    std::set<connection_hdl, hdl_less> connections_;
+    std::map<connection_hdl, ClientInfo, hdl_less> connections_;
 
     // Version tracking for change-detection broadcasts
     uint64_t last_hv_ver_  = 0;
@@ -402,4 +536,8 @@ private:
     std::string module_geo_json_;
     std::string gui_config_json_;
     std::string daq_map_json_;
+
+    // Access control passwords (empty = not configured)
+    std::string user_pass_;
+    std::string expert_pass_;
 };
