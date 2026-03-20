@@ -27,7 +27,7 @@ Real-time high-voltage monitoring and control for the PRad-II HyCal calorimeter 
     client   client   (wscat)
 ```
 
-The daemon owns all hardware connections and makes all status decisions (fault, warning, ΔV threshold). Clients are pure displays — they read `level`, `dv_warn`, and other fields from the daemon's JSON and render them. No classification logic runs on the client.
+The daemon owns all hardware connections and makes all status decisions (fault, warning, ΔV threshold). Clients are pure displays — they read `level`, `dv_warn`, and other fields from the daemon's JSON and render them. No classification logic runs on the client. Access control (Guest/User/Expert) is enforced server-side per WebSocket connection.
 
 ## Quick Start
 
@@ -39,6 +39,9 @@ make -j$(nproc)
 
 # Start daemon (serves both WebSocket and dashboard HTTP on port 8765)
 ./bin/prad2hvd
+
+# With access control (optional — omit for full access)
+./bin/prad2hvd -U operator -E expert
 
 # Open in any browser
 # http://localhost:8765/
@@ -76,8 +79,43 @@ Headless process that polls hardware, classifies channel status, logs faults, an
 | `-t <ms>` | Poll interval in ms (default: 2000) |
 | `-n <count>` | Fault log buffer size for live display (default: 200) |
 | `-v <level>` | Console verbosity: 0=silent, 1=faults only, 2=warn+fault (default: 2) |
+| `-U <pass>` | User-level password for access control (default: none) |
+| `-E <pass>` | Expert-level password for access control (default: none) |
 
-Stop with `Ctrl+C`. Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected.
+Stop with `Ctrl+C`.
+
+### Access Control
+
+The daemon supports three access levels, enforced server-side. Clients authenticate via a login dialog in the dashboard header.
+
+| Capability | Guest | User | Expert |
+|---|---|---|---|
+| Live monitoring (all tabs) | ✓ | ✓ | ✓ |
+| Alarm mute, Save settings | ✓ | ✓ | ✓ |
+| Channel ON/OFF, bulk ON/OFF | — | ✓ | ✓ |
+| Booster ON/OFF | — | ✓ | ✓ |
+| VSet/ISet/SVMax/Name editing | — | — | ✓ |
+| Booster VSet/ISet editing | — | — | ✓ |
+| Load settings, bulk Set V | — | — | ✓ |
+
+**No passwords configured** (default): all clients get full Expert access. This is backward-compatible — the daemon behaves exactly as before.
+
+**With passwords**: every new connection starts as Guest (watch-only). Click the access pill in the header to open the login dialog, select a level, and enter the password.
+
+```bash
+# Single password for both levels
+./bin/prad2hvd -U mypassword
+
+# Separate passwords (expert password also grants User access)
+./bin/prad2hvd -U operator -E supervisor
+
+# Only expert password set — User level is open, Expert is protected
+./bin/prad2hvd -E expert123
+```
+
+The daemon logs authentication attempts to the console. All command gating is enforced server-side — client-side UI disabling is cosmetic only.
+
+Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected.
 
 ### Fault Log Format
 
@@ -97,7 +135,7 @@ Use `tmux` to keep the daemon running after logout:
 
 ```bash
 # Start in a named tmux session
-tmux new-session -d -s hvd './bin/prad2hvd -v 1'
+tmux new-session -d -s hvd './bin/prad2hvd -v 1 -U operator -E expert'
 
 # Detach and log out — daemon keeps running
 
@@ -155,7 +193,7 @@ Save and restore all writable channel parameters (VSet, ISet, SVMax, etc.) via t
 | `-p <port>` | Daemon port (default: 8765) |
 | `-t <sec>` | Timeout in seconds (default: 10) |
 
-The daemon must be running. Unchanged parameters are skipped (no unnecessary hardware writes). The write command reports `restored / unchanged / skipped / errors`.
+The daemon must be running. Unchanged parameters are skipped (no unnecessary hardware writes). The write command reports `restored / unchanged / skipped / errors`. Note: CLI `read` works at any access level, but CLI `write` sends `load_settings` which requires Expert. When access control is enabled (`-U`/`-E`), CLI write connects as Guest and will be rejected — temporarily omit the password flags for CLI restore operations.
 
 ## Web Client
 
@@ -188,8 +226,9 @@ The tunnel must stay open while you use the dashboard.
 
 ## Dashboard Features
 
-- **Channel Table** — Sortable, filterable, live-updating. Inline VSet/ISet/SVMax/Name editing in expert mode (click ✏ to edit, Enter/✓ to apply, Escape/✕ to cancel). Bulk ON/OFF and bulk Set V on filtered channels. Summary strip with fault/warning counts.
-- **Save / Load** — Save all writable parameters to JSON, or restore from a previously saved file. Available from the tab bar (GUI) or command line (`prad2hvmon read`/`write`). Both paths go through the daemon — same logic, same format.
+- **Channel Table** — Sortable, filterable, live-updating. Inline VSet/ISet/SVMax/Name editing in Expert mode (click ✏ to edit, Enter/✓ to apply, Escape/✕ to cancel). Bulk ON/OFF (User+) and bulk Set V (Expert) on filtered channels. Summary strip with fault/warning counts.
+- **Access Control** — Three-tier login (Guest / User / Expert) via header pill. Guest is watch-only, User enables power control, Expert unlocks all editing. Server-enforced.
+- **Save / Load** — Save all writable parameters to JSON (all levels), or restore from a previously saved file (Expert only). Available from the tab bar (GUI) or command line (`prad2hvmon read`/`write`). Both paths go through the daemon — same logic, same format.
 - **Board Status** — Per-board temperature, HVMax, firmware, status.
 - **HyCal Geometry Map** — 2D canvas at physical positions. Color by VMon, VSet, |ΔV|, or Status. Click for draggable live popups with controls.
 - **Booster HV Panel** — TDK-Lambda GEN supply cards with live readback, VSet/ISet controls, ON/OFF. Connection managed by daemon.
