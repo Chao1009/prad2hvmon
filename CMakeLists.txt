@@ -88,6 +88,9 @@ if(CAENHVWRAPPER_LIB)
     target_link_libraries(caen_lib PUBLIC ${CAENHVWRAPPER_LIB})
 endif()
 
+# ── zlib (required by websocketpp permessage-deflate compression) ─────────────
+find_package(ZLIB REQUIRED)
+
 # ── Daemon executable ────────────────────────────────────────────────────────
 add_executable(prad2hvd
     src/main.cpp
@@ -111,6 +114,7 @@ target_link_libraries(prad2hvd PRIVATE
     fmt::fmt
     websocketpp_lib
     asio_standalone
+    ZLIB::ZLIB
     pthread
 )
 

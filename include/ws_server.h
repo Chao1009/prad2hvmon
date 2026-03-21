@@ -18,6 +18,7 @@
 #endif
 
 #include <websocketpp/config/asio_no_tls.hpp>
+#include <websocketpp/extensions/permessage_deflate/enabled.hpp>
 #include <websocketpp/server.hpp>
 #include <nlohmann/json.hpp>
 
@@ -32,7 +33,18 @@
 #include <chrono>
 
 using json = nlohmann::json;
-using WsServerType = websocketpp::server<websocketpp::config::asio>;
+
+// ── Custom websocketpp config: Asio (no TLS) + permessage-deflate ────
+// The hv_snapshot JSON for ~1700 channels is 400–600 KB of highly
+// repetitive text.  permessage-deflate compresses it ~10× on the wire,
+// which eliminates the periodic micro-freeze when tunnelling over SSH.
+// Browsers negotiate the extension automatically.
+struct asio_deflate_config : public websocketpp::config::asio {
+    typedef websocketpp::extensions::permessage_deflate::enabled
+        <asio_deflate_config> permessage_deflate_type;
+};
+
+using WsServerType = websocketpp::server<asio_deflate_config>;
 using connection_hdl = websocketpp::connection_hdl;
 
 
