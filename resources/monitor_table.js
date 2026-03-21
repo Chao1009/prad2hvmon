@@ -6,6 +6,7 @@ function initTableUI() {
         if (!hvMonitor) return;
         hvMonitor.readAll(jsonStr => {
             allChannels = JSON.parse(jsonStr);
+            for (const ch of allChannels) ch._cc = classifyChannel(ch);
             rebuildChMap();
             populateCrateChips();
             dataDirty = true; renderActiveTab();
@@ -214,8 +215,8 @@ function getFilteredChannels() {
     if (filterStatus === 'on')           data = data.filter(c => c.on);
     else if (filterStatus === 'off')     data = data.filter(c => !c.on);
     else if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
-    else if (filterStatus === 'warn')    data = data.filter(c => classifyChannel(c).isWarn);
-    else if (filterStatus === 'fault')   data = data.filter(c => classifyChannel(c).isFault);
+    else if (filterStatus === 'warn')    data = data.filter(c => c._cc.isWarn);
+    else if (filterStatus === 'fault')   data = data.filter(c => c._cc.isFault);
     if (filterCrate) data = data.filter(c => c.crate === filterCrate);
     if (searchText) {
         const colonIdx = searchText.indexOf(':');
@@ -242,8 +243,8 @@ function renderTable() {
     if (filterStatus === 'on')      data = data.filter(c => c.on);
     else if (filterStatus === 'off')data = data.filter(c => !c.on);
     else if (filterStatus === 'primary') data = data.filter(c => isPrimary(c));
-    else if (filterStatus === 'warn')    data = data.filter(c => classifyChannel(c).isWarn);
-    else if (filterStatus === 'fault')   data = data.filter(c => classifyChannel(c).isFault);
+    else if (filterStatus === 'warn')    data = data.filter(c => c._cc.isWarn);
+    else if (filterStatus === 'fault')   data = data.filter(c => c._cc.isFault);
     if (filterCrate) data = data.filter(c => c.crate === filterCrate);
     if (searchText) {
         const colonIdx = searchText.indexOf(':');
@@ -295,7 +296,7 @@ function renderTable() {
         const diff   = (ch.vmon != null && ch.vset != null) ? (ch.vmon - ch.vset) : null;
         const adiff  = diff != null ? Math.abs(diff) : null;
         const dcls   = !ch.on ? 'diff-ok' : (adiff == null || adiff < DV.table_ok) ? 'diff-ok' : adiff < DV.table_warn ? 'diff-warn' : 'diff-bad';
-        const cc     = classifyChannel(ch);
+        const cc     = ch._cc;
         const dotCls = cc.dot;
         const pwrCls = ch.on ? 'on' : 'off';
         const prim   = isPrimary(ch);
@@ -476,9 +477,8 @@ function renderTable() {
     for (const c of allChannels) {
         if (isPrimary(c)) primCnt++;
         if (c.on) onCnt++;
-        const cc = classifyChannel(c);
-        if (cc.isWarn)  warns++;
-        if (cc.isFault) faults++;
+        if (c._cc.isWarn)  warns++;
+        if (c._cc.isFault) faults++;
     }
     document.getElementById('s-total').textContent   = total;
     document.getElementById('s-primary').textContent = primCnt;

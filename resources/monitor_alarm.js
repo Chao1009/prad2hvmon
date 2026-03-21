@@ -72,12 +72,15 @@ let _lastBeepTime = 0;
 
 // Called after every poll to evaluate alarm state
 function evaluateAlarm() {
-    const chFaults = allChannels.filter(c => classifyChannel(c).isFault).length;
-    const bdFaults = allBoards.filter(bd => {
+    let chFaults = 0;
+    for (const c of allChannels) if (c._cc && c._cc.isFault) chFaults++;
+    let bdFaults = 0;
+    for (const bd of allBoards) {
         const abbr = bd.bdstatus ? bd.bdstatus.split('|')[0] : '';
-        return abbr !== 'OK' && abbr !== '';
-    }).length;
-    const bstFaults = boosterSupplies.filter(s => !s.connected && s.error).length;
+        if (abbr !== 'OK' && abbr !== '') bdFaults++;
+    }
+    let bstFaults = 0;
+    for (const s of boosterSupplies) if (!s.connected && s.error) bstFaults++;
 
     const hasFaults = chFaults > 0 || bdFaults > 0 || bstFaults > 0;
 

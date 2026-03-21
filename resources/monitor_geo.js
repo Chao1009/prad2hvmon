@@ -156,7 +156,7 @@ function _computeModuleColor(mod, mode) {
 
     if (mode === 'status') {
         if (!ch) return '#222';
-        const cc = classifyChannel(ch);
+        const cc = ch._cc;
         if (cc.isFault)  return '#f56565';   // red
         if (cc.isWarn)   return '#eab308';   // amber (suppressed or ΔV)
         if (!ch.on)      return '#4a5568';   // dim grey

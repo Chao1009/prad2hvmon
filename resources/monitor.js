@@ -98,6 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             applyPendingSets();
+            // Pre-compute classification once per tick — avoids thousands of
+            // redundant classifyChannel() calls across table, geo, alarm, summary.
+            for (const ch of allChannels) ch._cc = classifyChannel(ch);
             lastPollTime = performance.now();
             rebuildChMap();
             const crateKey = [...new Set(allChannels.map(c => c.crate))].sort().join('|');
@@ -116,6 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         hvMonitor.readAll(jsonStr => {
             allChannels = JSON.parse(jsonStr);
+            for (const ch of allChannels) ch._cc = classifyChannel(ch);
             rebuildChMap();
             populateCrateChips();
             dataDirty = true;
@@ -202,14 +206,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let lastFooterSec = -1;  // guards "X s ago" footer — only write on whole-second changes
     let lastClockSec  = -1;  // guards header clock — same
     function renderLoop(ts) {
-        // Re-render if CAEN data changed, or if booster data changed and the
-        // geo tab is active (booster blocks are drawn on the geo canvas).
+        // Re-render if CAEN data changed, if booster data changed and its
+        // tab/geo tab is active (booster blocks are drawn on the geo canvas),
+        // or if booster data changed while any popup is open (popups are
+        // position-fixed and visible on top of any tab).
         const activeTabId = document.querySelector('.tab-content.active')?.id;
         const geoActive     = activeTabId === 'geo-tab';
         const boosterActive = activeTabId === 'booster-tab';
         const boardActive   = activeTabId === 'board-tab';
         const shouldRender = (dataDirty && allChannels.length > 0)
-                           || boosterDirty
+                           || (boosterDirty && (boosterActive || geoActive || popups.size > 0))
                            || (boardDirty && boardActive);
         if (shouldRender && (ts - lastRenderTs) >= renderIntervalMs) {
             renderActiveTab();
@@ -364,9 +370,12 @@ function renderActiveTab() {
     else if (active.id === 'board-tab') { if (boardDirty) { renderBoardTable(); boardDirty = false; } updateFooter(); }
     else if (active.id === 'geo-tab') { renderGeo(); updateFooter(); }
     else if (active.id === 'booster-tab') updateFooter();
-    // Always render booster cards when dirty — they live in the DOM even when
-    // the tab is hidden, so they're ready when the user switches to it.
-    if (boosterDirty) { renderBoosterCards(); boosterDirty = false; }
+    // Render booster cards only when their tab is active (4 cards = cheap,
+    // but avoids rebuilding card DOM while viewing other tabs).
+    if (boosterDirty) {
+        if (active.id === 'booster-tab') renderBoosterCards();
+        boosterDirty = false;
+    }
     // Refresh open popups here, in the render loop, not on every data tick
     if (popups.size > 0) refreshAllPopups();
 }
@@ -381,7 +390,11 @@ function initTabs() {
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById(btn.dataset.tab).classList.add('active');
-            dataDirty = true; renderActiveTab();
+            dataDirty = true;
+            // Ensure deferred content renders fresh when switching to its tab
+            if (btn.dataset.tab === 'booster-tab') boosterDirty = true;
+            if (btn.dataset.tab === 'board-tab')   boardDirty = true;
+            renderActiveTab();
             if (btn.dataset.tab === 'geo-tab') {
                 resizeGeoCanvas();
                 resetGeoView();
