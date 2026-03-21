@@ -14,14 +14,14 @@ function initTableUI() {
     });
     document.getElementById('search').addEventListener('input', e => {
         searchText = e.target.value.trim().toLowerCase();
-        dataDirty = true; renderTable();
+        dataDirty = true; renderTable(true);
     });
     document.querySelectorAll('#summary-strip .summary-item').forEach(item => {
         item.addEventListener('click', () => {
             document.querySelectorAll('#summary-strip .summary-item').forEach(s => s.classList.remove('active-filter'));
             item.classList.add('active-filter');
             filterStatus = item.dataset.filter;
-            dataDirty = true; renderTable();
+            dataDirty = true; renderTable(true);
         });
     });
     document.querySelectorAll('thead th[data-col]').forEach(th => {
@@ -32,7 +32,7 @@ function initTableUI() {
             document.querySelectorAll('thead th').forEach(h => h.classList.remove('sorted'));
             th.classList.add('sorted');
             th.querySelector('.sort-arrow').textContent = sortAsc ? '▲' : '▼';
-            dataDirty = true; renderTable();
+            dataDirty = true; renderTable(true);
         });
     });
 
@@ -202,7 +202,7 @@ function selectCrateChip(chip, name) {
     document.querySelectorAll('#crate-chips .chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     filterCrate = name;
-    dataDirty = true; renderTable();
+    dataDirty = true; renderTable(true);
 }
 
 function isPrimary(ch) {
@@ -244,7 +244,7 @@ let filteredData = [];        // persists between renders for scroll handler
 let _vsRowH = 0;             // measured row height (0 = not yet measured)
 let _vsScrollBound = false;   // scroll listener bound flag
 
-function renderTable() {
+function renderTable(resetScroll) {
 
     // ── Filter & sort ─────────────────────────────────────────────────
     let data = allChannels;
@@ -281,6 +281,10 @@ function renderTable() {
     });
 
     filteredData = data;
+
+    // Reset scroll to top on filter/sort changes — prevents the
+    // virtual scroll window from landing past the end of the new data.
+    if (resetScroll) document.getElementById('table-wrap').scrollTop = 0;
 
     // ── Render visible window ─────────────────────────────────────────
     renderVisibleRows();
@@ -338,7 +342,7 @@ function renderVisibleRows() {
     const scrollTop = wrap.scrollTop;
     const viewH     = wrap.clientHeight || 600;
 
-    const first = Math.max(0, Math.floor(scrollTop / _vsRowH) - VS_BUFFER);
+    const first = Math.min(totalRows, Math.max(0, Math.floor(scrollTop / _vsRowH) - VS_BUFFER));
     const last  = Math.min(totalRows, Math.ceil((scrollTop + viewH) / _vsRowH) + VS_BUFFER);
 
     // If a cell is being edited, skip all row reordering to preserve
