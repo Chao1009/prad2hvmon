@@ -17,7 +17,8 @@ Real-time high-voltage monitoring and control for the PRad-II HyCal calorimeter 
 │  HVPoller thread ── poll + classify │
 │  BoosterPoller thread ── poll       │
 │  FaultTracker ── daily log files    │
-│  WebSocket + HTTP server            │
+│  OpLogger ── user operation log     │
+│  WebSocket + HTTP server (deflate)  │
 └──────────────┬──────────────────────┘
                │ http://host:8765/
                │ ws://host:8765/
@@ -115,7 +116,7 @@ The daemon supports three access levels, enforced server-side. Clients authentic
 
 The daemon logs authentication attempts to the console. All command gating is enforced server-side — client-side UI disabling is cosmetic only.
 
-Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected.
+Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected. User operations (voltage changes, power toggles, settings load, authentication) are logged separately to `database/op_log/YYYY-MM-DD.log`.
 
 ### Fault Log Format
 
@@ -128,6 +129,19 @@ The daily log file is tab-separated:
 ```
 
 Columns: timestamp, level (`FAULT`/`WARN`), direction (`APPEAR`/`DISAPPEAR`), type, name, status, VMon, VSet. The last two columns are empty for board/booster entries. The file always records both levels regardless of `-v`.
+
+### Operation Log Format
+
+User operations are logged to `database/op_log/YYYY-MM-DD.log` (tab-separated, daily rotation):
+
+```
+2026-03-21 14:05:12.345	Expert	set_voltage	crate=PRadHV slot=0 ch=32 value=1525.00
+2026-03-21 14:05:13.678	User	set_power	crate=PRadHV slot=0 ch=32 on=true
+2026-03-21 14:05:15.901	Expert	auth	granted
+2026-03-21 14:06:00.123	Expert	load_settings	channels=1728
+```
+
+Columns: timestamp, access level, command type, detail. All accepted commands and authentication events are recorded. Rejected commands (access denied) are not logged.
 
 ### Running as a Persistent Service
 
@@ -222,7 +236,7 @@ For the Qt GUI client:
 ./bin/prad2hvmon -H localhost -p 8765
 ```
 
-The tunnel must stay open while you use the dashboard.
+The tunnel must stay open while you use the dashboard. WebSocket data is compressed with permessage-deflate (~10× reduction), so the dashboard stays responsive even over slower tunnels.
 
 ## Dashboard Features
 
@@ -270,6 +284,7 @@ First matching pattern wins. Same wildcard scheme as `voltage_limits.json` and `
 **Daemon** (pure C++17, no Qt):
 - CMake 3.14+, C++17 compiler
 - `libcaenhvwrapper.so` (in `caen_lib/`)
+- zlib (`zlib-devel` / `zlib1g-dev`)
 - Auto-fetched: nlohmann/json, fmt, websocketpp, standalone Asio
 
 **Qt GUI client** (optional):
