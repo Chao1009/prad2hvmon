@@ -22,6 +22,7 @@
 #include <nlohmann/json.hpp>
 
 #include "hv_daemon.h"
+#include "file_op_logger.h"
 
 #include <map>
 #include <string>
@@ -46,11 +47,13 @@ public:
              const std::string &gui_config_path = "",
              const std::string &daq_map_path    = "",
              const std::string &user_password   = "",
-             const std::string &expert_password = "")
+             const std::string &expert_password = "",
+             FileOpLogger      *op_logger       = nullptr)
         : port_(port), store_(store), cmdq_(cmdq),
           resource_dir_(resource_dir),
           user_pass_(user_password),
-          expert_pass_(expert_password)
+          expert_pass_(expert_password),
+          op_logger_(op_logger)
     {
         // Pre-load static config files into memory
         module_geo_json_ = readFile(module_geo_path, "[]");
@@ -225,6 +228,9 @@ private:
 
             // save_settings (snapshot export) is ungated — safe for all levels
 
+            // ── Log accepted operations to file ─────────────────────────
+            if (op_logger_) op_logger_->logCommand(level, cmd);
+
             // save_settings / load_settings: route to HV queue, remember who asked
             if (type == "save_settings") {
                 std::lock_guard lk(settings_mu_);
@@ -310,6 +316,8 @@ private:
                                  labels[std::min(requested, 2)],
                                  labels[std::min(granted, 2)],
                                  reason.empty() ? "ok" : reason);
+
+        if (op_logger_) op_logger_->logAuth(requested, granted, reason);
     }
 
     // ── Error response helper ────────────────────────────────────────────
@@ -551,4 +559,7 @@ private:
     // Access control passwords (empty = not configured)
     std::string user_pass_;
     std::string expert_pass_;
+
+    // Operation logger (optional — nullptr disables)
+    FileOpLogger *op_logger_ = nullptr;
 };

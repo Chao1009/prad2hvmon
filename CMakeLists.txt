@@ -92,6 +92,7 @@ endif()
 add_executable(prad2hvd
     src/main.cpp
     src/file_fault_logger.cpp
+    src/file_op_logger.cpp
 )
 
 target_include_directories(prad2hvd PRIVATE

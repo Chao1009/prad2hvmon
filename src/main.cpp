@@ -23,6 +23,7 @@
 #include "ws_server.h"
 #include "hv_daemon.h"
 #include "file_fault_logger.h"
+#include "file_op_logger.h"
 
 #include <nlohmann/json.hpp>
 #include <fmt/format.h>
@@ -338,6 +339,10 @@ int main(int argc, char *argv[])
     const char *verbNames[] = { "silent", "faults only", "warn + fault" };
     std::cout << "Console verbosity: " << verbNames[std::min(verbosity, 2)] << "\n";
 
+    std::string opLogDir = dbDir + "/op_log";
+    FileOpLogger opLogger(opLogDir);
+    std::cout << "Operation logger: " << opLogDir << "/\n";
+
     // ── HV Poller ────────────────────────────────────────────────────────
     HVPoller hvPoller(crateList);
     hvPoller.setFaultLogger(&faultLogger);
@@ -391,7 +396,7 @@ int main(int argc, char *argv[])
     // ── Start WebSocket + HTTP server (blocks on main thread) ────────────
     WsServer server(wsPort, store, cmdq, resourceDir,
                     moduleFile, guiConfigFile, daqMapFile,
-                    userPass, expertPass);
+                    userPass, expertPass, &opLogger);
     g_server = &server;
 
     server.run();   // blocks until stop() is called
