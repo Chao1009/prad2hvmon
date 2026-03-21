@@ -156,7 +156,7 @@ function _computeModuleColor(mod, mode) {
 
     if (mode === 'status') {
         if (!ch) return '#222';
-        const cc = ch._cc;
+        const cc = classifyChannel(ch);
         if (cc.isFault)  return '#f56565';   // red
         if (cc.isWarn)   return '#eab308';   // amber (suppressed or ΔV)
         if (!ch.on)      return '#4a5568';   // dim grey
@@ -659,13 +659,15 @@ function openModPopup(mod) {
         if (!hvMonitor || accessLevel < 1) return;
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, true);
-        c.on = true; dataDirty = true; refresh();
+        addPendingPower(c.crate, c.slot, c.channel, true);
+        dataDirty = true; refresh();
     });
     btnOff.addEventListener('click', () => {
         if (!hvMonitor || accessLevel < 1) return;
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, false);
-        c.on = false; dataDirty = true; refresh();
+        addPendingPower(c.crate, c.slot, c.channel, false);
+        dataDirty = true; refresh();
     });
 
     // Drag via header

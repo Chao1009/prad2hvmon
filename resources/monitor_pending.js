@@ -148,6 +148,60 @@ function applyPendingBoosterSets() {
     }
 }
 
+// ── Pending power commands ────────────────────────────────────────────
+// Tracks set_power commands so the UI can show a "pending" indicator
+// instead of optimistically flipping the ON/OFF button.  After 2 poll
+// ticks without the hardware matching the requested state, the command
+// is considered rejected (likely by a hardware interlock) and a toast
+// notification is shown.
+//
+// Key: "crate|slot|channel"
+// Value: { on: bool, ticks: number }
+const pendingPower = new Map();
+
+function addPendingPower(crate, slot, channel, on) {
+    pendingPower.set(`${crate}|${slot}|${channel}`, { on, ticks: 0 });
+}
+
+function hasPendingPower(crate, slot, channel) {
+    return pendingPower.has(`${crate}|${slot}|${channel}`);
+}
+
+// Called from channelsUpdated — after allChannels is parsed.
+// Returns array of rejected channel names (for toast).
+function applyPendingPower() {
+    if (pendingPower.size === 0) return [];
+    const rejected = [];
+
+    for (const [key, entry] of pendingPower) {
+        entry.ticks++;
+
+        const [crate, slotStr, chStr] = key.split('|');
+        const slot    = parseInt(slotStr, 10);
+        const channel = parseInt(chStr, 10);
+
+        const ch = allChannels.find(c =>
+            c.crate === crate && c.slot === slot && c.channel === channel);
+        if (!ch) { pendingPower.delete(key); continue; }
+
+        if (ch.on === entry.on) {
+            // Hardware confirmed the requested state
+            pendingPower.delete(key);
+        } else if (entry.ticks >= 2) {
+            // 2 poll cycles passed, state still doesn't match → rejected
+            pendingPower.delete(key);
+            if (entry.on) {
+                // Tried ON but hardware says OFF → interlock / trip
+                rejected.push(ch.name || key);
+            }
+        }
+        // Otherwise still pending — waiting for next poll
+    }
+
+    return rejected;
+}
+
+
 // ── Disconnect cleanup ───────────────────────────────────────────────
 // If the WebSocket drops, no snapshots arrive, so applyPending*() never
 // runs and stale entries would sit forever.  Clear both maps on disconnect
@@ -155,4 +209,5 @@ function applyPendingBoosterSets() {
 function clearAllPendingSets() {
     pendingSets.clear();
     pendingBoosterSets.clear();
+    pendingPower.clear();
 }

@@ -98,6 +98,10 @@ document.addEventListener('DOMContentLoaded', () => {
         hvMonitor.channelsUpdated.connect(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             applyPendingSets();
+            const pwrRejected = applyPendingPower();
+            if (pwrRejected.length > 0) {
+                showToast(`Power ON rejected: ${pwrRejected.join(', ')} — check interlock`);
+            }
             // Pre-compute classification once per tick — avoids thousands of
             // redundant classifyChannel() calls across table, geo, alarm, summary.
             for (const ch of allChannels) ch._cc = classifyChannel(ch);
@@ -477,4 +481,25 @@ function pwrHtml(ch) {
 }
 
 
-
+// ═════════════════════════════════════════════════════════════════════
+//  Toast notifications
+// ═════════════════════════════════════════════════════════════════════
+function showToast(message, durationMs) {
+    durationMs = durationMs || 5000;
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+    const el = document.createElement('div');
+    el.className = 'toast-msg';
+    el.textContent = message;
+    container.appendChild(el);
+    // Trigger CSS entrance animation
+    requestAnimationFrame(() => el.classList.add('visible'));
+    setTimeout(() => {
+        el.classList.remove('visible');
+        el.addEventListener('transitionend', () => el.remove());
+    }, durationMs);
+}

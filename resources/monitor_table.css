@@ -93,6 +93,8 @@ td .status-dot.fault { background:var(--red);   box-shadow:0 0 6px var(--red);  
 }
 .pwr-btn.on{color:var(--green);border-color:var(--green-dim);background:var(--green-dim)}
 .pwr-btn.off{color:var(--red);border-color:var(--red-dim);background:var(--red-dim)}
+.pwr-btn.pending{color:var(--amber);border-color:var(--amber-dim);background:var(--amber-dim);animation:pulse-text 1s ease infinite}
+@keyframes pulse-text { 0%,100%{opacity:1} 50%{opacity:0.4} }
 .pwr-btn:hover { filter:brightness(1.25); }
 
 /* ─── PRIMARY channel highlighting ────────────────────────────────── */

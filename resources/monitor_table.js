@@ -46,7 +46,7 @@ function initTableUI() {
         if (!confirm(`Turn ON ${scope} channels?`)) return;
         filtered.forEach(ch => {
             hvMonitor.setChannelPower(ch.crate, ch.slot, ch.channel, true);
-            ch.on = true;
+            addPendingPower(ch.crate, ch.slot, ch.channel, true);
         });
         dataDirty = true; renderActiveTab();
     });
@@ -60,7 +60,7 @@ function initTableUI() {
         if (!confirm(`Turn OFF ${scope} channels?`)) return;
         filtered.forEach(ch => {
             hvMonitor.setChannelPower(ch.crate, ch.slot, ch.channel, false);
-            ch.on = false;
+            addPendingPower(ch.crate, ch.slot, ch.channel, false);
         });
         dataDirty = true; renderActiveTab();
     });
@@ -391,7 +391,8 @@ function renderVisibleRows() {
         const dcls   = !ch.on ? 'diff-ok' : (adiff == null || adiff < DV.table_ok) ? 'diff-ok' : adiff < DV.table_warn ? 'diff-warn' : 'diff-bad';
         const cc     = ch._cc;
         const dotCls = cc.dot;
-        const pwrCls = ch.on ? 'on' : 'off';
+        const pwrPending = hasPendingPower(ch.crate, ch.slot, ch.channel);
+        const pwrCls = pwrPending ? 'pending' : (ch.on ? 'on' : 'off');
         const prim   = isPrimary(ch);
 
         let tr = existingRows.get(key);
@@ -472,8 +473,9 @@ function renderVisibleRows() {
             td13.style.textAlign = 'center';
             const btn = document.createElement('button');
             btn.className = 'pwr-btn ' + pwrCls;
-            btn.textContent = ch.on ? 'ON' : 'OFF';
-            btn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
+            btn.textContent = pwrPending ? '...' : (ch.on ? 'ON' : 'OFF');
+            btn.onclick = pwrPending ? null : makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
+            btn.disabled = pwrPending || (accessLevel < 1);
             td13.appendChild(btn);
             tr.appendChild(td13);
 
@@ -537,13 +539,13 @@ function renderVisibleRows() {
             const pbtn = tr.cells[13].firstElementChild;
             const wantPwr = 'pwr-btn ' + pwrCls;
             if (pbtn.className !== wantPwr) pbtn.className = wantPwr;
-            const pwrTxt = ch.on ? 'ON' : 'OFF';
+            const pwrTxt = pwrPending ? '...' : (ch.on ? 'ON' : 'OFF');
             if (pbtn.textContent !== pwrTxt) {
                 pbtn.textContent = pwrTxt;
-                pbtn.onclick = makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
+                pbtn.onclick = pwrPending ? null : makeToggle(ch.crate, ch.slot, ch.channel, ch.on);
             }
-            pbtn.disabled = (accessLevel < 1);
-            pbtn.style.opacity = (accessLevel < 1) ? '0.35' : '1';
+            pbtn.disabled = pwrPending || (accessLevel < 1);
+            pbtn.style.opacity = (pwrPending || accessLevel < 1) ? '0.35' : '1';
         }
         if (fragment) {
             fragment.appendChild(tr);
@@ -750,8 +752,7 @@ function updatePollAge(sec) {
 function togglePower(crate, slot, channel, on) {
     if (!hvMonitor || accessLevel < 1) return;
     hvMonitor.setChannelPower(crate, slot, channel, on);
-    const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
-    if (ch) ch.on = on;
+    addPendingPower(crate, slot, channel, on);
     dataDirty = true; renderActiveTab();
 }
 
