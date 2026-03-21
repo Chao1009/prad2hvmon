@@ -236,6 +236,14 @@ function getFilteredChannels() {
     return data;
 }
 
+// ── Virtual scroll state ─────────────────────────────────────────────
+// Only ~40 visible rows are materialized in the DOM at any time.
+// Spacer <tr> elements above and below maintain correct scroll height.
+const VS_BUFFER = 10;         // extra rows rendered above/below viewport
+let filteredData = [];        // persists between renders for scroll handler
+let _vsRowH = 0;             // measured row height (0 = not yet measured)
+let _vsScrollBound = false;   // scroll listener bound flag
+
 function renderTable() {
 
     // ── Filter & sort ─────────────────────────────────────────────────
@@ -272,27 +280,108 @@ function renderTable() {
         return sortAsc ? va - vb : vb - va;
     });
 
-    // ── Surgical DOM patch ────────────────────────────────────────────
-    // Build keyed rows once; on subsequent renders only update cells that
-    // actually changed.  This avoids tearing down and rebuilding ~1200 rows
-    // on every data tick.
+    filteredData = data;
+
+    // ── Render visible window ─────────────────────────────────────────
+    renderVisibleRows();
+
+    dataDirty = false;
+
+    // ── Summary counts (computed once from the same pass) ─────────────
+    const total   = allChannels.length;
+    let primCnt=0, onCnt=0, warns=0, faults=0;
+    for (const c of allChannels) {
+        if (isPrimary(c)) primCnt++;
+        if (c.on) onCnt++;
+        if (c._cc.isWarn)  warns++;
+        if (c._cc.isFault) faults++;
+    }
+    document.getElementById('s-total').textContent   = total;
+    document.getElementById('s-primary').textContent = primCnt;
+    document.getElementById('s-on').textContent      = onCnt;
+    document.getElementById('s-off').textContent     = total - onCnt;
+    document.getElementById('s-warn').textContent    = warns;
+    document.getElementById('s-fault').textContent   = faults;
+
+    // Pass filtered count to footer without re-filtering
+    updateFooter(filteredData.length, total);
+}
+
+// ── Virtual-scroll row renderer ──────────────────────────────────────
+// Called by renderTable() on data change, and by the scroll listener
+// on user scroll.  Only creates/patches DOM rows for the visible
+// window (~40 rows + buffer), with spacer <tr> elements above/below
+// to maintain correct scrollbar height.
+function renderVisibleRows() {
+    const wrap = document.getElementById('table-wrap');
     const tbody = document.getElementById('ch-body');
 
-    // Build a map of currently displayed rows keyed by "crate|slot|channel"
-    const existingRows = new Map();
-    for (const tr of tbody.rows) {
-        const k = tr.dataset.key;
-        if (k) existingRows.set(k, tr);
+    // Bind scroll listener once (rAF-throttled)
+    if (!_vsScrollBound) {
+        _vsScrollBound = true;
+        let ticking = false;
+        wrap.addEventListener('scroll', () => {
+            if (!ticking) {
+                ticking = true;
+                requestAnimationFrame(() => { renderVisibleRows(); ticking = false; });
+            }
+        }, { passive: true });
     }
+
+    // Measure row height from a real row, or use 29px default
+    if (!_vsRowH) {
+        const sample = tbody.querySelector('tr[data-key]');
+        _vsRowH = (sample && sample.offsetHeight > 0) ? sample.offsetHeight : 29;
+    }
+
+    const totalRows = filteredData.length;
+    const scrollTop = wrap.scrollTop;
+    const viewH     = wrap.clientHeight || 600;
+
+    const first = Math.max(0, Math.floor(scrollTop / _vsRowH) - VS_BUFFER);
+    const last  = Math.min(totalRows, Math.ceil((scrollTop + viewH) / _vsRowH) + VS_BUFFER);
 
     // If a cell is being edited, skip all row reordering to preserve
     // the editing input's DOM position and focus.  Values still update.
-    const lockOrder = !!document.querySelector('#ch-body td.editing');
+    const lockOrder = !!tbody.querySelector('td.editing');
+
+    // Build map of existing data rows (skip spacer rows)
+    const existingRows = new Map();
+    for (const tr of tbody.rows) {
+        if (tr.dataset.key) existingRows.set(tr.dataset.key, tr);
+    }
 
     const fragment = lockOrder ? null : document.createDocumentFragment();
 
-    for (const ch of data) {
+    // ── Top spacer ──────────────────────────────────────────────────
+    let topSp = document.getElementById('vs-top');
+    if (!topSp) {
+        topSp = document.createElement('tr');
+        topSp.id = 'vs-top';
+        const td = document.createElement('td');
+        td.colSpan = 14;
+        topSp.appendChild(td);
+    }
+    topSp.firstChild.style.height = (first * _vsRowH) + 'px';
+    if (fragment) fragment.appendChild(topSp);
+
+    // ── Bottom spacer (created early so lockOrder inserts can reference it)
+    let botSp = document.getElementById('vs-bot');
+    if (!botSp) {
+        botSp = document.createElement('tr');
+        botSp.id = 'vs-bot';
+        const td = document.createElement('td');
+        td.colSpan = 14;
+        botSp.appendChild(td);
+    }
+
+    // ── Visible rows (same surgical-patch logic as before) ──────────
+    const visibleKeys = new Set();
+
+    for (let i = first; i < last; i++) {
+        const ch = filteredData[i];
         const key = ch.crate + '|' + ch.slot + '|' + ch.channel;
+        visibleKeys.add(key);
         const diff   = (ch.vmon != null && ch.vset != null) ? (ch.vmon - ch.vset) : null;
         const adiff  = diff != null ? Math.abs(diff) : null;
         const dcls   = !ch.on ? 'diff-ok' : (adiff == null || adiff < DV.table_ok) ? 'diff-ok' : adiff < DV.table_warn ? 'diff-warn' : 'diff-bad';
@@ -303,10 +392,9 @@ function renderTable() {
 
         let tr = existingRows.get(key);
         if (!tr) {
-            // ── Create new row ──────────────────────────────────────────────
+            // ── Create new row ──────────────────────────────────────────
             tr = document.createElement('tr');
             tr.dataset.key = key;
-            existingRows.delete(key);
 
             // td0: status dot
             const td0 = document.createElement('td');
@@ -387,7 +475,7 @@ function renderTable() {
 
             tr.className = prim ? 'primary-row' : '';
         } else {
-            // ── Patch existing row ─────────────────────────────────────────
+            // ── Patch existing row ─────────────────────────────────────
             existingRows.delete(key);
 
             // status dot (td0)
@@ -456,39 +544,31 @@ function renderTable() {
         if (fragment) {
             fragment.appendChild(tr);
         } else if (!tr.parentNode) {
-            // lockOrder mode: only add genuinely new rows to tbody
-            tbody.appendChild(tr);
+            // lockOrder mode: insert before bottom spacer to maintain order
+            if (botSp.parentNode === tbody) tbody.insertBefore(tr, botSp);
+            else tbody.appendChild(tr);
         }
     }
 
-    // Remove rows no longer in filtered set (but never remove the editing row)
+    // ── Bottom spacer ───────────────────────────────────────────────
+    botSp.firstChild.style.height = ((totalRows - last) * _vsRowH) + 'px';
+    if (fragment) fragment.appendChild(botSp);
+
+    // Remove rows outside visible range (but never remove the editing row)
     existingRows.forEach(tr => {
-        if (!tr.querySelector('td.editing')) tr.remove();
+        if (!visibleKeys.has(tr.dataset.key) && !tr.querySelector('td.editing')) {
+            tr.remove();
+        }
     });
 
     // Reorder only when not editing
     if (fragment) tbody.appendChild(fragment);
 
-    dataDirty = false;
-
-    // ── Summary counts (computed once from the same pass) ─────────────
-    const total   = allChannels.length;
-    let primCnt=0, onCnt=0, warns=0, faults=0;
-    for (const c of allChannels) {
-        if (isPrimary(c)) primCnt++;
-        if (c.on) onCnt++;
-        if (c._cc.isWarn)  warns++;
-        if (c._cc.isFault) faults++;
+    // Re-measure row height from a real row now that DOM is populated
+    if (_vsRowH === 29) {
+        const sample = tbody.querySelector('tr[data-key]');
+        if (sample && sample.offsetHeight > 0) _vsRowH = sample.offsetHeight;
     }
-    document.getElementById('s-total').textContent   = total;
-    document.getElementById('s-primary').textContent = primCnt;
-    document.getElementById('s-on').textContent      = onCnt;
-    document.getElementById('s-off').textContent     = total - onCnt;
-    document.getElementById('s-warn').textContent    = warns;
-    document.getElementById('s-fault').textContent   = faults;
-
-    // Pass filtered count to footer without re-filtering
-    updateFooter(data.length, total);
 }
 
 // Format a signed number with +/− prefix

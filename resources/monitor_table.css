@@ -235,6 +235,9 @@ tr.primary-row td {
     font-weight: 600;
 }
 .bulk-btn.bulk-setv:hover { background: var(--amber); color: #000; }
+/* ─── Virtual scroll spacer rows ──────────────────────────────────── */
+#vs-top td, #vs-bot td { padding:0 !important; border:none !important; line-height:0; font-size:0; }
+
 /* ─── Inline VSet editor in table ─────────────────────────────────── */
 .vset-inline {
     font-family: var(--mono); font-size: 11px;
