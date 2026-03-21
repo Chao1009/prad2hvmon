@@ -161,12 +161,16 @@ private:
         sendSnapshot(hdl, "board_snapshot",   store_.getBoard().first);
         sendSnapshot(hdl, "booster_snapshot", store_.getBooster().first);
 
-        // Send full fault log and advance the broadcast version so the
-        // next broadcastIfChanged tick doesn't re-send the same entries.
-        auto [fl_data, fl_ver] = store_.getFaultLog();
-        sendSnapshot(hdl, "fault_log_snapshot", fl_data);
-        if (fl_ver > last_fl_ver_)
-            last_fl_ver_ = fl_ver;
+        // Send full fault logs (two separate buffers) and advance versions
+        auto [flf_data, flf_ver] = store_.getFaultLogFaults();
+        sendSnapshot(hdl, "fault_log_faults", flf_data);
+        if (flf_ver > last_flf_ver_)
+            last_flf_ver_ = flf_ver;
+
+        auto [flw_data, flw_ver] = store_.getFaultLogWarns();
+        sendSnapshot(hdl, "fault_log_warns", flw_data);
+        if (flw_ver > last_flw_ver_)
+            last_flw_ver_ = flw_ver;
     }
 
     void onClose(connection_hdl hdl)
@@ -358,12 +362,18 @@ private:
             last_bst_ver_ = bst_ver;
         }
 
-        // Fault log: send only new entries since last broadcast
-        uint64_t fl_cur_ver = store_.faultLogVersion();
-        if (fl_cur_ver != last_fl_ver_) {
-            auto [fl_data, fl_ver] = store_.getFaultLogSince(last_fl_ver_);
-            broadcast("fault_log_snapshot", fl_data);
-            last_fl_ver_ = fl_ver;
+        // Fault logs: two separate buffers, two separate broadcasts
+        uint64_t flf_cur = store_.faultLogFaultsVersion();
+        if (flf_cur != last_flf_ver_) {
+            auto [flf_data, flf_ver] = store_.getFaultLogFaultsSince(last_flf_ver_);
+            broadcast("fault_log_faults", flf_data);
+            last_flf_ver_ = flf_ver;
+        }
+        uint64_t flw_cur = store_.faultLogWarnsVersion();
+        if (flw_cur != last_flw_ver_) {
+            auto [flw_data, flw_ver] = store_.getFaultLogWarnsSince(last_flw_ver_);
+            broadcast("fault_log_warns", flw_data);
+            last_flw_ver_ = flw_ver;
         }
 
         // Settings save response: send back to the requesting client only
@@ -523,7 +533,8 @@ private:
     uint64_t last_hv_ver_  = 0;
     uint64_t last_bd_ver_  = 0;
     uint64_t last_bst_ver_ = 0;
-    uint64_t last_fl_ver_  = 0;
+    uint64_t last_flf_ver_ = 0;   // fault log — faults
+    uint64_t last_flw_ver_ = 0;   // fault log — warnings
 
     // Settings save/load request-response tracking
     std::mutex settings_mu_;

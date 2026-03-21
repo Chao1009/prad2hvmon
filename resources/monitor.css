@@ -148,6 +148,24 @@ header .status-pill.disconnected .dot { background: var(--red); animation: none;
     box-shadow: 0 0 6px var(--red);
 }
 
+/* Amber warning indicator dot on tab buttons */
+.tab-btn.has-warn { position: relative; }
+.tab-btn.has-warn::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 6px var(--amber);
+}
+/* When both dots are present, shift amber left to avoid overlap */
+.tab-btn.has-fault.has-warn::before {
+    right: 16px;
+}
+
 .tab-content { display: none; overflow: hidden; min-height: 0; grid-row: 3; grid-column: 1; }
 .tab-content.active { display: flex; flex-direction: column; overflow: hidden; min-height: 0; overflow-y: auto; }
 

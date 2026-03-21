@@ -175,24 +175,49 @@
 
     <!-- ═══════════════ FAULT LOG TAB ═══════════════ -->
     <div class="tab-content" id="faultlog-tab">
-        <div id="faultlog-header">
-            <span class="faultlog-title">Fault Transition Log</span>
-            <span id="faultlog-count"></span>
+        <!-- Top panel: Faults -->
+        <div class="fl-panel" id="fl-fault-panel">
+            <div class="fl-panel-header fl-panel-header-fault">
+                <span class="fl-panel-title">Faults</span>
+                <span class="fl-panel-count" id="fl-fault-count"></span>
+            </div>
+            <div class="fl-panel-table-wrap">
+                <table class="fl-table">
+                    <thead><tr>
+                        <th>Time</th>
+                        <th>Direction</th>
+                        <th>Type</th>
+                        <th>Name</th>
+                        <th>VMon (V)</th>
+                        <th>VSet (V)</th>
+                        <th>Status</th>
+                    </tr></thead>
+                    <tbody id="fl-fault-body"></tbody>
+                </table>
+            </div>
         </div>
-        <div id="faultlog-table-wrap">
-            <table id="faultlog-table">
-                <thead><tr>
-                    <th>Time</th>
-                    <th>Level</th>
-                    <th>Direction</th>
-                    <th>Type</th>
-                    <th>Name</th>
-                    <th>VMon (V)</th>
-                    <th>VSet (V)</th>
-                    <th>Status</th>
-                </tr></thead>
-                <tbody id="faultlog-body"></tbody>
-            </table>
+        <!-- Draggable divider -->
+        <div class="fl-divider" id="fl-divider"><span class="fl-divider-grip"></span></div>
+        <!-- Bottom panel: Warnings -->
+        <div class="fl-panel" id="fl-warn-panel">
+            <div class="fl-panel-header fl-panel-header-warn">
+                <span class="fl-panel-title">Warnings</span>
+                <span class="fl-panel-count" id="fl-warn-count"></span>
+            </div>
+            <div class="fl-panel-table-wrap">
+                <table class="fl-table">
+                    <thead><tr>
+                        <th>Time</th>
+                        <th>Direction</th>
+                        <th>Type</th>
+                        <th>Name</th>
+                        <th>VMon (V)</th>
+                        <th>VSet (V)</th>
+                        <th>Status</th>
+                    </tr></thead>
+                    <tbody id="fl-warn-body"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 

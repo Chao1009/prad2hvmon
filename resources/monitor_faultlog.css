@@ -1,43 +1,93 @@
-/* ─── Fault Log tab ───────────────────────────────────────────────── */
+/* ─── Fault Log tab — two-panel layout (Faults / Warnings) ────────── */
 #faultlog-tab {
     padding: 0;
 }
+#faultlog-tab.active {
+    display: flex;
+    flex-direction: column;
+    overflow-y: hidden;  /* panels scroll independently */
+}
 
-#faultlog-header {
+/* ─── Panels ──────────────────────────────────────────────────────── */
+.fl-panel {
+    flex: 1 1 50%;
+    display: flex;
+    flex-direction: column;
+    min-height: 60px;
+    overflow: hidden;
+}
+
+.fl-panel-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 20px;
+    padding: 6px 20px;
+    flex-shrink: 0;
+}
+.fl-panel-header-fault {
     border-bottom: 1px solid var(--border);
     background: var(--bg-card-alt);
 }
-#faultlog-header .faultlog-title {
+.fl-panel-header-warn {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card-alt);
+}
+
+.fl-panel-title {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
-    color: var(--text-bright);
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
-#faultlog-count {
+.fl-panel-header-fault .fl-panel-title { color: var(--red); }
+.fl-panel-header-warn  .fl-panel-title { color: var(--amber); }
+
+.fl-panel-count {
     font-family: var(--mono);
     font-size: 10.5px;
     color: var(--text-dim);
 }
 
-#faultlog-table-wrap {
+.fl-panel-table-wrap {
     flex: 1;
     overflow-y: auto;
     min-height: 0;
 }
 
-#faultlog-table {
+/* ─── Divider ─────────────────────────────────────────────────────── */
+.fl-divider {
+    flex-shrink: 0;
+    height: 5px;
+    background: var(--border);
+    cursor: row-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+.fl-divider:hover {
+    background: var(--border-hi);
+}
+.fl-divider-grip {
+    width: 32px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--text-dim);
+    opacity: 0.4;
+}
+.fl-divider:hover .fl-divider-grip {
+    opacity: 0.7;
+}
+
+/* ─── Tables (shared by both panels) ──────────────────────────────── */
+.fl-table {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
 }
 
-#faultlog-table thead th {
+.fl-table thead th {
     position: sticky;
     top: 0;
     z-index: 2;
@@ -48,57 +98,51 @@
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    padding: 8px 12px;
+    padding: 6px 12px;
     text-align: left;
     border-bottom: 1px solid var(--border);
 }
 
-/* Column widths */
-#faultlog-table th:nth-child(1),
-#faultlog-table td:nth-child(1) { width: 20%; }  /* Time */
-#faultlog-table th:nth-child(2),
-#faultlog-table td:nth-child(2) { width: 8%; }   /* Level */
-#faultlog-table th:nth-child(3),
-#faultlog-table td:nth-child(3) { width: 11%; }  /* Direction */
-#faultlog-table th:nth-child(4),
-#faultlog-table td:nth-child(4) { width: 8%; }   /* Type */
-#faultlog-table th:nth-child(5),
-#faultlog-table td:nth-child(5) { width: 10%; }  /* Name */
-#faultlog-table th:nth-child(6),
-#faultlog-table td:nth-child(6) { width: 9%; text-align: right; }  /* VMon */
-#faultlog-table th:nth-child(7),
-#faultlog-table td:nth-child(7) { width: 9%; text-align: right; }  /* VSet */
-#faultlog-table th:nth-child(8),
-#faultlog-table td:nth-child(8) { width: 25%; }  /* Status */
+/* Column widths (7 columns, no Level column) */
+.fl-table th:nth-child(1),
+.fl-table td:nth-child(1) { width: 22%; }  /* Time */
+.fl-table th:nth-child(2),
+.fl-table td:nth-child(2) { width: 12%; }  /* Direction */
+.fl-table th:nth-child(3),
+.fl-table td:nth-child(3) { width: 9%; }   /* Type */
+.fl-table th:nth-child(4),
+.fl-table td:nth-child(4) { width: 12%; }  /* Name */
+.fl-table th:nth-child(5),
+.fl-table td:nth-child(5) { width: 10%; text-align: right; }  /* VMon */
+.fl-table th:nth-child(6),
+.fl-table td:nth-child(6) { width: 10%; text-align: right; }  /* VSet */
+.fl-table th:nth-child(7),
+.fl-table td:nth-child(7) { width: 25%; }  /* Status */
 
-#faultlog-table tbody tr {
+.fl-table tbody tr {
     border-bottom: 1px solid var(--border);
     transition: background var(--transition);
 }
-#faultlog-table tbody tr:hover {
+.fl-table tbody tr:hover {
     background: var(--bg-hover);
 }
 
-#faultlog-table tbody td {
+.fl-table tbody td {
     font-family: var(--mono);
     font-size: 12px;
-    padding: 5px 12px;
+    padding: 4px 12px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-/* Row tinting — subtle background for fault rows */
+/* Row tinting */
 tr.fl-row-fault { background: rgba(245, 101, 101, 0.04); }
 tr.fl-row-warn  { background: transparent; }
 
-/* Time column */
-td.fl-time { color: var(--text-dim); }
-
-/* Name column — brighter */
-td.fl-name { color: var(--text-bright); font-weight: 600; }
-
-/* Status column */
+/* Cell classes */
+td.fl-time   { color: var(--text-dim); }
+td.fl-name   { color: var(--text-bright); font-weight: 600; }
 td.fl-status { color: var(--text); }
 
 /* ─── Badges ──────────────────────────────────────────────────────── */
@@ -112,34 +156,7 @@ td.fl-status { color: var(--text); }
     border-radius: 3px;
     text-transform: uppercase;
 }
-
-.fl-badge-fault {
-    color: var(--red);
-    background: var(--red-dim);
-}
-.fl-badge-warn {
-    color: var(--amber);
-    background: var(--amber-dim);
-}
-.fl-badge-appear {
-    color: var(--red);
-    background: rgba(245, 101, 101, 0.12);
-}
-.fl-badge-disappear {
-    color: var(--green);
-    background: var(--green-dim);
-}
-
-/* ─── Empty state ─────────────────────────────────────────────────── */
-#faultlog-empty {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 60px 20px;
-    color: var(--text-dim);
-    font-family: var(--mono);
-    font-size: 12px;
-}
-#faultlog-tab.active #faultlog-empty:only-child,
-#faultlog-body:empty ~ #faultlog-empty { display: flex; }
+.fl-badge-fault    { color: var(--red);   background: var(--red-dim); }
+.fl-badge-warn     { color: var(--amber); background: var(--amber-dim); }
+.fl-badge-appear   { color: var(--red);   background: rgba(245, 101, 101, 0.12); }
+.fl-badge-disappear { color: var(--green); background: var(--green-dim); }

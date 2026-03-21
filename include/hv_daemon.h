@@ -72,55 +72,56 @@ public:
         return { bst_, bst_ver_ };
     }
 
-    // ── Fault log ring buffer ────────────────────────────────────────────
+    // ── Fault log ring buffers (separate for FAULT and WARN) ──────────
     // Called from the fault logger (any thread) when a transition is logged.
+    // Routes the entry to the correct buffer based on entry["level"].
     void pushFaultLogEntry(json entry) {
         std::lock_guard lk(mu_);
-        ++fault_log_ver_;
-        entry["_seq"] = fault_log_ver_;  // tag for precise incremental retrieval
-        fault_log_.push_back(std::move(entry));
-        if (fault_log_.size() > max_fault_log_)
-            fault_log_.pop_front();
+        const bool isFault = (entry.value("level", "") == "FAULT");
+        auto &buf = isFault ? fl_faults_    : fl_warns_;
+        auto &ver = isFault ? fl_fault_ver_ : fl_warn_ver_;
+        ++ver;
+        entry["_seq"] = ver;
+        buf.push_back(std::move(entry));
+        if (buf.size() > max_fault_log_)
+            buf.pop_front();
     }
 
-    // Return the full log (for initial client sync)
-    std::pair<std::string, uint64_t> getFaultLog() const {
+    // ── Fault buffer accessors ───────────────────────────────────────
+    std::pair<std::string, uint64_t> getFaultLogFaults() const {
         std::lock_guard lk(mu_);
-        json arr = json::array();
-        for (const auto &e : fault_log_) arr.push_back(e);
-        return { arr.dump(), fault_log_ver_ };
+        return { dumpDeque_(fl_faults_), fl_fault_ver_ };
+    }
+    std::pair<std::string, uint64_t> getFaultLogWarns() const {
+        std::lock_guard lk(mu_);
+        return { dumpDeque_(fl_warns_), fl_warn_ver_ };
     }
 
-    // Return only entries added since the given version
-    std::pair<std::string, uint64_t> getFaultLogSince(uint64_t since_ver) const {
+    std::pair<std::string, uint64_t> getFaultLogFaultsSince(uint64_t since) const {
         std::lock_guard lk(mu_);
-        if (since_ver >= fault_log_ver_)
-            return { "[]", fault_log_ver_ };
-
-        // Walk backwards from the end to find entries with _seq > since_ver
-        json arr = json::array();
-        for (auto it = fault_log_.rbegin(); it != fault_log_.rend(); ++it) {
-            uint64_t seq = it->value("_seq", uint64_t(0));
-            if (seq <= since_ver) break;  // all earlier entries are older
-            arr.push_back(*it);
-        }
-        // arr is newest-first; reverse to oldest-first (matching getFaultLog order)
-        std::reverse(arr.begin(), arr.end());
-        return { arr.dump(), fault_log_ver_ };
+        return { dumpSince_(fl_faults_, since, fl_fault_ver_), fl_fault_ver_ };
+    }
+    std::pair<std::string, uint64_t> getFaultLogWarnsSince(uint64_t since) const {
+        std::lock_guard lk(mu_);
+        return { dumpSince_(fl_warns_, since, fl_warn_ver_), fl_warn_ver_ };
     }
 
-    uint64_t faultLogVersion() const {
+    uint64_t faultLogFaultsVersion() const {
         std::lock_guard lk(mu_);
-        return fault_log_ver_;
+        return fl_fault_ver_;
+    }
+    uint64_t faultLogWarnsVersion() const {
+        std::lock_guard lk(mu_);
+        return fl_warn_ver_;
     }
 
     static constexpr size_t DEFAULT_FAULT_LOG_CAP = 200;
 
     void setFaultLogCapacity(size_t cap) {
         std::lock_guard lk(mu_);
-        max_fault_log_ = (cap < 10) ? 10 : cap;  // enforce minimum of 10
-        while (fault_log_.size() > max_fault_log_)
-            fault_log_.pop_front();
+        max_fault_log_ = (cap < 10) ? 10 : cap;
+        while (fl_faults_.size() > max_fault_log_) fl_faults_.pop_front();
+        while (fl_warns_.size()  > max_fault_log_) fl_warns_.pop_front();
     }
 
     size_t faultLogCapacity() const {
@@ -169,6 +170,25 @@ public:
     }
 
 private:
+    // ── Helpers for fault log serialisation ───────────────────────────
+    static std::string dumpDeque_(const std::deque<json> &dq) {
+        json arr = json::array();
+        for (const auto &e : dq) arr.push_back(e);
+        return arr.dump();
+    }
+    static std::string dumpSince_(const std::deque<json> &dq,
+                                   uint64_t since_ver, uint64_t cur_ver) {
+        if (since_ver >= cur_ver) return "[]";
+        json arr = json::array();
+        for (auto it = dq.rbegin(); it != dq.rend(); ++it) {
+            uint64_t seq = it->value("_seq", uint64_t(0));
+            if (seq <= since_ver) break;
+            arr.push_back(*it);
+        }
+        std::reverse(arr.begin(), arr.end());
+        return arr.dump();
+    }
+
     mutable std::mutex mu_;
     std::string hv_    = "[]";
     std::string board_ = "[]";
@@ -177,8 +197,11 @@ private:
     uint64_t board_ver_ = 0;
     uint64_t bst_ver_   = 0;
 
-    std::deque<json> fault_log_;
-    uint64_t fault_log_ver_ = 0;
+    // Two separate fault log ring buffers
+    std::deque<json> fl_faults_;
+    std::deque<json> fl_warns_;
+    uint64_t fl_fault_ver_ = 0;
+    uint64_t fl_warn_ver_  = 0;
     size_t   max_fault_log_ = DEFAULT_FAULT_LOG_CAP;
 
     std::string settings_response_;
