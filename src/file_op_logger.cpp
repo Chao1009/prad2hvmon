@@ -124,6 +124,14 @@ std::string FileOpLogger::formatDetail(const json &cmd)
         ss << "on=" << (cmd.value("on", false) ? "true" : "false");
         if (cmd.contains("channels") && cmd["channels"].is_array())
             ss << " channels=" << cmd["channels"].size();
+        if (cmd.contains("filter") && cmd["filter"].is_object()) {
+            const auto &f = cmd["filter"];
+            ss << " group=" << f.value("group", "all")
+               << " crate=" << f.value("crate", "all");
+            std::string search = f.value("search", "");
+            if (!search.empty())
+                ss << " search=\"" << search << "\"";
+        }
     }
     else if (type == "set_all_voltage") {
         ss << "value=" << cmd.value("value", 0.0);

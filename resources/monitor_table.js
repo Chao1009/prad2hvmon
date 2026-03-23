@@ -45,7 +45,8 @@ function initTableUI() {
         const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
         if (!confirm(`Turn ON ${scope} channels?`)) return;
         const chListOn = filtered.map(ch => ({crate: ch.crate, slot: ch.slot, ch: ch.channel}));
-        hvMonitor.setPowerBatch(chListOn, true);
+        const filterCtx = { group: filterStatus, crate: filterCrate || 'all', search: searchText };
+        hvMonitor.setPowerBatch(chListOn, true, filterCtx);
         filtered.forEach(ch => addPendingPower(ch.crate, ch.slot, ch.channel, true, true));
         dataDirty = true; renderActiveTab();
     });
@@ -58,7 +59,8 @@ function initTableUI() {
         const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
         if (!confirm(`Turn OFF ${scope} channels?`)) return;
         const chListOff = filtered.map(ch => ({crate: ch.crate, slot: ch.slot, ch: ch.channel}));
-        hvMonitor.setPowerBatch(chListOff, false);
+        const filterCtxOff = { group: filterStatus, crate: filterCrate || 'all', search: searchText };
+        hvMonitor.setPowerBatch(chListOff, false, filterCtxOff);
         filtered.forEach(ch => addPendingPower(ch.crate, ch.slot, ch.channel, false, true));
         dataDirty = true; renderActiveTab();
     });
