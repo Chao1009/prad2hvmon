@@ -414,6 +414,18 @@ private:
                     for (auto *ch : bd->GetChannelList())
                         ch->SetPower(on);
         }
+        else if (type == "set_power_batch") {
+            bool on = cmd.value("on", false);
+            if (cmd.contains("channels") && cmd["channels"].is_array()) {
+                for (const auto &entry : cmd["channels"]) {
+                    std::string cr = entry.value("crate", "");
+                    int sl = entry.value("slot", -1);
+                    int ci = entry.value("ch", -1);
+                    auto *channel = findChannel(cr, sl, ci);
+                    if (channel) channel->SetPower(on);
+                }
+            }
+        }
         else if (type == "set_voltage") {
             auto *ch = findChannel(crate, slot, ch_idx);
             if (ch) {

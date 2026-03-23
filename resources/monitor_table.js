@@ -44,10 +44,9 @@ function initTableUI() {
         if (n === 0) return;
         const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
         if (!confirm(`Turn ON ${scope} channels?`)) return;
-        filtered.forEach(ch => {
-            hvMonitor.setChannelPower(ch.crate, ch.slot, ch.channel, true);
-            addPendingPower(ch.crate, ch.slot, ch.channel, true);
-        });
+        const chListOn = filtered.map(ch => ({crate: ch.crate, slot: ch.slot, ch: ch.channel}));
+        hvMonitor.setPowerBatch(chListOn, true);
+        filtered.forEach(ch => addPendingPower(ch.crate, ch.slot, ch.channel, true, true));
         dataDirty = true; renderActiveTab();
     });
 
@@ -58,10 +57,9 @@ function initTableUI() {
         if (n === 0) return;
         const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
         if (!confirm(`Turn OFF ${scope} channels?`)) return;
-        filtered.forEach(ch => {
-            hvMonitor.setChannelPower(ch.crate, ch.slot, ch.channel, false);
-            addPendingPower(ch.crate, ch.slot, ch.channel, false);
-        });
+        const chListOff = filtered.map(ch => ({crate: ch.crate, slot: ch.slot, ch: ch.channel}));
+        hvMonitor.setPowerBatch(chListOff, false);
+        filtered.forEach(ch => addPendingPower(ch.crate, ch.slot, ch.channel, false, true));
         dataDirty = true; renderActiveTab();
     });
 

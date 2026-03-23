@@ -120,6 +120,11 @@ std::string FileOpLogger::formatDetail(const json &cmd)
     else if (type == "set_all_power") {
         ss << "on=" << (cmd.value("on", false) ? "true" : "false");
     }
+    else if (type == "set_power_batch") {
+        ss << "on=" << (cmd.value("on", false) ? "true" : "false");
+        if (cmd.contains("channels") && cmd["channels"].is_array())
+            ss << " channels=" << cmd["channels"].size();
+    }
     else if (type == "set_all_voltage") {
         ss << "value=" << cmd.value("value", 0.0);
     }

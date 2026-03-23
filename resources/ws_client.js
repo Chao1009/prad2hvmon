@@ -216,6 +216,9 @@ class DaemonClient {
             setAllPower(on) {
                 self._send({type: 'set_all_power', on});
             },
+            setPowerBatch(channels, on) {
+                self._send({type: 'set_power_batch', on, channels});
+            },
             setChannelVoltage(crate, slot, ch, value) {
                 self._send({type: 'set_voltage', crate, slot, ch, value});
             },

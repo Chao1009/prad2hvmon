@@ -150,17 +150,21 @@ function applyPendingBoosterSets() {
 
 // ── Pending power commands ────────────────────────────────────────────
 // Tracks set_power commands so the UI can show a "pending" indicator
-// instead of optimistically flipping the ON/OFF button.  After 2 poll
-// ticks without the hardware matching the requested state, the command
-// is considered rejected (likely by a hardware interlock) and a toast
-// notification is shown.
+// instead of optimistically flipping the ON/OFF button.  After a
+// threshold number of poll ticks without the hardware matching the
+// requested state, the command is considered rejected (likely by a
+// hardware interlock) and a toast notification is shown.
+//
+// Single-channel commands use a 2-tick threshold (fast feedback).
+// Batch commands use a 5-tick threshold to allow the daemon time to
+// iterate through all channels in the batch before the read cycle.
 //
 // Key: "crate|slot|channel"
-// Value: { on: bool, ticks: number }
+// Value: { on: bool, ticks: number, batch: bool }
 const pendingPower = new Map();
 
-function addPendingPower(crate, slot, channel, on) {
-    pendingPower.set(`${crate}|${slot}|${channel}`, { on, ticks: 0 });
+function addPendingPower(crate, slot, channel, on, batch = false) {
+    pendingPower.set(`${crate}|${slot}|${channel}`, { on, ticks: 0, batch });
 }
 
 function hasPendingPower(crate, slot, channel) {
@@ -187,8 +191,8 @@ function applyPendingPower() {
         if (ch.on === entry.on) {
             // Hardware confirmed the requested state
             pendingPower.delete(key);
-        } else if (entry.ticks >= 2) {
-            // 2 poll cycles passed, state still doesn't match → rejected
+        } else if (entry.ticks >= (entry.batch ? 5 : 2)) {
+            // Threshold exceeded, state still doesn't match → rejected
             pendingPower.delete(key);
             if (entry.on) {
                 // Tried ON but hardware says OFF → interlock / trip

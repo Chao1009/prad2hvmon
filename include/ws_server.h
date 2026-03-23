@@ -215,6 +215,7 @@ private:
 
             // Power commands require level >= 1 (User)
             if (type == "set_power" || type == "set_all_power" ||
+                type == "set_power_batch" ||
                 type == "booster_set_output")
             {
                 if (level < 1) {
