@@ -591,19 +591,22 @@ bool CAEN_Crate::Initialize()
                                 username.c_str(), password.c_str(), &handle);
     if (err != CAENHV_OK) {
         CAEN_ShowError("HV Crate Initialize", err);
+        connected_ = false;
         return false;
     }
+    connected_ = true;
     if (!mapped) ReadCrateMap();
     return true;
 }
 
 bool CAEN_Crate::DeInitialize()
 {
+    connected_ = false;
     if (handle != -1) {
         int err = CAENHV_DeinitSystem(handle);
         if (err != CAENHV_OK) {
             CAEN_ShowError("HV Crate DeInitialize", err);
-            return false;
+            // Still clear state even on error — handle is likely stale
         }
     }
     Clear();
@@ -715,11 +718,44 @@ CAEN_Board *CAEN_Crate::GetBoard(const unsigned short &slot)
     return boardList[index];
 }
 
-void CAEN_Crate::HeartBeat()
+bool CAEN_Crate::HeartBeat()
 {
+    if (handle < 0) {
+        connected_ = false;
+        return false;
+    }
     char sw[30];
     int err = CAENHV_GetSysProp(handle, "SwRelease", sw);
-    CAEN_ShowError("HV Crate Heartbeat", err);
+    if (err != CAENHV_OK) {
+        // Don't call CAEN_ShowError here — HVPoller will log it
+        connected_ = false;
+        return false;
+    }
+    connected_ = true;
+    return true;
+}
+
+bool CAEN_Crate::Reconnect()
+{
+    // Tear down the old connection (ignore errors — handle may be stale)
+    if (handle != -1) {
+        CAENHV_DeinitSystem(handle);
+        handle = -1;
+    }
+    // Don't call Clear() — we want to keep boardList and mapped state
+    // so that if reconnect succeeds, we resume polling without re-mapping.
+
+    char arg[32];
+    strcpy(arg, ip.c_str());
+    int err = CAENHV_InitSystem(sys_type, link_type, arg,
+                                username.c_str(), password.c_str(), &handle);
+    if (err != CAENHV_OK) {
+        connected_ = false;
+        handle = -1;
+        return false;
+    }
+    connected_ = true;
+    return true;
 }
 
 void CAEN_Crate::ReadAllParams()

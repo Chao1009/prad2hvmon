@@ -28,6 +28,9 @@ let boardDirty   = false;
 // Booster HV supplies (TDK-Lambda, via BoosterMonitor WebChannel object)
 let boosterMonitor  = null;
 let boosterSupplies = [];   // latest snapshot [{idx,name,ip,connected,on,mode,vmon,vset,error}]
+
+// Crate connection status (from daemon crate_status messages)
+let crateStatuses = [];   // [{name, ip, connected}, ...]
 let boosterByName   = {};   // modName ('Booster1'…) → live booster data
 let boosterDirty    = false;
 
@@ -121,6 +124,12 @@ document.addEventListener('DOMContentLoaded', () => {
             evaluateAlarm();
         });
 
+        // Crate connection status
+        hvMonitor.crateStatusUpdated.connect(data => {
+            crateStatuses = (typeof data === 'string') ? JSON.parse(data) : data;
+            updateHVTabDot();
+        });
+
         hvMonitor.readAll(jsonStr => {
             allChannels = JSON.parse(jsonStr);
             for (const ch of allChannels) ch._cc = classifyChannel(ch);
@@ -191,6 +200,8 @@ document.addEventListener('DOMContentLoaded', () => {
         accessLevel = 0;
         expertMode = false;
         updateAccessPill();
+        crateStatuses = [];
+        updateHVTabDot();
         dataDirty = true;
         boosterDirty = true;
     });
@@ -480,6 +491,36 @@ function pwrHtml(ch) {
     return ch.on ? '<span class="st-on">ON</span>' : '<span class="st-off">OFF</span>';
 }
 
+
+// ═════════════════════════════════════════════════════════════════════
+//  Crate connection status dot on HV tab
+// ═════════════════════════════════════════════════════════════════════
+function updateHVTabDot() {
+    const dot = document.getElementById('hv-tab-dot');
+    if (!dot) return;
+
+    if (crateStatuses.length === 0) {
+        // No data / daemon disconnected
+        dot.className = 'tab-status-dot dot-gray';
+        dot.title = 'No crate data';
+        return;
+    }
+
+    const allOk   = crateStatuses.every(c => c.connected);
+    const allDown = crateStatuses.every(c => !c.connected);
+
+    if (allOk) {
+        dot.className = 'tab-status-dot dot-green';
+        dot.title = 'All crates connected';
+    } else if (allDown) {
+        dot.className = 'tab-status-dot dot-red';
+        dot.title = 'All crates disconnected';
+    } else {
+        dot.className = 'tab-status-dot dot-amber';
+        const down = crateStatuses.filter(c => !c.connected).map(c => c.name);
+        dot.title = 'Disconnected: ' + down.join(', ');
+    }
+}
 
 // ═════════════════════════════════════════════════════════════════════
 //  Toast notifications

@@ -60,6 +60,11 @@ public:
         bst_ = std::move(s);
         ++bst_ver_;
     }
+    void setCrateStatus(std::string s) {
+        std::lock_guard lk(mu_);
+        crate_status_ = std::move(s);
+        ++crate_status_ver_;
+    }
 
     std::pair<std::string, uint64_t> getHV() const {
         std::lock_guard lk(mu_);
@@ -72,6 +77,10 @@ public:
     std::pair<std::string, uint64_t> getBooster() const {
         std::lock_guard lk(mu_);
         return { bst_, bst_ver_ };
+    }
+    std::pair<std::string, uint64_t> getCrateStatus() const {
+        std::lock_guard lk(mu_);
+        return { crate_status_, crate_status_ver_ };
     }
 
     // ── Fault log ring buffers (separate for FAULT and WARN) ──────────
@@ -198,6 +207,8 @@ private:
     uint64_t hv_ver_    = 0;
     uint64_t board_ver_ = 0;
     uint64_t bst_ver_   = 0;
+    std::string crate_status_ = "[]";
+    uint64_t crate_status_ver_ = 0;
 
     // Two separate fault log ring buffers
     std::deque<json> fl_faults_;
@@ -303,14 +314,17 @@ public:
                                          cr->GetName(), cr->GetIP());
                 cr->PrintCrateMap();
                 ++ok;
+                crate_reconnect_[cr->GetName()] = {true, 1, 0};
             } else {
                 std::cerr << fmt::format("Cannot connect to {:s} @ {:s}\n",
                                          cr->GetName(), cr->GetIP());
+                crate_reconnect_[cr->GetName()] = {false, 1, 1};  // retry next cycle
             }
         }
         std::cout << fmt::format("Init DONE - {}/{} crates OK\n",
                                  ok, crates_.size());
-        return (ok == static_cast<int>(crates_.size()));
+        // Return true even if not all connected — we'll reconnect in the poll loop
+        return true;
     }
 
     // ── Main poll loop (call from a std::thread) ─────────────────────────
@@ -350,6 +364,7 @@ public:
             // Publish snapshots
             store.setHV(buildChannelSnapshot());
             store.setBoard(buildBoardSnapshot());
+            store.setCrateStatus(buildCrateStatusSnapshot());
 
             // Daily settings auto-log (lazy — only builds snapshot on date change)
             settings_auto_logger_.tick([this]() { return buildSettingsSnapshot(); });
@@ -368,10 +383,50 @@ private:
     void doPoll()
     {
         for (auto *cr : crates_) {
+            auto &rs = crate_reconnect_[cr->GetName()];
+
+            if (!rs.connected) {
+                // ── Disconnected: count down and try reconnect ──────
+                if (--rs.polls_remaining > 0)
+                    continue;   // not time yet
+
+                std::cout << fmt::format("Attempting reconnect to {} @ {} ...\n",
+                                         cr->GetName(), cr->GetIP());
+                if (cr->Reconnect()) {
+                    std::cout << fmt::format("Reconnected to {} @ {}\n",
+                                             cr->GetName(), cr->GetIP());
+                    rs.connected     = true;
+                    rs.backoff_polls = 1;
+                    rs.polls_remaining = 0;
+                } else {
+                    // Exponential backoff
+                    rs.backoff_polls = std::min(rs.backoff_polls * 2,
+                                                CrateReconnectState::MAX_BACKOFF);
+                    rs.polls_remaining = rs.backoff_polls;
+                    std::cerr << fmt::format("Reconnect failed for {} — "
+                                             "retry in {} poll cycles\n",
+                                             cr->GetName(), rs.backoff_polls);
+                    continue;   // skip polling this crate
+                }
+            }
+
+            // ── Connected: heartbeat check then poll ────────────────
+            if (!cr->HeartBeat()) {
+                std::cerr << fmt::format("Lost connection to {} @ {}\n",
+                                         cr->GetName(), cr->GetIP());
+                rs.connected       = false;
+                rs.backoff_polls   = 1;
+                rs.polls_remaining = 1;   // try immediately on next cycle
+                continue;  // skip ReadAllParams — crate is down
+            }
+
             cr->ReadAllParams();
         }
-        // Track fault transitions (hardware errors + ΔV warnings)
+
+        // Track fault transitions (only for connected crates)
         for (auto *cr : crates_) {
+            if (!crate_reconnect_[cr->GetName()].connected) continue;
+
             for (auto *bd : cr->GetBoardList()) {
                 std::string bdId = cr->GetName() + "_s" + std::to_string(bd->GetSlot());
                 fault_tracker_.update(bdId, bd->GetBdStatusString(), "board");
@@ -572,6 +627,16 @@ private:
         int slot = cmd.value("slot", -1);
         int ch_idx = cmd.value("ch", -1);
 
+        // Guard: skip commands targeting a disconnected crate
+        if (!crate.empty()) {
+            auto rsIt = crate_reconnect_.find(crate);
+            if (rsIt != crate_reconnect_.end() && !rsIt->second.connected) {
+                std::cerr << "HVPoller: command skipped — crate "
+                          << crate << " is disconnected\n";
+                return;
+            }
+        }
+
         if (type == "set_power") {
             auto *ch = findChannel(crate, slot, ch_idx);
             if (ch) ch->SetPower(cmd.value("on", false));
@@ -738,6 +803,21 @@ private:
 
                 arr.push_back(std::move(o));
             }
+        }
+        return arr.dump();
+    }
+
+    // ── Crate connection status snapshot ────────────────────────────────
+    std::string buildCrateStatusSnapshot()
+    {
+        json arr = json::array();
+        for (auto *cr : crates_) {
+            auto &rs = crate_reconnect_[cr->GetName()];
+            json o;
+            o["name"]      = cr->GetName();
+            o["ip"]        = cr->GetIP();
+            o["connected"] = rs.connected;
+            arr.push_back(std::move(o));
         }
         return arr.dump();
     }
@@ -939,10 +1019,19 @@ private:
         }
     }
 
+    // ── Per-crate reconnect state ───────────────────────────────────────
+    struct CrateReconnectState {
+        bool   connected       = true;
+        int    backoff_polls   = 1;      // current backoff (in poll cycles)
+        int    polls_remaining = 0;      // countdown to next reconnect attempt
+        static constexpr int MAX_BACKOFF = 30; // ~90s at 3s poll
+    };
+
     // ── Data ─────────────────────────────────────────────────────────────
     std::vector<CrateDef> crate_defs_;
     std::vector<CAEN_Crate*> crates_;
     std::map<std::string, CAEN_Crate*> crate_map_;
+    std::map<std::string, CrateReconnectState> crate_reconnect_;
     std::atomic<int> poll_interval_ms_;
     FaultTracker fault_tracker_;
     ChannelClassifier classifier_;

@@ -30,20 +30,22 @@ class DaemonClient {
 
         // Callback registries (mimic QWebChannel signal.connect())
         this._listeners = {
-            channelsUpdated: [],
-            boardsUpdated:   [],
-            boosterUpdated:  [],
-            onConnect:       [],
-            onDisconnect:    [],
-            onAuthResult:    [],
-            onError:         [],
+            channelsUpdated:    [],
+            boardsUpdated:      [],
+            boosterUpdated:     [],
+            crateStatusUpdated: [],
+            onConnect:          [],
+            onDisconnect:       [],
+            onAuthResult:       [],
+            onError:            [],
         };
 
         // Cached data for request-response style calls
         this._initData       = null;    // from "init" message
-        this._lastHV         = '[]';
-        this._lastBoards     = '[]';
-        this._lastBooster    = '[]';
+        this._lastHV           = '[]';
+        this._lastBoards       = '[]';
+        this._lastBooster      = '[]';
+        this._lastCrateStatus  = [];
 
         // Pending callbacks for readAll/readBoards/etc. (called once init arrives)
         this._pendingInit    = [];
@@ -124,6 +126,11 @@ class DaemonClient {
             this._listeners.boosterUpdated.forEach(fn => fn(this._lastBooster));
             break;
 
+        case 'crate_status':
+            this._lastCrateStatus = msg.data;
+            this._listeners.crateStatusUpdated.forEach(fn => fn(msg.data));
+            break;
+
         case 'settings_snapshot':
             // Response to a save_settings request — call pending callback
             if (this._settingsCb) {
@@ -172,6 +179,9 @@ class DaemonClient {
             },
             boardsUpdated: {
                 connect(fn) { self._listeners.boardsUpdated.push(fn); }
+            },
+            crateStatusUpdated: {
+                connect(fn) { self._listeners.crateStatusUpdated.push(fn); }
             },
 
             // Request-response (callback receives JSON string)

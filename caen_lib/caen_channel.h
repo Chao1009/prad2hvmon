@@ -263,6 +263,7 @@ private:
     std::string password;
     int handle;
     bool mapped;
+    bool connected_ = false;   // track connection state for reconnect logic
     short slot_map[MAX_SLOTS];
     std::vector<CAEN_Board*> boardList;
 
@@ -284,8 +285,11 @@ public:
     bool DeInitialize();
     void ReadCrateMap();
     void PrintCrateMap();
-    void HeartBeat();
+    bool HeartBeat();       // returns false if connection lost
+    bool Reconnect();       // DeInit + Init cycle, preserves board map
     void Clear();
+
+    bool IsConnected() const { return connected_; }
 
     // Polling: reads all board + channel params for every board
     void ReadAllParams();

@@ -224,3 +224,22 @@ footer #last-update::before {
     transform: translateY(0);
 }
 
+/* ─── Crate status dot on HV tab ─────────────────────────────────── */
+.tab-status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.dot-green { background: #22c55e; box-shadow: 0 0 4px #22c55e88; }
+.dot-amber { background: #f59e0b; box-shadow: 0 0 4px #f59e0b88; }
+.dot-red   { background: #ef4444; box-shadow: 0 0 4px #ef444488; animation: pulse-dot 1.5s infinite; }
+.dot-gray  { background: #9ca3af; }
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+}
+

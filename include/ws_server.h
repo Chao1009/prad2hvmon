@@ -175,6 +175,7 @@ private:
         sendSnapshot(hdl, "hv_snapshot",      store_.getHV().first);
         sendSnapshot(hdl, "board_snapshot",   store_.getBoard().first);
         sendSnapshot(hdl, "booster_snapshot", store_.getBooster().first);
+        sendSnapshot(hdl, "crate_status",     store_.getCrateStatus().first);
 
         // Send full fault logs (two separate buffers) and advance versions
         auto [flf_data, flf_ver] = store_.getFaultLogFaults();
@@ -369,6 +370,7 @@ private:
         auto [hv_data,  hv_ver]  = store_.getHV();
         auto [bd_data,  bd_ver]  = store_.getBoard();
         auto [bst_data, bst_ver] = store_.getBooster();
+        auto [cs_data,  cs_ver]  = store_.getCrateStatus();
 
         if (hv_ver != last_hv_ver_) {
             broadcast("hv_snapshot", hv_data);
@@ -381,6 +383,10 @@ private:
         if (bst_ver != last_bst_ver_) {
             broadcast("booster_snapshot", bst_data);
             last_bst_ver_ = bst_ver;
+        }
+        if (cs_ver != last_crate_status_ver_) {
+            broadcast("crate_status", cs_data);
+            last_crate_status_ver_ = cs_ver;
         }
 
         // Fault logs: two separate buffers, two separate broadcasts
@@ -556,6 +562,7 @@ private:
     uint64_t last_bst_ver_ = 0;
     uint64_t last_flf_ver_ = 0;   // fault log — faults
     uint64_t last_flw_ver_ = 0;   // fault log — warnings
+    uint64_t last_crate_status_ver_ = 0;  // crate connection status
 
     // Settings save/load request-response tracking
     std::mutex settings_mu_;
