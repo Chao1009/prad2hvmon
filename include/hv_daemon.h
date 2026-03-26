@@ -18,6 +18,7 @@
 #include "fault_tracker.h"
 #include "fault_logger.h"
 #include "settings_auto_logger.h"
+#include "settings_edit_logger.h"
 #include <fmt/format.h>
 
 #include <atomic>
@@ -275,6 +276,7 @@ public:
 
     void setSettingsLogDir(const std::string &dir) {
         settings_auto_logger_ = SettingsAutoLogger(dir);
+        settings_edit_logger_ = SettingsEditLogger(dir);
     }
 
     void setClassifier(const ChannelClassifier &cls) { classifier_ = cls; }
@@ -325,8 +327,15 @@ public:
                 if (type == "save_settings") {
                     store.setSettingsResponse(buildSettingsSnapshot());
                 } else if (type == "load_settings") {
+                    json before = captureBeforeEdit(cmd->payload);
+                    if (!before.empty())
+                        settings_edit_logger_.recordEdit("load_settings", before);
                     store.setLoadResponse(loadSettings(cmd->payload));
                 } else {
+                    // Capture pre-edit state for restore points
+                    json before = captureBeforeEdit(cmd->payload);
+                    if (!before.empty())
+                        settings_edit_logger_.recordEdit(type, before);
                     dispatchCommand(cmd->payload);
                 }
             }
@@ -402,6 +411,158 @@ private:
             }
         }
         fault_tracker_.endCycle();
+    }
+
+    // ── Capture pre-edit state for restore points ─────────────────────
+    // Returns a JSON array of channel entries (partial settings) reflecting
+    // the current values of params that are about to be changed.  Empty
+    // array if nothing to capture (non-edit commands, channel not found).
+    json captureBeforeEdit(const json &cmd)
+    {
+        json channels = json::array();
+        std::string type = cmd.value("type", "");
+
+        // Helper: read one channel's current values for the given params
+        auto captureSingle = [&](const std::string &crate_name, int slot,
+                                 int ch_idx,
+                                 const std::vector<std::string> &param_names) {
+            auto *ch = findChannel(crate_name, slot, ch_idx);
+            if (!ch) return;
+            auto cit = crate_map_.find(crate_name);
+            if (cit == crate_map_.end()) return;
+            auto *bd = cit->second->GetBoard(
+                static_cast<unsigned short>(slot));
+            if (!bd) return;
+
+            const auto &paramInfo = bd->GetChParamInfo();
+            json params;
+            for (const auto &pname : param_names) {
+                for (const auto &pi : paramInfo) {
+                    if (pi.name != pname) continue;
+                    if (pi.isFloat()) {
+                        float v = ch->GetFloat(pname);
+                        if (!std::isnan(v))
+                            params[pname] = std::round(v * 100.0f) / 100.0f;
+                    } else if (pi.isUInt()) {
+                        if (ch->HasParam(pname))
+                            params[pname] = ch->GetUInt(pname);
+                    }
+                    break;
+                }
+            }
+            if (params.empty()) return;
+
+            json entry;
+            entry["crate"]   = crate_name;
+            entry["slot"]    = slot;
+            entry["channel"] = ch_idx;
+            entry["name"]    = ch->GetName();
+            entry["params"]  = std::move(params);
+            channels.push_back(std::move(entry));
+        };
+
+        if (type == "set_voltage") {
+            captureSingle(cmd.value("crate",""), cmd.value("slot",-1),
+                          cmd.value("ch",-1), {"V0Set"});
+        }
+        else if (type == "set_current") {
+            captureSingle(cmd.value("crate",""), cmd.value("slot",-1),
+                          cmd.value("ch",-1), {"I0Set"});
+        }
+        else if (type == "set_svmax") {
+            captureSingle(cmd.value("crate",""), cmd.value("slot",-1),
+                          cmd.value("ch",-1), {"SVMax"});
+        }
+        else if (type == "set_power") {
+            captureSingle(cmd.value("crate",""), cmd.value("slot",-1),
+                          cmd.value("ch",-1), {"Pw"});
+        }
+        else if (type == "set_name") {
+            auto *ch = findChannel(cmd.value("crate",""),
+                                   cmd.value("slot",-1), cmd.value("ch",-1));
+            if (ch) {
+                json entry;
+                entry["crate"]   = cmd.value("crate","");
+                entry["slot"]    = cmd.value("slot",-1);
+                entry["channel"] = cmd.value("ch",-1);
+                entry["name"]    = ch->GetName();
+                entry["params"]  = json::object();
+                channels.push_back(std::move(entry));
+            }
+        }
+        else if (type == "set_all_power") {
+            bool target = cmd.value("on", false);
+            unsigned int target_pw = target ? 1u : 0u;
+            for (auto *cr : crates_)
+                for (auto *bd : cr->GetBoardList())
+                    for (auto *ch : bd->GetChannelList()) {
+                        if (ch->HasParam("Pw") &&
+                            ch->GetUInt("Pw") == target_pw)
+                            continue;
+                        captureSingle(cr->GetName(), bd->GetSlot(),
+                                      ch->GetChannel(), {"Pw"});
+                    }
+        }
+        else if (type == "set_power_batch") {
+            bool target = cmd.value("on", false);
+            unsigned int target_pw = target ? 1u : 0u;
+            if (cmd.contains("channels") && cmd["channels"].is_array()) {
+                for (const auto &e : cmd["channels"]) {
+                    std::string cr = e.value("crate","");
+                    int sl = e.value("slot",-1);
+                    int ci = e.value("ch",-1);
+                    auto *ch = findChannel(cr, sl, ci);
+                    if (ch && ch->HasParam("Pw") &&
+                        ch->GetUInt("Pw") == target_pw)
+                        continue;
+                    captureSingle(cr, sl, ci, {"Pw"});
+                }
+            }
+        }
+        else if (type == "set_all_voltage") {
+            float target = cmd.value("value", 0.0f);
+            for (auto *cr : crates_)
+                for (auto *bd : cr->GetBoardList())
+                    for (auto *ch : bd->GetChannelList()) {
+                        float cur = ch->GetVSet();
+                        if (!std::isnan(cur) &&
+                            std::fabs(cur - target) < 0.01f)
+                            continue;
+                        captureSingle(cr->GetName(), bd->GetSlot(),
+                                      ch->GetChannel(), {"V0Set"});
+                    }
+        }
+        else if (type == "load_settings") {
+            // Capture current values for all channels/params the file
+            // will try to modify
+            json data;
+            if (cmd.contains("settings") && cmd["settings"].is_object())
+                data = cmd["settings"];
+            else if (cmd.contains("settings") &&
+                     cmd["settings"].is_string())
+                data = json::parse(
+                    cmd["settings"].get<std::string>(), nullptr, false);
+
+            if (!data.is_discarded() && data.contains("channels") &&
+                data["channels"].is_array()) {
+                for (const auto &ch_entry : data["channels"]) {
+                    std::string crate = ch_entry.value("crate","");
+                    int sl = ch_entry.value("slot",-1);
+                    int ci = ch_entry.value("channel",-1);
+                    if (!ch_entry.contains("params") ||
+                        !ch_entry["params"].is_object())
+                        continue;
+                    std::vector<std::string> params;
+                    for (auto it = ch_entry["params"].begin();
+                         it != ch_entry["params"].end(); ++it)
+                        params.push_back(it.key());
+                    if (!params.empty())
+                        captureSingle(crate, sl, ci, params);
+                }
+            }
+        }
+
+        return channels;
     }
 
     void dispatchCommand(const json &cmd)
@@ -787,6 +948,7 @@ private:
     ChannelClassifier classifier_;
     std::vector<PendingOverride> pending_overrides_;
     SettingsAutoLogger settings_auto_logger_;
+    SettingsEditLogger settings_edit_logger_;
 };
 
 
