@@ -17,6 +17,7 @@
 #include "channel_classifier.h"
 #include "fault_tracker.h"
 #include "fault_logger.h"
+#include "settings_auto_logger.h"
 #include <fmt/format.h>
 
 #include <atomic>
@@ -272,6 +273,10 @@ public:
 
     void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
 
+    void setSettingsLogDir(const std::string &dir) {
+        settings_auto_logger_ = SettingsAutoLogger(dir);
+    }
+
     void setClassifier(const ChannelClassifier &cls) { classifier_ = cls; }
     ChannelClassifier &classifier() { return classifier_; }
 
@@ -336,6 +341,9 @@ public:
             // Publish snapshots
             store.setHV(buildChannelSnapshot());
             store.setBoard(buildBoardSnapshot());
+
+            // Daily settings auto-log (lazy — only builds snapshot on date change)
+            settings_auto_logger_.tick([this]() { return buildSettingsSnapshot(); });
 
             // Sleep for remainder of interval
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -778,6 +786,7 @@ private:
     FaultTracker fault_tracker_;
     ChannelClassifier classifier_;
     std::vector<PendingOverride> pending_overrides_;
+    SettingsAutoLogger settings_auto_logger_;
 };
 
 

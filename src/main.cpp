@@ -343,10 +343,14 @@ int main(int argc, char *argv[])
     FileOpLogger opLogger(opLogDir);
     std::cout << "Operation logger: " << opLogDir << "/\n";
 
+    std::string settingsLogDir = dbDir + "/settings_log";
+    std::cout << "Settings auto-logger: " << settingsLogDir << "/\n";
+
     // ── HV Poller ────────────────────────────────────────────────────────
     HVPoller hvPoller(crateList);
     hvPoller.setFaultLogger(&faultLogger);
     hvPoller.setPollInterval(pollInterval);
+    hvPoller.setSettingsLogDir(settingsLogDir);
     loadDvWarnRules(dvWarnFile, hvPoller.classifier());
 
     if (!hvPoller.initCrates()) {
