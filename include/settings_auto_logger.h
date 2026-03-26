@@ -76,6 +76,8 @@ public:
         }
     }
 
+    const std::string &logDir() const { return log_dir_; }
+
 private:
     std::string log_dir_;
     std::string last_checked_date_;   // "YYYY-MM-DD" — prevents re-checks

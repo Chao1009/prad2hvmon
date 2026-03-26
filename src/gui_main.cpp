@@ -23,11 +23,7 @@
 #include <QCoreApplication>
 #include <QWebEngineView>
 #include <QWebEnginePage>
-#include <QWebEngineProfile>
-#include <QWebEngineDownloadItem>
 #include <QWebSocket>
-#include <QFileDialog>
-#include <QFileInfo>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QFile>
@@ -547,28 +543,6 @@ int main(int argc, char *argv[])
                 std::cout << "Screenshot saved: " << path.toStdString() << "\n";
             else
                 std::cerr << "Screenshot failed: " << path.toStdString() << "\n";
-        });
-
-        // Handle file downloads (Save Settings button triggers an <a download>)
-        QObject::connect(view.page()->profile(),
-                         &QWebEngineProfile::downloadRequested,
-                         [&view](QWebEngineDownloadItem *item) {
-            QString suggested = item->downloadFileName();
-            if (suggested.isEmpty())
-                suggested = item->suggestedFileName();
-            if (suggested.isEmpty())
-                suggested = "hv_settings.json";
-            QString path = QFileDialog::getSaveFileName(
-                &view, "Save Settings", suggested,
-                "JSON files (*.json);;All files (*)");
-            if (path.isEmpty()) {
-                item->cancel();
-                return;
-            }
-            QFileInfo fi(path);
-            item->setDownloadDirectory(fi.absolutePath());
-            item->setDownloadFileName(fi.fileName());
-            item->accept();
         });
 
         view.show();

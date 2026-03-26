@@ -406,11 +406,15 @@ private:
         // Settings save response: send back to the requesting client only
         if (store_.hasSettingsResponse()) {
             std::string resp = store_.takeSettingsResponse();
+            std::string savedPath = store_.takeSettingsSavedPath();
             if (!resp.empty()) {
                 std::lock_guard lk(settings_mu_);
                 if (settings_pending_) {
                     settings_pending_ = false;
-                    std::string msg = R"({"type":"settings_snapshot","data":)" + resp + "}";
+                    std::string msg = R"({"type":"settings_snapshot","data":)" + resp;
+                    if (!savedPath.empty())
+                        msg += R"(,"saved_path":")" + savedPath + R"(")";
+                    msg += "}";
                     try {
                         server_.send(settings_requester_, msg,
                                      websocketpp::frame::opcode::text);

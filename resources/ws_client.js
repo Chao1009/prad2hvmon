@@ -136,7 +136,7 @@ class DaemonClient {
             if (this._settingsCb) {
                 const cb = this._settingsCb;
                 this._settingsCb = null;
-                cb(msg.data);
+                cb(msg.data, msg.saved_path);
             }
             break;
 

@@ -143,9 +143,10 @@ public:
     // ── Settings save/load (request-response via HVPoller) ─────────────
     // The WsServer pushes a request; HVPoller processes it and stores
     // the result; WsServer picks it up and sends to the requesting client.
-    void setSettingsResponse(std::string json_str) {
+    void setSettingsResponse(std::string json_str, std::string saved_path = "") {
         std::lock_guard lk(mu_);
         settings_response_ = std::move(json_str);
+        settings_saved_path_ = std::move(saved_path);
         settings_response_ready_ = true;
     }
 
@@ -155,6 +156,11 @@ public:
         if (!settings_response_ready_) return {};
         settings_response_ready_ = false;
         return std::move(settings_response_);
+    }
+
+    std::string takeSettingsSavedPath() {
+        std::lock_guard lk(mu_);
+        return std::move(settings_saved_path_);
     }
 
     bool hasSettingsResponse() const {
@@ -218,6 +224,7 @@ private:
     size_t   max_fault_log_ = DEFAULT_FAULT_LOG_CAP;
 
     std::string settings_response_;
+    std::string settings_saved_path_;
     bool settings_response_ready_ = false;
     std::string load_response_;
     bool load_response_ready_ = false;
@@ -339,7 +346,9 @@ public:
             while (auto cmd = cmdq.tryPop(Command::HV)) {
                 std::string type = cmd->payload.value("type", "");
                 if (type == "save_settings") {
-                    store.setSettingsResponse(buildSettingsSnapshot());
+                    std::string snapshot = buildSettingsSnapshot();
+                    std::string savedPath = saveSettingsFile(snapshot);
+                    store.setSettingsResponse(std::move(snapshot), std::move(savedPath));
                 } else if (type == "load_settings") {
                     json before = captureBeforeEdit(cmd->payload);
                     if (!before.empty())
@@ -805,6 +814,38 @@ private:
             }
         }
         return arr.dump();
+    }
+
+    // ── Save settings snapshot to file ─────────────────────────────────
+    std::string saveSettingsFile(const std::string &snapshot)
+    {
+        namespace fs = std::filesystem;
+        std::string dir = settings_auto_logger_.logDir() + "/../hv_settings";
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        if (ec) {
+            // Fallback to settings_log dir
+            dir = settings_auto_logger_.logDir();
+        }
+
+        auto now = std::chrono::system_clock::now();
+        auto tt  = std::chrono::system_clock::to_time_t(now);
+        std::tm local{};
+        localtime_r(&tt, &local);
+        char ts[32];
+        std::snprintf(ts, sizeof(ts), "%04d%02d%02d_%02d%02d%02d",
+                      local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
+                      local.tm_hour, local.tm_min, local.tm_sec);
+
+        fs::path path = fs::path(dir) / fmt::format("hv_settings_{}.json", ts);
+        std::ofstream f(path, std::ios::trunc);
+        if (f) {
+            f << snapshot << "\n";
+            std::cout << fmt::format("Settings saved to {}\n", path.string());
+            return path.string();
+        }
+        std::cerr << "Failed to save settings to " << path.string() << "\n";
+        return {};
     }
 
     // ── Crate connection status snapshot ────────────────────────────────

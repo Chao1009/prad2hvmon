@@ -103,38 +103,50 @@ function initTableUI() {
         const btn = document.getElementById('btn-save-settings');
         btn.textContent = 'Saving…';
         btn.disabled = true;
-        hvMonitor.saveSettings(async data => {
+        hvMonitor.saveSettings((data, savedPath) => {
             btn.textContent = 'Save';
             btn.disabled = false;
-            const jsonStr = (typeof data === 'string') ? data : JSON.stringify(data, null, 2);
-            const blob = new Blob([jsonStr], { type: 'application/json' });
-            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            const defaultName = `hv_settings_${ts}.json`;
+            try {
+                const jsonStr = (typeof data === 'string') ? data : JSON.stringify(data, null, 2);
+                const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const defaultName = `hv_settings_${ts}.json`;
+                const blob = new Blob([jsonStr], { type: 'application/json' });
 
-            // Use native save dialog if available (Chrome/Edge/Qt WebEngine)
-            if (window.showSaveFilePicker) {
-                try {
-                    const handle = await window.showSaveFilePicker({
+                // Chrome/Edge: native save dialog via File System Access API
+                // (skip in Qt WebEngine — the API exists but is broken)
+                const isQtWebEngine = navigator.userAgent.includes('QtWebEngine');
+                if (window.showSaveFilePicker && !isQtWebEngine) {
+                    window.showSaveFilePicker({
                         suggestedName: defaultName,
                         types: [{ description: 'JSON files', accept: { 'application/json': ['.json'] } }],
+                    }).then(handle => {
+                        return handle.createWritable().then(w => w.write(blob).then(() => w.close()))
+                                     .then(() => handle.name);
+                    }).then(name => {
+                        showToast('Saved: ' + name);
+                    }).catch(e => {
+                        if (e.name !== 'AbortError')
+                            alert('Save failed: ' + e.message);
                     });
-                    const writable = await handle.createWritable();
-                    await writable.write(blob);
-                    await writable.close();
                     return;
-                } catch (e) {
-                    if (e.name === 'AbortError') return; // user cancelled
-                    console.warn('showSaveFilePicker failed, falling back:', e);
                 }
+
+                // Qt / Firefox / other: daemon already saved the file server-side
+                if (savedPath) {
+                    showToast('Settings saved: ' + savedPath, 6000);
+                } else {
+                    // Fallback: try browser download
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = defaultName;
+                    document.body.appendChild(a);
+                    a.click();
+                    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+                    showToast('Saved: ' + defaultName + ' — check Downloads folder', 6000);
+                }
+            } catch (e) {
+                alert('Save error: ' + e.message);
             }
-            // Fallback: trigger download via data URI (works in Qt WebEngine
-            // where blob: URLs don't fire the downloadRequested signal)
-            const a = document.createElement('a');
-            a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonStr);
-            a.download = defaultName;
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => document.body.removeChild(a), 100);
         });
     });
 
