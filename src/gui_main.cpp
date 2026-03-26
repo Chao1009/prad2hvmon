@@ -7,7 +7,7 @@
 // Modes:
 //   gui (default)              – launch Qt WebEngine dashboard
 //   read  [-s file.json]       – save all writable params to JSON
-//   write -f file.json         – restore writable params from JSON
+//   write -f file.json [-P pw] – restore writable params from JSON
 //
 // Usage:
 //   prad2hvmon                              # GUI mode (default)
@@ -53,13 +53,14 @@ static void printUsage(const char *prog)
         << "  " << prog << "                              # GUI mode (default)\n"
         << "  " << prog << " [gui] [-H host] [-p port]    # GUI with daemon address\n"
         << "  " << prog << " read  [-s file.json]          # save settings via daemon\n"
-        << "  " << prog << " write -f file.json            # restore settings via daemon\n"
+        << "  " << prog << " write -f file.json -P pw      # restore settings via daemon\n"
         << "\nOptions:\n"
         << "  -H <host>   Daemon hostname (default: localhost)\n"
         << "  -p <port>   Daemon WebSocket port (default: 8765)\n"
         << "  -r <dir>    Resources directory (GUI mode)\n"
         << "  -s <file>   Save output path (read mode)\n"
         << "  -f <file>   Settings file to load (write mode)\n"
+        << "  -P <pass>   Expert password (write mode — required if daemon has auth)\n"
         << "  -t <sec>    Timeout in seconds (CLI modes, default: 10)\n"
         << "  -h          Show this help\n"
         << "\nThe daemon (prad2hvd) must be running. CLI read/write connects\n"
@@ -90,6 +91,15 @@ static int doRead(const std::string &host, const std::string &port,
         if (doc.isNull()) return;
         QJsonObject obj = doc.object();
         QString type = obj["type"].toString();
+
+        if (type == "error") {
+            std::cerr << "ERROR: " << obj["message"].toString().toStdString() << "\n";
+            exitCode = 1;
+            done = true;
+            ws.close();
+            app->quit();
+            return;
+        }
 
         if (type == "settings_snapshot") {
             // Extract the settings data
@@ -165,7 +175,8 @@ static int doRead(const std::string &host, const std::string &port,
 //  CLI write: connect to daemon, send load_settings with file contents
 // ─────────────────────────────────────────────────────────────────────────────
 static int doWrite(const std::string &host, const std::string &port,
-                   const std::string &settingsPath, int timeoutSec)
+                   const std::string &settingsPath, int timeoutSec,
+                   const std::string &password)
 {
     // Read the settings file
     std::ifstream f(settingsPath);
@@ -200,10 +211,8 @@ static int doWrite(const std::string &host, const std::string &port,
     bool done = false;
     int  exitCode = 0;
 
-    QObject::connect(&ws, &QWebSocket::connected, [&]() {
-        std::cout << "Connected to daemon at " << host << ":" << port << "\n";
-
-        // Build the load_settings command with the settings object embedded
+    // Helper: send the actual load_settings command
+    auto sendLoadCmd = [&]() {
         QJsonObject cmd;
         cmd["type"] = "load_settings";
         cmd["settings"] = settingsDoc.object();
@@ -212,13 +221,65 @@ static int doWrite(const std::string &host, const std::string &port,
         ws.sendTextMessage(QString::fromUtf8(payload));
 
         std::cout << "Sent load_settings (" << nch << " channels), waiting for daemon…\n";
+    };
+
+    QObject::connect(&ws, &QWebSocket::connected, [&]() {
+        std::cout << "Connected to daemon at " << host << ":" << port << "\n";
+
+        if (!password.empty()) {
+            // Authenticate as Expert before sending the command
+            QJsonObject auth;
+            auth["type"]     = "auth";
+            auth["level"]    = 2;
+            auth["password"] = QString::fromStdString(password);
+            ws.sendTextMessage(QJsonDocument(auth).toJson(QJsonDocument::Compact));
+        } else {
+            // No password — send command directly (works when auth is disabled)
+            sendLoadCmd();
+        }
     });
 
     QObject::connect(&ws, &QWebSocket::textMessageReceived, [&](const QString &msg) {
         QJsonDocument doc = QJsonDocument::fromJson(msg.toUtf8());
         if (doc.isNull()) return;
         QJsonObject obj = doc.object();
-        if (obj["type"].toString() != "load_settings_done") return;
+        QString type = obj["type"].toString();
+
+        // ── Authentication result ────────────────────────────────────
+        if (type == "auth_result") {
+            int granted = obj["granted"].toInt();
+            if (granted >= 2) {
+                std::cout << "Authenticated as Expert\n";
+                sendLoadCmd();
+            } else {
+                std::string reason = obj["reason"].toString("authentication failed").toStdString();
+                std::cerr << "ERROR: " << reason << "\n";
+                exitCode = 1;
+                done = true;
+                ws.close();
+                app->quit();
+            }
+            return;
+        }
+
+        // ── Daemon-side error (e.g. access_denied) ──────────────────
+        if (type == "error") {
+            std::string code    = obj["code"].toString().toStdString();
+            std::string message = obj["message"].toString().toStdString();
+            std::cerr << "ERROR";
+            if (!code.empty()) std::cerr << " [" << code << "]";
+            std::cerr << ": " << message << "\n";
+            if (code == "access_denied")
+                std::cerr << "Hint: use -P <password> to authenticate as Expert\n";
+            exitCode = 1;
+            done = true;
+            ws.close();
+            app->quit();
+            return;
+        }
+
+        // ── Load settings result ─────────────────────────────────────
+        if (type != "load_settings_done") return;
 
         QJsonObject data = obj["data"].toObject();
         if (data.contains("error")) {
@@ -259,7 +320,7 @@ static int doWrite(const std::string &host, const std::string &port,
     timeout.setSingleShot(true);
     QObject::connect(&timeout, &QTimer::timeout, [&]() {
         if (!done) {
-            std::cerr << "Timeout connecting to daemon (" << timeoutSec << "s)\n";
+            std::cerr << "Timeout waiting for daemon response (" << timeoutSec << "s)\n";
             exitCode = 1;
             ws.close();
             app->quit();
@@ -302,12 +363,12 @@ int main(int argc, char *argv[])
 
     // Parse options
     std::string host = "localhost", port_str = "8765", resourceDir;
-    std::string saveFile, settingsFile;
+    std::string saveFile, settingsFile, cliPassword;
     int timeoutSec = 10;
 
     optind = 1;
     int opt;
-    while ((opt = getopt(eff_argc, argv, "H:p:r:s:f:t:h")) != -1) {
+    while ((opt = getopt(eff_argc, argv, "H:p:r:s:f:t:P:h")) != -1) {
         switch (opt) {
         case 'H': host         = optarg; break;
         case 'p': port_str     = optarg; break;
@@ -315,6 +376,7 @@ int main(int argc, char *argv[])
         case 's': saveFile     = optarg; break;
         case 'f': settingsFile = optarg; break;
         case 't': timeoutSec   = std::atoi(optarg); break;
+        case 'P': cliPassword  = optarg; break;
         case 'h': printUsage(argv[0]); return 0;
         default:  printUsage(argv[0]); return 1;
         }
@@ -403,5 +465,5 @@ int main(int argc, char *argv[])
     if (mode == "read")
         return doRead(host, port_str, saveFile, timeoutSec);
     else
-        return doWrite(host, port_str, settingsFile, timeoutSec);
+        return doWrite(host, port_str, settingsFile, timeoutSec, cliPassword);
 }

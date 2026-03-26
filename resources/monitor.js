@@ -206,6 +206,9 @@ document.addEventListener('DOMContentLoaded', () => {
         boosterDirty = true;
     });
     client._listeners.onAuthResult.push(onAuthResult);
+    client._listeners.onError.push(msg => {
+        showToast(msg.message || msg.code || 'Unknown error', 6000);
+    });
 
     initTableUI();
     initTabs();

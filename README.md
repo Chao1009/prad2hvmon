@@ -59,7 +59,7 @@ make -j$(nproc)
 
 # Save/restore settings via daemon (no GUI needed)
 ./bin/prad2hvmon read -s snapshot.json
-./bin/prad2hvmon write -f snapshot.json
+./bin/prad2hvmon write -f snapshot.json -P <expert_password>
 ```
 
 ## Daemon (`prad2hvd`)
@@ -191,23 +191,24 @@ Save and restore all writable channel parameters (VSet, ISet, SVMax, etc.) via t
 # Save current settings to JSON
 ./bin/prad2hvmon read -s snapshot.json
 
-# Restore settings from JSON
-./bin/prad2hvmon write -f snapshot.json
+# Restore settings from JSON (requires Expert password if auth is enabled)
+./bin/prad2hvmon write -f snapshot.json -P <expert_password>
 
 # Remote daemon
 ./bin/prad2hvmon read -H clonpc19 -s snapshot.json
-./bin/prad2hvmon write -H clonpc19 -f snapshot.json
+./bin/prad2hvmon write -H clonpc19 -f snapshot.json -P mypass
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-s <file>` | Save output path (read mode; prints to stdout if omitted) |
 | `-f <file>` | Settings file to load (write mode; required) |
+| `-P <pass>` | Expert password (write mode; required if daemon has auth) |
 | `-H <host>` | Daemon hostname (default: localhost) |
 | `-p <port>` | Daemon port (default: 8765) |
 | `-t <sec>` | Timeout in seconds (default: 10) |
 
-The daemon must be running. Unchanged parameters are skipped (no unnecessary hardware writes). The write command reports `restored / unchanged / skipped / errors`. Note: CLI `read` works at any access level, but CLI `write` sends `load_settings` which requires Expert. When access control is enabled (`-U`/`-E`), CLI write connects as Guest and will be rejected — temporarily omit the password flags for CLI restore operations.
+The daemon must be running. Unchanged parameters are skipped (no unnecessary hardware writes). The write command reports `restored / unchanged / skipped / errors`. CLI `read` works at any access level; CLI `write` requires Expert — use `-P` to authenticate.
 
 ## Web Client
 
