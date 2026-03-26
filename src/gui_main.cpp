@@ -40,6 +40,11 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <map>
+#include <iomanip>
+#include <cmath>
+#include <cstring>
 #include <unistd.h>
 
 
@@ -65,6 +70,107 @@ static void printUsage(const char *prog)
         << "  -h          Show this help\n"
         << "\nThe daemon (prad2hvd) must be running. CLI read/write connects\n"
         << "to the daemon via WebSocket — same path as the GUI dashboard.\n";
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Pretty-print settings as a text table
+// ─────────────────────────────────────────────────────────────────────────────
+static void printSettingsTable(const QJsonObject &root)
+{
+    QJsonArray channels = root["channels"].toArray();
+    int nch = channels.size();
+    if (nch == 0) { std::cout << "0 channels\n"; return; }
+
+    std::string ts = root["timestamp"].toString("?").toStdString();
+    std::cout << "Settings: " << ts << " (" << nch << " channels)\n\n";
+
+    // ── Pass 1: discover param columns, check if each is all-integer ──
+    struct Col {
+        std::string name;
+        int  width;
+        bool allInt;   // true if every value in this column is integer-valued
+    };
+    std::vector<Col> cols;
+    std::map<std::string, size_t> colMap;
+    int wCrate = 5, wName = 4;
+
+    for (int i = 0; i < nch; i++) {
+        QJsonObject ch = channels[i].toObject();
+        int cl = static_cast<int>(ch["crate"].toString().size());
+        int nl = static_cast<int>(ch["name"].toString().size());
+        if (cl > wCrate) wCrate = cl;
+        if (nl > wName)  wName  = nl;
+
+        QJsonObject params = ch["params"].toObject();
+        for (auto it = params.begin(); it != params.end(); ++it) {
+            std::string pn = it.key().toStdString();
+            double v = it.value().toDouble();
+            bool isInt = (v == std::floor(v));
+
+            auto [mit, inserted] = colMap.try_emplace(pn, cols.size());
+            if (inserted)
+                cols.push_back({pn, static_cast<int>(pn.size()), true});
+            if (!isInt)
+                cols[mit->second].allInt = false;
+        }
+    }
+
+    // ── Pass 2: compute column widths using the determined format ──────
+    for (int i = 0; i < nch; i++) {
+        QJsonObject params = channels[i].toObject()["params"].toObject();
+        for (auto it = params.begin(); it != params.end(); ++it) {
+            Col &c = cols[colMap[it.key().toStdString()]];
+            double v = it.value().toDouble();
+            char buf[32];
+            int w;
+            if (c.allInt)
+                w = std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(v));
+            else
+                w = std::snprintf(buf, sizeof(buf), "%.2f", v);
+            if (w > c.width) c.width = w;
+        }
+    }
+
+    // ── Header ────────────────────────────────────────────────────────
+    std::cout << std::left  << std::setw(wCrate) << "Crate"
+              << "  " << std::right << std::setw(4) << "Slot"
+              << "  " << std::setw(3) << "Ch"
+              << "  " << std::left  << std::setw(wName) << "Name";
+    for (const auto &c : cols)
+        std::cout << "  " << std::right << std::setw(c.width) << c.name;
+    std::cout << "\n";
+
+    // ── Separator ─────────────────────────────────────────────────────
+    int total = wCrate + 2 + 4 + 2 + 3 + 2 + wName;
+    for (const auto &c : cols) total += 2 + c.width;
+    std::cout << std::string(total, '-') << "\n";
+
+    // ── Rows ──────────────────────────────────────────────────────────
+    for (int i = 0; i < nch; i++) {
+        QJsonObject ch = channels[i].toObject();
+        std::cout << std::left  << std::setw(wCrate) << ch["crate"].toString().toStdString()
+                  << "  " << std::right << std::setw(4) << ch["slot"].toInt()
+                  << "  " << std::setw(3) << ch["channel"].toInt()
+                  << "  " << std::left  << std::setw(wName) << ch["name"].toString().toStdString();
+
+        QJsonObject params = ch["params"].toObject();
+        for (const auto &c : cols) {
+            QString key = QString::fromStdString(c.name);
+            if (params.contains(key)) {
+                double v = params[key].toDouble();
+                char buf[32];
+                if (c.allInt)
+                    std::snprintf(buf, sizeof(buf), "%*d", c.width, static_cast<int>(v));
+                else
+                    std::snprintf(buf, sizeof(buf), "%*.2f", c.width, v);
+                std::cout << "  " << buf;
+            } else {
+                std::cout << "  " << std::right << std::setw(c.width) << "-";
+            }
+        }
+        std::cout << "\n";
+    }
 }
 
 
@@ -110,20 +216,18 @@ static int doRead(const std::string &host, const std::string &port,
             else if (data.isString())
                 outDoc = QJsonDocument::fromJson(data.toString().toUtf8());
 
-            QByteArray jsonBytes = outDoc.toJson(QJsonDocument::Indented);
+            QJsonObject root = outDoc.object();
 
+            // Save JSON to file if -s specified
             if (!savePath.empty()) {
+                QByteArray jsonBytes = outDoc.toJson(QJsonDocument::Indented);
                 std::ofstream f(savePath);
                 f.write(jsonBytes.constData(), jsonBytes.size());
-                std::cout << "Saved to " << savePath << "\n";
-            } else {
-                std::cout << jsonBytes.constData() << std::endl;
+                std::cout << "Saved to " << savePath << "\n\n";
             }
 
-            // Count channels
-            QJsonObject root = outDoc.object();
-            int nch = root["channels"].toArray().size();
-            std::cout << "Read " << nch << " channels\n";
+            // Print human-readable table to stdout
+            printSettingsTable(root);
 
             done = true;
             exitCode = 0;
