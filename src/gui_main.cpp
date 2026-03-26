@@ -554,6 +554,10 @@ int main(int argc, char *argv[])
                          &QWebEngineProfile::downloadRequested,
                          [&view](QWebEngineDownloadItem *item) {
             QString suggested = item->downloadFileName();
+            if (suggested.isEmpty())
+                suggested = item->suggestedFileName();
+            if (suggested.isEmpty())
+                suggested = "hv_settings.json";
             QString path = QFileDialog::getSaveFileName(
                 &view, "Save Settings", suggested,
                 "JSON files (*.json);;All files (*)");
@@ -561,7 +565,9 @@ int main(int argc, char *argv[])
                 item->cancel();
                 return;
             }
-            item->setPath(path);
+            QFileInfo fi(path);
+            item->setDownloadDirectory(fi.absolutePath());
+            item->setDownloadFileName(fi.fileName());
             item->accept();
         });
 

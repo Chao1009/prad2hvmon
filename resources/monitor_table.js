@@ -127,13 +127,14 @@ function initTableUI() {
                     console.warn('showSaveFilePicker failed, falling back:', e);
                 }
             }
-            // Fallback: auto-download
-            const url = URL.createObjectURL(blob);
+            // Fallback: trigger download via data URI (works in Qt WebEngine
+            // where blob: URLs don't fire the downloadRequested signal)
             const a = document.createElement('a');
-            a.href = url;
+            a.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonStr);
             a.download = defaultName;
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(url);
+            setTimeout(() => document.body.removeChild(a), 100);
         });
     });
 
