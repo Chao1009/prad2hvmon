@@ -1,12 +1,13 @@
 # PRad-II HV Tools
 
-Offline utilities for fault logs, settings snapshots, and config files. Standalone Python 3, no external dependencies, no daemon connection.
+Offline utilities for fault logs, settings snapshots, config files, and hardware operations. Standalone Python 3, no external dependencies, no daemon connection.
 
 ```bash
 cd /path/to/prad2hvmon        # or ~clasrun/prad2hvmon
 ./tools/faultgrep.py -p
 ./tools/merge_settings.py -c base.json new.json -o merged.json
 ./tools/json2table.py database/daq_map.json
+./tools/caenhv_reset.py --soft hallb-hv1
 ```
 
 ---
@@ -92,3 +93,27 @@ Pretty-print JSON config/settings files as aligned text tables. Auto-detects fil
 | `-n`, `--no-header` | Suppress file-info header line |
 
 Supported files: `daq_map.json` (name/crate/slot/ch table), `hycal_modules.json` (detector modules and boosters as separate blocks), and settings snapshots (address + name + param columns). Numbers right-align automatically.
+
+---
+
+## caenhv_reset.py
+
+Remote reboot of CAEN HV mainframes via the tsconnect serial port. Requires the JLab CLON environment (`$CLON_PARMS`, `$EPICS`) and SSH access to `clon00`. **Not part of the daemon** — this is a standalone ops tool.
+
+Original author: Nathan Baltzell (Jefferson Lab). Modernised for Python 3.
+
+```bash
+# CPU reboot (should not affect voltages)
+./tools/caenhv_reset.py --soft hallb-hv1
+
+# Full power cycle (brings down ALL voltages — asks for confirmation)
+./tools/caenhv_reset.py --hard hallb-hv1
+```
+
+| Option | Description |
+|--------|-------------|
+| `--soft` | CPU reboot only — should not affect running voltages |
+| `--hard` | Full power cycle — **brings down all voltages** (requires confirmation) |
+| `mainframe` | Hostname of the CAEN mainframe (positional) |
+
+The script looks up the serial device in `$CLON_PARMS/tsconnect/tsconnect.conf` and SSHs to `clon00` to run the reset binary. Hard reset prompts for confirmation before proceeding.
