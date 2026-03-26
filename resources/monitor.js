@@ -127,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Crate connection status
         hvMonitor.crateStatusUpdated.connect(data => {
             crateStatuses = (typeof data === 'string') ? JSON.parse(data) : data;
-            updateHVTabDot();
+            updateCrateDots();
         });
 
         hvMonitor.readAll(jsonStr => {
@@ -201,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
         expertMode = false;
         updateAccessPill();
         crateStatuses = [];
-        updateHVTabDot();
+        updateCrateDots();
         dataDirty = true;
         boosterDirty = true;
     });
@@ -498,31 +498,43 @@ function pwrHtml(ch) {
 // ═════════════════════════════════════════════════════════════════════
 //  Crate connection status dot on HV tab
 // ═════════════════════════════════════════════════════════════════════
-function updateHVTabDot() {
-    const dot = document.getElementById('hv-tab-dot');
-    if (!dot) return;
+function updateCrateDots() {
+    // Build lookup: crate name → connected
+    const statusMap = {};
+    crateStatuses.forEach(c => { statusMap[c.name] = c.connected; });
 
-    if (crateStatuses.length === 0) {
-        // No data / daemon disconnected
-        dot.className = 'tab-status-dot dot-gray';
-        dot.title = 'No crate data';
-        return;
-    }
-
-    const allOk   = crateStatuses.every(c => c.connected);
-    const allDown = crateStatuses.every(c => !c.connected);
-
-    if (allOk) {
-        dot.className = 'tab-status-dot dot-green';
-        dot.title = 'All crates connected';
-    } else if (allDown) {
-        dot.className = 'tab-status-dot dot-red';
-        dot.title = 'All crates disconnected';
-    } else {
-        dot.className = 'tab-status-dot dot-amber';
-        const down = crateStatuses.filter(c => !c.connected).map(c => c.name);
-        dot.title = 'Disconnected: ' + down.join(', ');
-    }
+    document.querySelectorAll('.crate-dot').forEach(dot => {
+        const name = dot.dataset.crateDot;
+        if (name === '') {
+            // "All Crates" chip — aggregate status
+            if (crateStatuses.length === 0) {
+                dot.className = 'crate-dot dot-gray';
+                dot.title = 'No crate data';
+            } else if (crateStatuses.every(c => c.connected)) {
+                dot.className = 'crate-dot dot-green';
+                dot.title = 'All crates connected';
+            } else if (crateStatuses.every(c => !c.connected)) {
+                dot.className = 'crate-dot dot-red';
+                dot.title = 'All crates disconnected';
+            } else {
+                dot.className = 'crate-dot dot-amber';
+                const down = crateStatuses.filter(c => !c.connected).map(c => c.name);
+                dot.title = 'Disconnected: ' + down.join(', ');
+            }
+        } else {
+            // Individual crate chip
+            if (!(name in statusMap)) {
+                dot.className = 'crate-dot dot-gray';
+                dot.title = 'No status';
+            } else if (statusMap[name]) {
+                dot.className = 'crate-dot dot-green';
+                dot.title = 'Connected';
+            } else {
+                dot.className = 'crate-dot dot-red';
+                dot.title = 'Disconnected';
+            }
+        }
+    });
 }
 
 // ═════════════════════════════════════════════════════════════════════

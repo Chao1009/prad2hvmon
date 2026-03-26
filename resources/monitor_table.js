@@ -187,16 +187,19 @@ function populateCrateChips() {
     const wrap = document.getElementById('crate-chips');
     wrap.innerHTML = '';
     const allChip = document.createElement('button');
-    allChip.className = 'chip active'; allChip.dataset.crate = ''; allChip.textContent = `All ${crates.length} Crates`;
+    allChip.className = 'chip active'; allChip.dataset.crate = '';
+    allChip.innerHTML = `All ${crates.length} Crates <span class="crate-dot dot-gray" data-crate-dot=""></span>`;
     allChip.addEventListener('click', () => selectCrateChip(allChip, null));
     wrap.appendChild(allChip);
     crates.forEach(name => {
         const chip = document.createElement('button');
         chip.className = 'chip'; chip.dataset.crate = name;
-        chip.textContent = name.replace('PRadHV_', 'HV');
+        chip.innerHTML = name.replace('PRadHV_', 'HV') +
+            ` <span class="crate-dot dot-gray" data-crate-dot="${name}"></span>`;
         chip.addEventListener('click', () => selectCrateChip(chip, name));
         wrap.appendChild(chip);
     });
+    updateCrateDots();
 }
 
 function selectCrateChip(chip, name) {

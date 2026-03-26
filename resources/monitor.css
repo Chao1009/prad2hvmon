@@ -224,13 +224,13 @@ footer #last-update::before {
     transform: translateY(0);
 }
 
-/* ─── Crate status dot on HV tab ─────────────────────────────────── */
-.tab-status-dot {
+/* ─── Crate connection status dots (on crate filter chips) ────────── */
+.crate-dot {
     display: inline-block;
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
-    margin-left: 6px;
+    margin-left: 4px;
     vertical-align: middle;
 }
 .dot-green { background: #22c55e; box-shadow: 0 0 4px #22c55e88; }
