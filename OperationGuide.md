@@ -1,60 +1,60 @@
-= PRad-II HV Monitor — Shift Operator Guide =
+# PRad-II HV Monitor — Shift Operator Guide
 
-The HV monitor daemon runs on '''clonpc19''' (port 8765). There are two ways to access it:
+The HV monitor daemon runs on **clonpc19** (port 8765). There are two ways to access it:
 
-== Accessing the Monitor ==
+## Accessing the Monitor
 
-=== Web GUI ===
+### Web GUI
 
 Open Firefox and navigate to:
 
- http://clonpc19:8765/
+```
+http://clonpc19:8765/
+```
 
-=== Qt GUI ===
+### Qt GUI
 
 From a terminal:
 
- ssh clonpc19
- cd prad2_daq/prad2hvmon
- ./build/bin/prad2hvmon
+```bash
+ssh clonpc19
+cd prad2_daq/prad2hvmon
+./build/bin/prad2hvmon
+```
 
-If you cannot connect to the monitor, contact the '''run coordinator'''.
+If you cannot connect to the monitor, contact the **run coordinator**.
 
-== Recovering Tripped Channels ==
+## Recovering Tripped Channels
 
 If you see HyCal or LMS channels that have tripped off (red in the geometry view or status column), you can power them back on:
 
-# '''Stop the DAQ first''' before performing any power-cycle operations.
-# Click the access pill in the header and log in with password <code>prad2_user</code> at the '''User''' level.
-# Select the affected channels and turn them ON.
-# '''Record every power-cycle operation on [https://logbooks.jlab.org/book/pradlog PRADLOG]''' — note which channels were recovered, when, and any relevant context (e.g., beam trip, temperature spike).
+1. **Stop the DAQ first** before performing any power-cycle operations.
+2. Click the access pill in the header and log in with password `prad2_user` at the **User** level.
+3. Select the affected channels and turn them ON.
+4. **Record every power-cycle operation on [PRADLOG](https://logbooks.jlab.org/book/pradlog)** — note which channels were recovered, when, and any relevant context (e.g., beam trip, temperature spike).
 
-== Persistent Faults ==
+## Persistent Faults
 
 If a channel keeps tripping repeatedly or shows a persistent fault that does not clear after power-cycling:
 
-# '''Contact the run coordinator.'''
-# Take screenshots of:
-#* The '''Fault Log''' tab — showing the fault history for the affected channel.
-#* The '''HyCal Geometry''' view with the color mode set to '''Vmon − Vset''' — to show which channels are deviating.
-# Log the screenshots on [https://logbooks.jlab.org/book/pradlog PRADLOG].
+1. **Contact the run coordinator.**
+2. Take screenshots of:
+   - The **Fault Log** tab — showing the fault history for the affected channel.
+   - The **HyCal Geometry** view with the color mode set to **Vmon − Vset** — to show which channels are deviating.
+3. Log the screenshots on [PRADLOG](https://logbooks.jlab.org/book/pradlog).
 
-== Taking Screenshots ==
+## Taking Screenshots
 
-=== Qt GUI (Ctrl+S) ===
+### Qt GUI (Ctrl+S)
 
-Press '''Ctrl+S''' in the Qt GUI window. A timestamped PNG is saved automatically to <code>database/screenshots/</code> (filename format: <code>prad2hvmon_YYYYMMDD_HHmmss.png</code>). A confirmation message prints to the terminal.
+Press **Ctrl+S** in the Qt GUI window. A timestamped PNG is saved automatically to `database/screenshots/` (filename format: `prad2hvmon_YYYYMMDD_HHmmss.png`). A confirmation message prints to the terminal.
 
-=== RHEL9 Desktop (GNOME) ===
+### RHEL9 Desktop (GNOME)
 
-{| class="wikitable"
-! Capture !! Shortcut
-|-
-| Full screen || <code>Print Screen</code>
-|-
-| Current window || <code>Alt + Print Screen</code>
-|-
-| Select a region || <code>Shift + Print Screen</code>, then click and drag
-|}
+| Capture | Shortcut |
+|---------|----------|
+| Full screen | `Print Screen` |
+| Current window | `Alt + Print Screen` |
+| Select a region | `Shift + Print Screen`, then click and drag |
 
-Screenshots are saved to <code>~/</code>. You can also run <code>gnome-screenshot --interactive</code> from a terminal for more options.
+Screenshots are saved to `~/`. You can also run `gnome-screenshot --interactive` from a terminal for more options.
