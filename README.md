@@ -280,6 +280,19 @@ All in `database/`. The daemon reads them at startup and serves relevant ones to
 
 First matching pattern wins. Same wildcard scheme as `voltage_limits.json` and `error_ignore.json`.
 
+## Tools
+
+Standalone Python 3 utilities in `tools/`. No daemon required.
+
+| Tool | Purpose |
+|------|---------|
+| `faultgrep.py` | Filter and analyse fault logs (persistent faults, date ranges, wildcards) |
+| `merge_settings.py` | Merge two settings snapshots (by address or name) |
+| `json2table.py` | Pretty-print JSON config/settings as text tables |
+| `caenhv_reset.py` | Remote reboot of CAEN mainframes via tsconnect serial (JLab CLON env required) |
+
+See [`tools/README.md`](tools/README.md) for full usage.
+
 ## Dependencies
 
 **Daemon** (pure C++17, no Qt):
