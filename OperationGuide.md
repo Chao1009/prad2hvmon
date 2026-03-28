@@ -24,6 +24,7 @@ If you cannot connect to the monitor, contact the '''run coordinator'''.
 
 If you see HyCal or LMS channels that have tripped off (red in the geometry view or status column), you can power them back on:
 
+# '''Stop the DAQ first''' before performing any power-cycle operations.
 # Click the access pill in the header and log in with password <code>prad2_user</code> at the '''User''' level.
 # Select the affected channels and turn them ON.
 # '''Record every power-cycle operation on [https://logbooks.jlab.org/book/pradlog PRADLOG]''' — note which channels were recovered, when, and any relevant context (e.g., beam trip, temperature spike).
@@ -56,4 +57,4 @@ Press '''Ctrl+S''' in the Qt GUI window. A timestamped PNG is saved automaticall
 | Select a region || <code>Shift + Print Screen</code>, then click and drag
 |}
 
-Screenshots are saved to <code>~/Pictures/</code>. You can also run <code>gnome-screenshot --interactive</code> from a terminal for more options.
+Screenshots are saved to <code>~/</code>. You can also run <code>gnome-screenshot --interactive</code> from a terminal for more options.
