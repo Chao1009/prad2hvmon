@@ -29,7 +29,7 @@ If you cannot connect to the monitor, contact the **run coordinator**.
 If you see HyCal or LMS channels that have tripped off (red in the geometry view or status column), you can power them back on:
 
 1. **Stop the DAQ first** before performing any power-cycle operations.
-2. Click the access pill in the header and log in with password `prad2_user` at the **User** level.
+2. Click the access pill in the header and log in with password `<distributed_by_RC>` at the **User** level.
 3. Select the affected channels and turn them ON.
 4. **Record every power-cycle operation on [PRADLOG](https://logbooks.jlab.org/book/pradlog)** — note which channels were recovered, when, and any relevant context (e.g., beam trip, temperature spike).
 
