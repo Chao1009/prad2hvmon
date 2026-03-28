@@ -1,6 +1,7 @@
 {
     "_comment": "Per-channel error suppression. Supports wildcards (W*, G29, *). Suppressed errors show as amber warnings instead of red faults.",
     "ignore": [
-        {"name": "G29",  "errors": ["OV"]}
+        {"name": "G29",  "errors": ["OV"]},
+        {"name": "W814",  "errors": ["OV"]}
     ]
 }
