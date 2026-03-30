@@ -82,24 +82,24 @@ document.addEventListener('DOMContentLoaded', () => {
         hvMonitor = hv;
         boosterMonitor = booster;
         if (boosterMonitor) {
-            boosterMonitor.boosterUpdated.connect(jsonStr => {
-                boosterSupplies = JSON.parse(jsonStr);
+            boosterMonitor.boosterUpdated.connect(data => {
+                boosterSupplies = data;
                 applyPendingBoosterSets();
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
                 boosterDirty = true;
                 evaluateAlarm();
             });
             // Fetch static supply definitions to build cards immediately.
-            boosterMonitor.readAll(jsonStr => {
-                boosterSupplies = JSON.parse(jsonStr);
+            boosterMonitor.readAll(data => {
+                boosterSupplies = data;
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
                 boosterDirty = true;
             });
         }
 
         // Data update only — no render; the render loop handles display
-        hvMonitor.channelsUpdated.connect(jsonStr => {
-            allChannels = JSON.parse(jsonStr);
+        hvMonitor.channelsUpdated.connect(data => {
+            allChannels = data;
             applyPendingSets();
             const pwrRejected = applyPendingPower();
             if (pwrRejected.length > 0) {
@@ -118,59 +118,54 @@ document.addEventListener('DOMContentLoaded', () => {
             // so we don't rebuild popup DOM on every data tick outside the render loop.
         });
 
-        hvMonitor.boardsUpdated.connect(jsonStr => {
-            allBoards = JSON.parse(jsonStr);
+        hvMonitor.boardsUpdated.connect(data => {
+            allBoards = data;
             boardDirty = true;
             evaluateAlarm();
         });
 
         // Crate connection status
         hvMonitor.crateStatusUpdated.connect(data => {
-            crateStatuses = (typeof data === 'string') ? JSON.parse(data) : data;
+            crateStatuses = data;
             updateCrateDots();
         });
 
-        hvMonitor.readAll(jsonStr => {
-            allChannels = JSON.parse(jsonStr);
+        hvMonitor.readAll(data => {
+            allChannels = data;
             for (const ch of allChannels) ch._cc = classifyChannel(ch);
             rebuildChMap();
             populateCrateChips();
             dataDirty = true;
-            hvMonitor.readBoards(bdJson => {
-                allBoards = JSON.parse(bdJson);
+            hvMonitor.readBoards(bdData => {
+                allBoards = bdData;
                 boardDirty = true;
             });
             // Load module geometry from backend JSON file
-            hvMonitor.getModuleGeometry(geoJson => {
-                MODULES = JSON.parse(geoJson);
+            hvMonitor.getModuleGeometry(geoData => {
+                MODULES = geoData;
                 MODULES.forEach(m => { MOD_MAP[m.n] = m; });
                 rebuildColorCache();   // MODULES just arrived — populate colour cache
                 console.log('Loaded ' + MODULES.length + ' modules');
             });
             // Load DAQ connection map
-            hvMonitor.getDAQMap(daqJson => {
+            hvMonitor.getDAQMap(daqData => {
                 daqByName = {};
-                JSON.parse(daqJson).forEach(e => {
+                daqData.forEach(e => {
                     daqByName[e.name] = { crate: e.crate, slot: e.slot, channel: e.channel };
                 });
                 console.log('Loaded DAQ map: ' + Object.keys(daqByName).length + ' entries');
             });
             // Load GUI config (ΔV thresholds, intervals, etc.)
-            hvMonitor.getGuiConfig(cfgJson => {
-                try {
-                    const cfg = JSON.parse(cfgJson);
-                    if (cfg.deltaV)     Object.assign(DV, cfg.deltaV);
-                    if (cfg.colorRange) Object.assign(CR, cfg.colorRange);
-                    if (cfg.geoView)    Object.assign(GV, cfg.geoView);
-                    if (cfg.intervals) {
-                        if (cfg.intervals.renderMs) {
-                            renderIntervalMs = cfg.intervals.renderMs;
-                        }
+            hvMonitor.getGuiConfig(cfg => {
+                if (cfg.deltaV)     Object.assign(DV, cfg.deltaV);
+                if (cfg.colorRange) Object.assign(CR, cfg.colorRange);
+                if (cfg.geoView)    Object.assign(GV, cfg.geoView);
+                if (cfg.intervals) {
+                    if (cfg.intervals.renderMs) {
+                        renderIntervalMs = cfg.intervals.renderMs;
                     }
-                    console.log('GUI config loaded — DV:', DV, 'CR:', CR, 'GV:', GV);
-                } catch (e) {
-                    console.warn('Failed to parse gui_config.json, using defaults', e);
                 }
+                console.log('GUI config loaded — DV:', DV, 'CR:', CR, 'GV:', GV);
             });
             document.getElementById('loading').classList.add('hidden');
             setPillConnected(true);
@@ -182,8 +177,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const wsHost = _params.get('host') || location.hostname || 'localhost';
     const wsPort = _params.get('port') || '8765';
     const client = new DaemonClient(`ws://${wsHost}:${wsPort}`);
+    let bootstrapped = false;
     client._listeners.onConnect.push(() => {
-        bootstrap(client.hvMonitor, client.boosterMonitor);
+        if (!bootstrapped) {
+            bootstrap(client.hvMonitor, client.boosterMonitor);
+            bootstrapped = true;
+        }
         // Read initial auth state from daemon
         client._withInit(init => {
             authRequired = !!init.auth_required;

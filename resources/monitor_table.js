@@ -4,8 +4,8 @@
 function initTableUI() {
     document.getElementById('btn-refresh').addEventListener('click', () => {
         if (!hvMonitor) return;
-        hvMonitor.readAll(jsonStr => {
-            allChannels = JSON.parse(jsonStr);
+        hvMonitor.readAll(data => {
+            allChannels = data;
             for (const ch of allChannels) ch._cc = classifyChannel(ch);
             rebuildChMap();
             populateCrateChips();

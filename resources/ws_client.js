@@ -42,9 +42,9 @@ class DaemonClient {
 
         // Cached data for request-response style calls
         this._initData       = null;    // from "init" message
-        this._lastHV           = '[]';
-        this._lastBoards       = '[]';
-        this._lastBooster      = '[]';
+        this._lastHV           = null;
+        this._lastBoards       = null;
+        this._lastBooster      = null;
         this._lastCrateStatus  = [];
 
         // Pending callbacks for readAll/readBoards/etc. (called once init arrives)
@@ -112,18 +112,18 @@ class DaemonClient {
             break;
 
         case 'hv_snapshot':
-            this._lastHV = JSON.stringify(msg.data);
-            this._listeners.channelsUpdated.forEach(fn => fn(this._lastHV));
+            this._lastHV = msg.data;
+            this._listeners.channelsUpdated.forEach(fn => fn(msg.data));
             break;
 
         case 'board_snapshot':
-            this._lastBoards = JSON.stringify(msg.data);
-            this._listeners.boardsUpdated.forEach(fn => fn(this._lastBoards));
+            this._lastBoards = msg.data;
+            this._listeners.boardsUpdated.forEach(fn => fn(msg.data));
             break;
 
         case 'booster_snapshot':
-            this._lastBooster = JSON.stringify(msg.data);
-            this._listeners.boosterUpdated.forEach(fn => fn(this._lastBooster));
+            this._lastBooster = msg.data;
+            this._listeners.boosterUpdated.forEach(fn => fn(msg.data));
             break;
 
         case 'crate_status':
@@ -184,39 +184,39 @@ class DaemonClient {
                 connect(fn) { self._listeners.crateStatusUpdated.push(fn); }
             },
 
-            // Request-response (callback receives JSON string)
+            // Request-response (callback receives data array)
             readAll(cb) {
                 // If we already have data, return it immediately
-                if (self._lastHV !== '[]') { cb(self._lastHV); return; }
+                if (self._lastHV) { cb(self._lastHV); return; }
                 // Otherwise wait for first snapshot
-                const once = (json) => {
+                const once = (data) => {
                     self._listeners.channelsUpdated =
                         self._listeners.channelsUpdated.filter(f => f !== once);
-                    cb(json);
+                    cb(data);
                 };
                 self._listeners.channelsUpdated.push(once);
             },
 
             readBoards(cb) {
-                if (self._lastBoards !== '[]') { cb(self._lastBoards); return; }
-                const once = (json) => {
+                if (self._lastBoards) { cb(self._lastBoards); return; }
+                const once = (data) => {
                     self._listeners.boardsUpdated =
                         self._listeners.boardsUpdated.filter(f => f !== once);
-                    cb(json);
+                    cb(data);
                 };
                 self._listeners.boardsUpdated.push(once);
             },
 
             getModuleGeometry(cb) {
-                self._withInit(init => cb(JSON.stringify(init.module_geometry || [])));
+                self._withInit(init => cb(init.module_geometry || []));
             },
 
             getGuiConfig(cb) {
-                self._withInit(init => cb(JSON.stringify(init.gui_config || {})));
+                self._withInit(init => cb(init.gui_config || {}));
             },
 
             getDAQMap(cb) {
-                self._withInit(init => cb(JSON.stringify(init.daq_map || [])));
+                self._withInit(init => cb(init.daq_map || []));
             },
 
             // Fire-and-forget commands
@@ -266,11 +266,11 @@ class DaemonClient {
             },
 
             readAll(cb) {
-                if (self._lastBooster !== '[]') { cb(self._lastBooster); return; }
-                const once = (json) => {
+                if (self._lastBooster) { cb(self._lastBooster); return; }
+                const once = (data) => {
                     self._listeners.boosterUpdated =
                         self._listeners.boosterUpdated.filter(f => f !== once);
-                    cb(json);
+                    cb(data);
                 };
                 self._listeners.boosterUpdated.push(once);
             },
