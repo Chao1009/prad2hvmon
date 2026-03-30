@@ -83,17 +83,36 @@ function initTableUI() {
     document.getElementById('btn-all-setv').addEventListener('click', () => {
         if (!hvMonitor || accessLevel < 2) return;
         const input = document.getElementById('bulk-setv-input');
-        const v = parseFloat(input.value);
-        if (isNaN(v) || v < 0) { input.style.borderColor = 'var(--red)'; return; }
-        input.style.borderColor = '';
-        const filtered = getFilteredChannels();
-        const n = filtered.length;
-        if (n === 0) return;
-        const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
-        if (!confirm(`Set VSet = ${v.toFixed(1)} V on ${scope} channels?`)) return;
-        filtered.forEach(ch => {
-            hvMonitor.setChannelVoltage(ch.crate, ch.slot, ch.channel, v);
-        });
+        const rawVal = input.value.trim();
+        const isRelative = rawVal.length > 1 && (rawVal[0] === '+' || rawVal[0] === '-');
+        // For absolute mode, parse once; for relative mode, resolve per-channel below
+        if (!isRelative) {
+            const v = parseFloat(rawVal);
+            if (isNaN(v) || v < 0) { input.style.borderColor = 'var(--red)'; return; }
+            input.style.borderColor = '';
+            const filtered = getFilteredChannels();
+            const n = filtered.length;
+            if (n === 0) return;
+            const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
+            if (!confirm(`Set VSet = ${v.toFixed(1)} V on ${scope} channels?`)) return;
+            filtered.forEach(ch => {
+                hvMonitor.setChannelVoltage(ch.crate, ch.slot, ch.channel, v);
+            });
+        } else {
+            const delta = parseFloat(rawVal);
+            if (isNaN(delta)) { input.style.borderColor = 'var(--red)'; return; }
+            input.style.borderColor = '';
+            const filtered = getFilteredChannels();
+            const n = filtered.length;
+            if (n === 0) return;
+            const scope = (n === allChannels.length) ? 'ALL' : n + ' visible';
+            const sign = delta >= 0 ? '+' : '';
+            if (!confirm(`Adjust VSet by ${sign}${delta.toFixed(1)} V on ${scope} channels?`)) return;
+            filtered.forEach(ch => {
+                const v = resolveVSetInput(rawVal, ch.vset);
+                if (!isNaN(v) && v >= 0) hvMonitor.setChannelVoltage(ch.crate, ch.slot, ch.channel, v);
+            });
+        }
         dataDirty = true; renderActiveTab();
     });
 
@@ -695,7 +714,9 @@ function commitEdit(td, input) {
             rebuildChMap();
         }
     } else {
-        const v = parseFloat(rawVal);
+        const ch = allChannels.find(c => c.crate===crate && c.slot===slot && c.channel===channel);
+        const cur = ch ? ch[param] : null;
+        const v = (param === 'vset') ? resolveVSetInput(rawVal, cur) : parseFloat(rawVal);
         if (!isNaN(v) && v >= 0) {
             if (param === 'vset')       hvMonitor.setChannelVoltage(crate, slot, channel, v);
             else if (param === 'svmax') hvMonitor.setChannelSVMax(crate, slot, channel, v);

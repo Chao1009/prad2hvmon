@@ -382,6 +382,18 @@ function fmt(val, decimals) {
     return (val == null || isNaN(val)) ? '—' : Number(val).toFixed(decimals);
 }
 
+// Resolve a VSet input string: "+10" / "-5" → relative to currentVSet,
+// plain number → absolute value.  Returns NaN on invalid input.
+function resolveVSetInput(raw, currentVSet) {
+    raw = raw.trim();
+    if (raw.length > 1 && (raw[0] === '+' || raw[0] === '-')) {
+        const delta = parseFloat(raw);
+        if (isNaN(delta) || currentVSet == null || isNaN(currentVSet)) return NaN;
+        return currentVSet + delta;
+    }
+    return parseFloat(raw);
+}
+
 function renderActiveTab() {
     const active = document.querySelector('.tab-content.active');
     if (active.id === 'table-tab') renderTable();     // calls updateFooter internally

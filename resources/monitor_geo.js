@@ -632,11 +632,12 @@ function openModPopup(mod) {
     btnSetV.addEventListener('click', () => {
         if (!hvMonitor || accessLevel < 2) return;
         const c = chByName[mod.n]; if (!c) return;
-        const v = parseFloat(vsetInput.value); if (isNaN(v)) return;
+        const v = resolveVSetInput(vsetInput.value, c.vset); if (isNaN(v) || v < 0) return;
         const orig = c.vset;
         hvMonitor.setChannelVoltage(c.crate, c.slot, c.channel, v);
         c.vset = v; dataDirty = true;
         addPendingSet(c.crate, c.slot, c.channel, 'vset', v, orig);
+        vsetInput.value = v.toFixed(1);
         vsetInput.dataset.orig = vsetInput.value;
         refresh();
     });
