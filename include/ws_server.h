@@ -444,6 +444,12 @@ private:
         }
     }
 
+    // Maximum bytes a single connection may have queued for sending.
+    // Beyond this the client is considered too slow and is disconnected
+    // to prevent unbounded memory growth.  With ~500 KB snapshots sent
+    // every 2-3 s, 4 MB allows ~8 snapshots of headroom.
+    static constexpr size_t MAX_SEND_BUFFER = 4 * 1024 * 1024;  // 4 MB
+
     void broadcast(const std::string &type, const std::string &data)
     {
         // Build envelope: {"type":"hv_snapshot","data":[...]}
@@ -456,6 +462,15 @@ private:
         auto hdls = connections_;
         for (auto &[hdl, info] : hdls) {
             try {
+                auto con = server_.get_con_from_hdl(hdl);
+                if (con->get_buffered_amount() > MAX_SEND_BUFFER) {
+                    std::cerr << fmt::format(
+                        "Closing slow client (buffered {} bytes)\n",
+                        con->get_buffered_amount());
+                    server_.close(hdl, websocketpp::close::status::going_away,
+                                  "send buffer overflow");
+                    continue;
+                }
                 server_.send(hdl, msg, websocketpp::frame::opcode::text);
             } catch (const std::exception &e) {
                 std::cerr << "Broadcast send error: " << e.what() << "\n";
