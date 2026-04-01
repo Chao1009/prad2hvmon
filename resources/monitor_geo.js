@@ -63,12 +63,28 @@ function initGeoMap() {
         document.getElementById('geo-tooltip').style.display = 'none';
     });
 
-    // Color mode
+    // Color mode — reset range overrides when mode changes
     document.getElementById('geo-color-mode').addEventListener('change', () => {
-        rebuildColorCache();   // mode changed — recompute all colours
+        geoRangeMin = null;
+        geoRangeMax = null;
+        rebuildColorCache();
         drawGeoLegend();
         renderGeo();
     });
+
+    // Click colorbar to cycle palettes
+    document.getElementById('leg-bar').addEventListener('click', () => {
+        geoPaletteIdx = (geoPaletteIdx + 1) % GEO_PALETTE_NAMES.length;
+        rebuildColorCache();
+        drawGeoLegend();
+        renderGeo();
+    });
+
+    // Range editing (min / max)
+    setupGeoRangeEdit('geo-range-min-btn', 'geo-range-min-edit', 'leg-lo',
+        () => geoRangeMin, v => { geoRangeMin = v; });
+    setupGeoRangeEdit('geo-range-max-btn', 'geo-range-max-edit', 'leg-hi',
+        () => geoRangeMax, v => { geoRangeMax = v; });
 
     // Search
     document.getElementById('geo-search').addEventListener('input', e => {
@@ -91,6 +107,44 @@ function initGeoMap() {
     drawGeoLegend();
 }
 
+function setupGeoRangeEdit(btnId, editId, showId, getVal, setVal) {
+    const btn  = document.getElementById(btnId);
+    const edit = document.getElementById(editId);
+    const show = document.getElementById(showId);
+    let editing = false;
+
+    function startEdit() {
+        editing = true;
+        btn.classList.add('editing'); btn.textContent = '\u2713';
+        edit.classList.add('active'); show.style.display = 'none';
+        edit.value = getVal() ?? '';
+        edit.focus(); edit.select();
+    }
+    function applyEdit() {
+        if (!editing) return;
+        editing = false;
+        btn.classList.remove('editing'); btn.textContent = '\u270E';
+        edit.classList.remove('active'); show.style.display = '';
+        const v = parseFloat(edit.value);
+        setVal(isNaN(v) ? null : v);
+        rebuildColorCache();
+        drawGeoLegend();
+        renderGeo();
+    }
+
+    btn.addEventListener('mousedown', e => e.preventDefault());
+    btn.onclick = () => { if (editing) applyEdit(); else startEdit(); };
+    edit.addEventListener('keydown', e => {
+        if (e.key === 'Enter') applyEdit();
+        if (e.key === 'Escape') {
+            editing = false;
+            btn.classList.remove('editing'); btn.textContent = '\u270E';
+            edit.classList.remove('active'); show.style.display = '';
+        }
+    });
+    edit.addEventListener('blur', () => { applyEdit(); });
+}
+
 function resizeGeoCanvas() {
     const rect = geoWrap.getBoundingClientRect();
     geoCanvas.width  = rect.width  * devicePixelRatio;
@@ -111,6 +165,65 @@ function resetGeoView() {
     geoTransform.x = rect.width  / 2;
     geoTransform.y = rect.height / 2;
     renderGeo();
+}
+
+// ── Color palettes ──────────────────────────────────────────────────
+function _lerpPal(a, b, t) {
+    const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16);
+    const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16);
+    return `rgb(${Math.round(ar+(br-ar)*t)},${Math.round(ag+(bg-ag)*t)},${Math.round(ab+(bb-ab)*t)})`;
+}
+const GEO_PALETTES = {
+    default(t) {
+        // Original: dark → blue → amber
+        if (t < 0.5) return _lerpPal('#0b1628', '#3b9eff', t * 2);
+        return _lerpPal('#3b9eff', '#eab308', (t - 0.5) * 2);
+    },
+    viridis(t) {
+        return `rgb(${Math.round(255*Math.min(1,Math.max(0,-0.87+4.26*t-4.85*t*t+2.5*t*t*t)))},${Math.round(255*Math.min(1,Math.max(0,-0.03+0.77*t+1.32*t*t-1.87*t*t*t)))},${Math.round(255*Math.min(1,Math.max(0,0.33+1.74*t-4.26*t*t+3.17*t*t*t)))})`;
+    },
+    inferno(t) {
+        return `rgb(${Math.round(255*Math.min(1,Math.max(0,-0.02+2.16*t+4.79*t*t-8.13*t*t*t+2.17*t*t*t*t)))},${Math.round(255*Math.min(1,Math.max(0,-0.02-0.35*t+5.87*t*t-8.29*t*t*t+3.7*t*t*t*t)))},${Math.round(255*Math.min(1,Math.max(0,0.01+3.1*t-9.34*t*t+12.45*t*t*t-5.24*t*t*t*t)))})`;
+    },
+    coolwarm(t) {
+        const r = Math.round(255*Math.min(1,Math.max(0, 0.23+2.22*t-1.83*t*t)));
+        const g = Math.round(255*Math.min(1,Math.max(0, 0.30+1.58*t-2.36*t*t+0.56*t*t*t)));
+        const b = Math.round(255*Math.min(1,Math.max(0, 0.75-0.44*t-0.81*t*t+0.53*t*t*t)));
+        return `rgb(${r},${g},${b})`;
+    },
+    hot(t) {
+        const r = Math.round(255*Math.min(1, t*2.8));
+        const g = Math.round(255*Math.max(0, Math.min(1, (t-0.35)*2.8)));
+        const b = Math.round(255*Math.max(0, Math.min(1, (t-0.7)*3.3)));
+        return `rgb(${r},${g},${b})`;
+    },
+    jet(t) {
+        t = 0.125 + t * 0.75;
+        const r = Math.round(255*Math.min(1, Math.max(0, 1.5-Math.abs(t-0.75)*4)));
+        const g = Math.round(255*Math.min(1, Math.max(0, 1.5-Math.abs(t-0.5)*4)));
+        const b = Math.round(255*Math.min(1, Math.max(0, 1.5-Math.abs(t-0.25)*4)));
+        return `rgb(${r},${g},${b})`;
+    },
+    greyscale(t) {
+        const v = Math.round(255*t);
+        return `rgb(${v},${v},${v})`;
+    },
+};
+const GEO_PALETTE_NAMES = Object.keys(GEO_PALETTES);
+let geoPaletteIdx = 0;
+function geoPalette(t) { return GEO_PALETTES[GEO_PALETTE_NAMES[geoPaletteIdx]](Math.max(0,Math.min(1,t))); }
+
+// ── Color range overrides (null = default) ──────────────────────────
+let geoRangeMin = null;   // user override for low end
+let geoRangeMax = null;   // user override for high end
+
+// effective range for current mode
+function geoEffectiveRange() {
+    const mode = geoColorMode();
+    if (mode === 'vmon')  return [geoRangeMin ?? 0, geoRangeMax ?? CR.vmon_max];
+    if (mode === 'vset')  return [geoRangeMin ?? 0, geoRangeMax ?? CR.vset_max];
+    if (mode === 'diff')  return [geoRangeMin ?? -CR.diff_max, geoRangeMax ?? CR.diff_max];
+    return [0, 1]; // status — not used for continuous scale
 }
 
 // ── Color helpers ────────────────────────────────────────────────────
@@ -165,42 +278,36 @@ function _computeModuleColor(mod, mode) {
 
     if (!ch) return '#222';
 
+    const [rLo, rHi] = geoEffectiveRange();
+
     if (mode === 'vmon') {
         if (!ch.on) return '#333';
-        const t = Math.min(1, Math.max(0, Math.abs(ch.vmon ?? 0) / CR.vmon_max));
-        return vmonColorScale(t);
+        const v = Math.abs(ch.vmon ?? 0);
+        const t = (rHi !== rLo) ? Math.min(1, Math.max(0, (v - rLo) / (rHi - rLo))) : 0;
+        return geoPalette(t);
     }
 
     if (mode === 'vset') {
-        const t = Math.min(1, Math.max(0, Math.abs(ch.vset ?? 0) / CR.vset_max));
-        return vmonColorScale(t);
+        const v = Math.abs(ch.vset ?? 0);
+        const t = (rHi !== rLo) ? Math.min(1, Math.max(0, (v - rLo) / (rHi - rLo))) : 0;
+        return geoPalette(t);
     }
 
     // diff (signed: VMon - VSet)
     if (!ch.on) return '#333';
     if (ch.vmon == null || ch.vset == null) return '#333';
     const diff = ch.vmon - ch.vset;
-    const t = Math.max(-1, Math.min(1, diff / CR.diff_max));
-    return diffColorScale(t);
+    // map [rLo, rHi] → [0, 1]
+    const t = (rHi !== rLo) ? Math.min(1, Math.max(0, (diff - rLo) / (rHi - rLo))) : 0.5;
+    return geoPalette(t);
 }
 
+// Diverging scale for ΔV tooltip/popup coloring (palette-independent)
 function diffColorScale(t) {
-    // Diverging: -1 → deep blue, -0.5 → blue, 0 → green, +0.5 → yellow, +1 → red
     if (t < -0.5) return lerpColor('#1e3a5f', '#3b82f6', (t + 1) * 2);
     if (t < 0)    return lerpColor('#3b82f6', '#2dd4a0', (t + 0.5) * 2);
     if (t < 0.5)  return lerpColor('#2dd4a0', '#eab308', t * 2);
     return lerpColor('#eab308', '#f56565', (t - 0.5) * 2);
-}
-
-function vmonColorScale(t) {
-    // 0 -> #0b1628 (off/dark), 0.5 -> #3b9eff (blue), 1.0 -> #eab308 (amber)
-    if (t < 0.5) {
-        const u = t * 2;
-        return lerpColor('#0b1628', '#3b9eff', u);
-    } else {
-        const u = (t - 0.5) * 2;
-        return lerpColor('#3b9eff', '#eab308', u);
-    }
 }
 
 function lerpColor(a, b, t) {
@@ -218,7 +325,6 @@ function drawGeoLegend() {
     const mode = geoColorMode();
 
     if (mode === 'status') {
-        // status: four-segment (OFF / Good / Warn / Fault)
         const seg = w / 4;
         ctx.fillStyle = '#4a5568'; ctx.fillRect(0,     0, seg, h);
         ctx.fillStyle = '#2dd4a0'; ctx.fillRect(seg,   0, seg, h);
@@ -226,24 +332,16 @@ function drawGeoLegend() {
         ctx.fillStyle = '#f56565'; ctx.fillRect(seg*3, 0, seg, h);
         document.getElementById('leg-lo').textContent = 'OFF';
         document.getElementById('leg-hi').textContent = 'FAULT';
-    } else if (mode === 'vmon' || mode === 'vset') {
-        for (let i = 0; i < w; i++) {
-            ctx.fillStyle = vmonColorScale(i / w);
-            ctx.fillRect(i, 0, 1, h);
-        }
-        const rangeMax = mode === 'vmon' ? CR.vmon_max : CR.vset_max;
-        document.getElementById('leg-lo').textContent = '0 V';
-        document.getElementById('leg-hi').textContent = rangeMax + ' V';
     } else {
-        // diff: diverging purple → blue → green → yellow → red
         for (let i = 0; i < w; i++) {
-            const t = (i / w) * 2 - 1;  // -1 to +1
-            ctx.fillStyle = diffColorScale(t);
+            ctx.fillStyle = geoPalette(i / w);
             ctx.fillRect(i, 0, 1, h);
         }
-        document.getElementById('leg-lo').textContent = '−' + CR.diff_max + ' V';
-        document.getElementById('leg-hi').textContent = '+' + CR.diff_max + ' V';
+        const [rLo, rHi] = geoEffectiveRange();
+        document.getElementById('leg-lo').textContent = rLo + ' V';
+        document.getElementById('leg-hi').textContent = rHi + ' V';
     }
+    canvas.title = GEO_PALETTE_NAMES[geoPaletteIdx] + ' (click to change)';
 }
 
 function geoModuleMatches(mod, query) {

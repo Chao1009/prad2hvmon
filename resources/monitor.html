@@ -149,8 +149,12 @@
             </select>
             <div id="geo-legend">
                 <span class="leg-label" id="leg-lo">0</span>
-                <canvas id="leg-bar" class="leg-bar" width="180" height="10"></canvas>
+                <input class="range-edit" id="geo-range-min-edit" type="number" step="any">
+                <span class="range-btn" id="geo-range-min-btn" title="Edit min">&#x270E;</span>
+                <canvas id="leg-bar" class="leg-bar" width="180" height="10" style="cursor:pointer" title="Click to change palette"></canvas>
                 <span class="leg-label" id="leg-hi">—</span>
+                <input class="range-edit" id="geo-range-max-edit" type="number" step="any">
+                <span class="range-btn" id="geo-range-max-btn" title="Edit max">&#x270E;</span>
             </div>
             <span style="flex:1"></span>
             <input type="text" id="geo-search" placeholder="Search… or type:PbGlass">
