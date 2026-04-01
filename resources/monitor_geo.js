@@ -63,10 +63,8 @@ function initGeoMap() {
         document.getElementById('geo-tooltip').style.display = 'none';
     });
 
-    // Color mode — reset range overrides when mode changes
+    // Color mode — restore per-mode range (no reset; overrides persist)
     document.getElementById('geo-color-mode').addEventListener('change', () => {
-        geoRangeMin = null;
-        geoRangeMax = null;
         rebuildColorCache();
         drawGeoLegend();
         renderGeo();
@@ -80,11 +78,11 @@ function initGeoMap() {
         renderGeo();
     });
 
-    // Range editing (min / max)
+    // Range editing (min / max) — getters/setters use per-mode map
     setupGeoRangeEdit('geo-range-min-btn', 'geo-range-min-edit', 'leg-lo',
-        () => geoRangeMin, v => { geoRangeMin = v; });
+        geoRangeMin, setGeoRangeMin);
     setupGeoRangeEdit('geo-range-max-btn', 'geo-range-max-edit', 'leg-hi',
-        () => geoRangeMax, v => { geoRangeMax = v; });
+        geoRangeMax, setGeoRangeMax);
 
     // Search
     document.getElementById('geo-search').addEventListener('input', e => {
@@ -213,16 +211,26 @@ const GEO_PALETTE_NAMES = Object.keys(GEO_PALETTES);
 let geoPaletteIdx = 0;
 function geoPalette(t) { return GEO_PALETTES[GEO_PALETTE_NAMES[geoPaletteIdx]](Math.max(0,Math.min(1,t))); }
 
-// ── Color range overrides (null = default) ──────────────────────────
-let geoRangeMin = null;   // user override for low end
-let geoRangeMax = null;   // user override for high end
+// ── Color range overrides (per-mode, persists across mode/tab switches) ─
+const _geoRangeOverrides = {};   // mode -> [min|null, max|null]
+function geoRangeMin() { return (_geoRangeOverrides[geoColorMode()] || [])[0] ?? null; }
+function geoRangeMax() { return (_geoRangeOverrides[geoColorMode()] || [])[1] ?? null; }
+function setGeoRangeMin(v) {
+    const m = geoColorMode(), r = _geoRangeOverrides[m] || [null, null];
+    _geoRangeOverrides[m] = [v, r[1]];
+}
+function setGeoRangeMax(v) {
+    const m = geoColorMode(), r = _geoRangeOverrides[m] || [null, null];
+    _geoRangeOverrides[m] = [r[0], v];
+}
 
 // effective range for current mode
 function geoEffectiveRange() {
     const mode = geoColorMode();
-    if (mode === 'vmon')  return [geoRangeMin ?? 0, geoRangeMax ?? CR.vmon_max];
-    if (mode === 'vset')  return [geoRangeMin ?? 0, geoRangeMax ?? CR.vset_max];
-    if (mode === 'diff')  return [geoRangeMin ?? -CR.diff_max, geoRangeMax ?? CR.diff_max];
+    const lo = geoRangeMin(), hi = geoRangeMax();
+    if (mode === 'vmon')  return [lo ?? 0, hi ?? CR.vmon_max];
+    if (mode === 'vset')  return [lo ?? 0, hi ?? CR.vset_max];
+    if (mode === 'diff')  return [lo ?? -CR.diff_max, hi ?? CR.diff_max];
     return [0, 1]; // status — not used for continuous scale
 }
 
