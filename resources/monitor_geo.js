@@ -173,14 +173,14 @@ function _lerpPal(a, b, t) {
 }
 const GEO_PALETTES = {
     rainbow(t) {
-        // Blue → Cyan → Green → Yellow → Red
-        if (t < 0.25) return _lerpPal('#0000ff', '#00ffff', t * 4);
-        if (t < 0.50) return _lerpPal('#00ffff', '#00ff00', (t - 0.25) * 4);
-        if (t < 0.75) return _lerpPal('#00ff00', '#ffff00', (t - 0.50) * 4);
-        return _lerpPal('#ffff00', '#ff0000', (t - 0.75) * 4);
+        // deep blue → blue → green → yellow → red (original diffColorScale, remapped 0..1)
+        if (t < 0.25) return _lerpPal('#1e3a5f', '#3b82f6', t * 4);
+        if (t < 0.50) return _lerpPal('#3b82f6', '#2dd4a0', (t - 0.25) * 4);
+        if (t < 0.75) return _lerpPal('#2dd4a0', '#eab308', (t - 0.50) * 4);
+        return _lerpPal('#eab308', '#f56565', (t - 0.75) * 4);
     },
     darkblue(t) {
-        // dark → blue → amber
+        // dark → blue → amber (original vmonColorScale)
         if (t < 0.5) return _lerpPal('#0b1628', '#3b9eff', t * 2);
         return _lerpPal('#3b9eff', '#eab308', (t - 0.5) * 2);
     },
