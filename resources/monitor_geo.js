@@ -172,8 +172,15 @@ function _lerpPal(a, b, t) {
     return `rgb(${Math.round(ar+(br-ar)*t)},${Math.round(ag+(bg-ag)*t)},${Math.round(ab+(bb-ab)*t)})`;
 }
 const GEO_PALETTES = {
-    default(t) {
-        // Original: dark → blue → amber
+    rainbow(t) {
+        // Blue → Cyan → Green → Yellow → Red
+        if (t < 0.25) return _lerpPal('#0000ff', '#00ffff', t * 4);
+        if (t < 0.50) return _lerpPal('#00ffff', '#00ff00', (t - 0.25) * 4);
+        if (t < 0.75) return _lerpPal('#00ff00', '#ffff00', (t - 0.50) * 4);
+        return _lerpPal('#ffff00', '#ff0000', (t - 0.75) * 4);
+    },
+    darkblue(t) {
+        // dark → blue → amber
         if (t < 0.5) return _lerpPal('#0b1628', '#3b9eff', t * 2);
         return _lerpPal('#3b9eff', '#eab308', (t - 0.5) * 2);
     },
