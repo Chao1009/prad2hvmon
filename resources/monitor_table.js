@@ -244,6 +244,29 @@ function isPrimary(ch) {
     return ch.channel === 0 && ch.name && ch.name.toUpperCase().includes('PRIMARY');
 }
 
+const _searchColMap = { crate:'crate', slot:'slot', ch:'channel', channel:'channel',
+                        name:'name', model:'model', vmon:'vmon', vset:'vset', svmax:'svmax' };
+
+function applySearch(data, searchText) {
+    if (!searchText) return data;
+    // Check if the query contains col:value pairs (comma-separated)
+    const parts = searchText.split(/[, |]+/).filter(Boolean);
+    const pairs = parts.map(p => {
+        const ci = p.indexOf(':');
+        if (ci <= 0) return null;
+        const col = p.slice(0, ci).trim();
+        const val = p.slice(ci + 1).trim().toLowerCase();
+        const field = _searchColMap[col];
+        return field ? { field, val } : null;
+    });
+    if (pairs.length && pairs.every(p => p !== null)) {
+        // All parts are valid col:value — exact match on each
+        return data.filter(c => pairs.every(p => String(c[p.field]).toLowerCase() === p.val));
+    }
+    // Fallback: plain substring search on concatenated fields
+    return data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
+}
+
 // Return the currently filtered/visible channel list (same logic as renderTable)
 function getFilteredChannels() {
     let data = allChannels;
@@ -253,21 +276,7 @@ function getFilteredChannels() {
     else if (filterStatus === 'warn')    data = data.filter(c => c._cc.isWarn);
     else if (filterStatus === 'fault')   data = data.filter(c => c._cc.isFault);
     if (filterCrate) data = data.filter(c => c.crate === filterCrate);
-    if (searchText) {
-        const colonIdx = searchText.indexOf(':');
-        if (colonIdx > 0) {
-            const col = searchText.slice(0, colonIdx).trim();
-            const val = searchText.slice(colonIdx + 1).trim();
-            const colMap = { crate:'crate', slot:'slot', ch:'channel', channel:'channel',
-                             name:'name', model:'model', vmon:'vmon', vset:'vset', svmax:'svmax' };
-            const field = colMap[col];
-            data = field
-                ? data.filter(c => String(c[field]).toLowerCase().includes(val))
-                : data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
-        } else {
-            data = data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
-        }
-    }
+    data = applySearch(data, searchText);
     return data;
 }
 
@@ -289,21 +298,7 @@ function renderTable(resetScroll) {
     else if (filterStatus === 'warn')    data = data.filter(c => c._cc.isWarn);
     else if (filterStatus === 'fault')   data = data.filter(c => c._cc.isFault);
     if (filterCrate) data = data.filter(c => c.crate === filterCrate);
-    if (searchText) {
-        const colonIdx = searchText.indexOf(':');
-        if (colonIdx > 0) {
-            const col = searchText.slice(0, colonIdx).trim();
-            const val = searchText.slice(colonIdx + 1).trim();
-            const colMap = { crate:'crate', slot:'slot', ch:'channel', channel:'channel',
-                             name:'name', model:'model', vmon:'vmon', vset:'vset', svmax:'svmax' };
-            const field = colMap[col];
-            data = field
-                ? data.filter(c => String(c[field]).toLowerCase().includes(val))
-                : data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
-        } else {
-            data = data.filter(c => (c.crate+' '+c.slot+' '+c.channel+' '+c.name+' '+c.model).toLowerCase().includes(searchText));
-        }
-    }
+    data = applySearch(data, searchText);
     data = data.slice().sort((a, b) => {
         let va = a[sortCol], vb = b[sortCol];
         if (sortCol === 'diff') {
