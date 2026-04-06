@@ -719,15 +719,22 @@ private:
         else if (type == "set_voltage_by_name") {
             std::string name = cmd.value("name", "");
             auto addr = findChannelByName(name);
-            if (addr.ch) {
-                float v = cmd.value("value", 0.0f);
-                addr.ch->SetVoltage(v);
-                float actual = std::min(v, addr.ch->GetLimit());
-                addPendingOverride(addr.crate, addr.slot, addr.channel,
-                                   "V0Set", actual);
-            } else {
+            if (!addr.ch) {
                 std::cerr << "HVPoller: set_voltage_by_name — channel \""
                           << name << "\" not found\n";
+            } else {
+                // Check disconnected-crate guard (same as top-level guard)
+                auto rsIt = crate_reconnect_.find(addr.crate);
+                if (rsIt != crate_reconnect_.end() && !rsIt->second.connected) {
+                    std::cerr << "HVPoller: set_voltage_by_name skipped — crate "
+                              << addr.crate << " is disconnected\n";
+                } else {
+                    float v = cmd.value("value", 0.0f);
+                    addr.ch->SetVoltage(v);
+                    float actual = std::min(v, addr.ch->GetLimit());
+                    addPendingOverride(addr.crate, addr.slot, addr.channel,
+                                       "V0Set", actual);
+                }
             }
         }
         else if (type == "get_voltage") {

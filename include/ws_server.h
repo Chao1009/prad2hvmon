@@ -536,10 +536,149 @@ private:
 
     // ── HTTP static file server ─────────────────────────────────────────
 
+    // ── HTTP REST API helpers ───────────────────────────────────────────
+
+    // Authenticate an HTTP request via X-Auth header.
+    // Returns the granted access level (0 = guest / unauthenticated).
+    int httpAuthLevel(const std::string &pw) const
+    {
+        if (!authRequired()) return 2;       // no passwords → full access
+        if (!expert_pass_.empty() && pw == expert_pass_) return 2;
+        if (!user_pass_.empty()   && pw == user_pass_)   return 1;
+        return 0;
+    }
+
+    void httpJson(connection_hdl hdl, websocketpp::http::status_code::value code,
+                  const json &body)
+    {
+        try {
+            auto con = server_.get_con_from_hdl(hdl);
+            con->set_status(code);
+            con->append_header("Content-Type", "application/json; charset=utf-8");
+            con->append_header("Access-Control-Allow-Origin", "*");
+            con->set_body(body.dump());
+        } catch (...) {}
+    }
+
     void onHttp(connection_hdl hdl)
     {
         auto con = server_.get_con_from_hdl(hdl);
         std::string uri = con->get_resource();  // e.g. "/", "/monitor.js"
+        std::string method = con->get_request().get_method();
+
+        // ── REST API endpoints (/api/...) ───────────────────────────────
+        if (uri.rfind("/api/", 0) == 0) {
+            // CORS preflight
+            if (method == "OPTIONS") {
+                con->set_status(websocketpp::http::status_code::ok);
+                con->append_header("Access-Control-Allow-Origin", "*");
+                con->append_header("Access-Control-Allow-Headers",
+                                   "Content-Type, X-Auth");
+                con->append_header("Access-Control-Allow-Methods",
+                                   "GET, POST, OPTIONS");
+                return;
+            }
+
+            std::string pw = con->get_request_header("X-Auth");
+            int level = httpAuthLevel(pw);
+
+            // GET /api/voltage?name=W1124
+            if (uri.rfind("/api/voltage", 0) == 0 && method == "GET") {
+                // Parse ?name= from query string
+                std::string name;
+                auto qpos = uri.find('?');
+                if (qpos != std::string::npos) {
+                    std::string qs = uri.substr(qpos + 1);
+                    // Simple single-param parse: name=VALUE
+                    auto eqpos = qs.find('=');
+                    if (eqpos != std::string::npos &&
+                        qs.substr(0, eqpos) == "name")
+                        name = qs.substr(eqpos + 1);
+                }
+                if (name.empty()) {
+                    httpJson(hdl, websocketpp::http::status_code::bad_request,
+                             {{"error", "missing 'name' query parameter"}});
+                    return;
+                }
+                auto [snap, ver] = store_.getHV();
+                json channels = json::parse(snap, nullptr, false);
+                if (!channels.is_array()) {
+                    httpJson(hdl, websocketpp::http::status_code::service_unavailable,
+                             {{"error", "no HV data available yet"}});
+                    return;
+                }
+                for (const auto &ch : channels) {
+                    if (ch.value("name", "") == name) {
+                        json resp;
+                        for (const char *key : {"name","crate","slot","channel",
+                                                "vset","vmon","limit","iset","imon",
+                                                "on","status"}) {
+                            if (ch.contains(key)) resp[key] = ch[key];
+                        }
+                        httpJson(hdl, websocketpp::http::status_code::ok, resp);
+                        return;
+                    }
+                }
+                httpJson(hdl, websocketpp::http::status_code::not_found,
+                         {{"error", "channel '" + name + "' not found"}});
+                return;
+            }
+
+            // POST /api/voltage  { "name": "W1124", "value": 1500.0 }
+            if (uri == "/api/voltage" && method == "POST") {
+                if (level < 2) {
+                    httpJson(hdl, websocketpp::http::status_code::forbidden,
+                             {{"error", "Expert access required (set X-Auth header)"}});
+                    return;
+                }
+                json body;
+                try { body = json::parse(con->get_request_body()); }
+                catch (...) {
+                    httpJson(hdl, websocketpp::http::status_code::bad_request,
+                             {{"error", "invalid JSON body"}});
+                    return;
+                }
+                std::string name = body.value("name", "");
+                if (name.empty() || !body.contains("value") ||
+                    !body["value"].is_number()) {
+                    httpJson(hdl, websocketpp::http::status_code::bad_request,
+                             {{"error", "requires 'name' (string) and 'value' (number)"}});
+                    return;
+                }
+                json cmd;
+                cmd["type"]  = "set_voltage_by_name";
+                cmd["name"]  = name;
+                cmd["value"] = body["value"];
+                if (op_logger_) op_logger_->logCommand(level, cmd);
+                cmdq_.push({ Command::HV, std::move(cmd) });
+                httpJson(hdl, websocketpp::http::status_code::ok,
+                         {{"status", "queued"},
+                          {"name", name}});
+                return;
+            }
+
+            // POST /api/auth  { "password": "..." }
+            if (uri == "/api/auth" && method == "POST") {
+                json body;
+                try { body = json::parse(con->get_request_body()); }
+                catch (...) {
+                    httpJson(hdl, websocketpp::http::status_code::bad_request,
+                             {{"error", "invalid JSON body"}});
+                    return;
+                }
+                std::string testPw = body.value("password", "");
+                int granted = httpAuthLevel(testPw);
+                httpJson(hdl, websocketpp::http::status_code::ok,
+                         {{"granted", granted}});
+                return;
+            }
+
+            httpJson(hdl, websocketpp::http::status_code::not_found,
+                     {{"error", "unknown API endpoint"}});
+            return;
+        }
+
+        // ── Static file serving ─────────────────────────────────────────
 
         // Redirect "/" to "/monitor.html"
         if (uri == "/") uri = "/monitor.html";
