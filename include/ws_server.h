@@ -364,18 +364,12 @@ private:
         for (const auto &ch : channels) {
             if (ch.value("name", "") == name) {
                 json resp;
-                resp["type"]    = "get_voltage_response";
-                resp["name"]    = name;
-                resp["crate"]   = ch.value("crate", "");
-                resp["slot"]    = ch.value("slot", -1);
-                resp["channel"] = ch.value("channel", -1);
-                resp["vset"]    = ch.value("vset", nullptr);
-                resp["vmon"]    = ch.value("vmon", nullptr);
-                resp["limit"]   = ch.value("limit", nullptr);
-                resp["iset"]    = ch.value("iset", nullptr);
-                resp["imon"]    = ch.value("imon", nullptr);
-                resp["on"]      = ch.value("on", false);
-                resp["status"]  = ch.value("status", "");
+                resp["type"] = "get_voltage_response";
+                for (const char *key : {"name","crate","slot","channel",
+                                        "vset","vmon","limit","iset","imon",
+                                        "on","status"}) {
+                    if (ch.contains(key)) resp[key] = ch[key];
+                }
                 try {
                     server_.send(hdl, resp.dump(),
                                  websocketpp::frame::opcode::text);
