@@ -529,6 +529,11 @@ private:
             captureSingle(cmd.value("crate",""), cmd.value("slot",-1),
                           cmd.value("ch",-1), {"V0Set"});
         }
+        else if (type == "set_voltage_by_name") {
+            auto addr = findChannelByName(cmd.value("name", ""));
+            if (addr.ch)
+                captureSingle(addr.crate, addr.slot, addr.channel, {"V0Set"});
+        }
         else if (type == "set_current") {
             captureSingle(cmd.value("crate",""), cmd.value("slot",-1),
                           cmd.value("ch",-1), {"I0Set"});
@@ -711,6 +716,23 @@ private:
                         ch->SetVoltage(v);
                     }
         }
+        else if (type == "set_voltage_by_name") {
+            std::string name = cmd.value("name", "");
+            auto addr = findChannelByName(name);
+            if (addr.ch) {
+                float v = cmd.value("value", 0.0f);
+                addr.ch->SetVoltage(v);
+                float actual = std::min(v, addr.ch->GetLimit());
+                addPendingOverride(addr.crate, addr.slot, addr.channel,
+                                   "V0Set", actual);
+            } else {
+                std::cerr << "HVPoller: set_voltage_by_name — channel \""
+                          << name << "\" not found\n";
+            }
+        }
+        else if (type == "get_voltage") {
+            // Handled synchronously in WsServer::onMessage — should not reach here
+        }
         else if (type == "load_settings") {
             loadSettings(cmd);
         }
@@ -726,6 +748,26 @@ private:
         auto *bd = it->second->GetBoard(static_cast<unsigned short>(slot));
         if (!bd) return nullptr;
         return bd->GetChannel(channel);
+    }
+
+    struct ChannelAddr {
+        CAEN_Channel *ch   = nullptr;
+        std::string   crate;
+        int           slot    = -1;
+        int           channel = -1;
+    };
+
+    ChannelAddr findChannelByName(const std::string &name)
+    {
+        for (auto *cr : crates_) {
+            for (auto *bd : cr->GetBoardList()) {
+                for (auto *ch : bd->GetChannelList()) {
+                    if (ch->GetName() == name)
+                        return { ch, cr->GetName(), bd->GetSlot(), ch->GetChannel() };
+                }
+            }
+        }
+        return {};
     }
 
     // ── JSON snapshot builders ───────────────────────────────────────────

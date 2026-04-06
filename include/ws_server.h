@@ -230,6 +230,7 @@ private:
             if (type == "set_voltage" || type == "set_current" ||
                 type == "set_svmax"   || type == "set_name"    ||
                 type == "set_all_voltage" ||
+                type == "set_voltage_by_name" ||
                 type == "load_settings" ||
                 type == "booster_set_voltage" || type == "booster_set_current")
             {
@@ -240,7 +241,13 @@ private:
                 }
             }
 
-            // save_settings (snapshot export) is ungated — safe for all levels
+            // save_settings / get_voltage (read-only) are ungated — safe for all levels
+
+            // ── Read-only queries (handled directly, not queued) ────────
+            if (type == "get_voltage") {
+                handleGetVoltage(hdl, cmd);
+                return;
+            }
 
             // ── Log accepted operations to file ─────────────────────────
             if (op_logger_) op_logger_->logCommand(level, cmd);
@@ -335,6 +342,51 @@ private:
     }
 
     // ── Error response helper ────────────────────────────────────────────
+
+    // ── get_voltage: read-only query, returns channel info by name ────────
+
+    void handleGetVoltage(connection_hdl hdl, const json &cmd)
+    {
+        std::string name = cmd.value("name", "");
+        if (name.empty()) {
+            sendError(hdl, "invalid_request", "get_voltage requires a 'name' field");
+            return;
+        }
+
+        // Search the latest HV snapshot for the named channel
+        auto [snap, ver] = store_.getHV();
+        json channels = json::parse(snap, nullptr, false);
+        if (!channels.is_array()) {
+            sendError(hdl, "no_data", "No HV snapshot available yet");
+            return;
+        }
+
+        for (const auto &ch : channels) {
+            if (ch.value("name", "") == name) {
+                json resp;
+                resp["type"]    = "get_voltage_response";
+                resp["name"]    = name;
+                resp["crate"]   = ch.value("crate", "");
+                resp["slot"]    = ch.value("slot", -1);
+                resp["channel"] = ch.value("channel", -1);
+                resp["vset"]    = ch.value("vset", nullptr);
+                resp["vmon"]    = ch.value("vmon", nullptr);
+                resp["limit"]   = ch.value("limit", nullptr);
+                resp["iset"]    = ch.value("iset", nullptr);
+                resp["imon"]    = ch.value("imon", nullptr);
+                resp["on"]      = ch.value("on", false);
+                resp["status"]  = ch.value("status", "");
+                try {
+                    server_.send(hdl, resp.dump(),
+                                 websocketpp::frame::opcode::text);
+                } catch (...) {}
+                return;
+            }
+        }
+
+        sendError(hdl, "not_found",
+                  "Channel '" + name + "' not found");
+    }
 
     void sendError(connection_hdl hdl, const std::string &code,
                    const std::string &message)
