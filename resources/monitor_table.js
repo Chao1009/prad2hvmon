@@ -12,9 +12,13 @@ function initTableUI() {
             dataDirty = true; renderActiveTab();
         });
     });
+    let _searchTimer = 0;
     document.getElementById('search').addEventListener('input', e => {
-        searchText = e.target.value.trim().toLowerCase();
-        dataDirty = true; renderTable(true);
+        clearTimeout(_searchTimer);
+        _searchTimer = setTimeout(() => {
+            searchText = e.target.value.trim().toLowerCase();
+            dataDirty = true; renderTable(true);
+        }, 180);
     });
     document.querySelectorAll('#summary-strip .summary-item').forEach(item => {
         item.addEventListener('click', () => {

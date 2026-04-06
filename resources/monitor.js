@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 applyPendingBoosterSets();
                 boosterByName = {}; boosterSupplies.forEach(s => { boosterByName[s.name] = s; });
                 boosterDirty = true;
+                _colorCacheDirty = true;
                 evaluateAlarm();
             });
             // Fetch static supply definitions to build cards immediately.
@@ -373,7 +374,7 @@ function initLoginModal(client) {
 function rebuildChMap() {
     chByName = {};
     allChannels.forEach(ch => { chByName[ch.name] = ch; });
-    rebuildColorCache();   // invalidate geo colour cache on new data
+    _colorCacheDirty = true;   // defer geo colour rebuild until needed
 }
 
 // Safe number formatter — returns '—' if value is null/undefined/NaN

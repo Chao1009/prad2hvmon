@@ -27,7 +27,10 @@ function initGeoMap() {
     });
     (function hoverLoop() {
         if (pendingMouseEvent) {
-            updateGeoHover(pendingMouseEvent);
+            const geoTab = document.getElementById('geo-tab');
+            if (geoTab && geoTab.classList.contains('active')) {
+                updateGeoHover(pendingMouseEvent);
+            }
             pendingMouseEvent = null;
         }
         requestAnimationFrame(hoverLoop);
@@ -252,10 +255,12 @@ function geoColorMode() { return document.getElementById('geo-color-mode').value
 // renderGeo() reads the cache; a colour-mode change also triggers a rebuild.
 let _colorCache = {};        // modName -> colour string
 let _colorCacheMode = '';    // mode the cache was built for
+var _colorCacheDirty = true; // set by rebuildChMap(); cleared after rebuild
 
 function rebuildColorCache() {
     const mode = geoColorMode();
     _colorCacheMode = mode;
+    _colorCacheDirty = false;
     _colorCache = {};
     for (const mod of MODULES) {
         _colorCache[mod.n] = _computeModuleColor(mod, mode);
@@ -263,9 +268,9 @@ function rebuildColorCache() {
 }
 
 function moduleColor(mod) {
-    // If mode changed since last build, rebuild first
+    // Rebuild if data changed or colour mode changed since last build
     const mode = geoColorMode();
-    if (mode !== _colorCacheMode) rebuildColorCache();
+    if (_colorCacheDirty || mode !== _colorCacheMode) rebuildColorCache();
     return _colorCache[mod.n] ?? '#222';
 }
 
@@ -284,7 +289,7 @@ function _computeModuleColor(mod, mode) {
 
     if (mode === 'status') {
         if (!ch) return '#222';
-        const cc = classifyChannel(ch);
+        const cc = ch._cc || classifyChannel(ch);
         if (cc.isFault)  return '#f56565';   // red
         if (cc.isWarn)   return '#eab308';   // amber (suppressed or ΔV)
         if (!ch.on)      return '#4a5568';   // dim grey
@@ -573,7 +578,7 @@ function updateGeoHover(e) {
             if (ch.iSupported !== false && ch.imon != null)
                 html += `<div class="tt-row"><span class="tt-label">IMon</span><span class="tt-val"><span class="tt-live">${fmt(ch.imon, 3)}</span> µA</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">Pwr</span><span class="tt-val">${pwrHtml(ch)}</span></div>`;
-            const ttSt = classifyChannel(ch).badgesHtml;
+            const ttSt = (ch._cc || classifyChannel(ch)).badgesHtml;
             if (ttSt) html += `<div class="tt-row"><span class="tt-label">Status</span><span class="tt-val">${ttSt}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
@@ -667,32 +672,32 @@ function openModPopup(mod) {
     el.appendChild(body);
 
     // Populate grid + wire actions
+    let _popupBuilt = false;   // false = first paint, need full HTML rebuild
     function refresh() {
         const c = chByName[mod.n];
-        let html = '';
-        html += `<span class="plbl">Type</span><span class="pval">${mod.t}</span>`;
-        html += `<span class="plbl">Position</span><span class="pval">(${mod.x.toFixed(1)}, ${mod.y.toFixed(1)}) mm</span>`;
-        if (c) {
-            html += `<span class="plbl">HV</span><span class="pval">${c.crate} s${c.slot} ch${c.channel}</span>`;
-            html += `<span class="plbl">HV Board</span><span class="pval">${c.model || '—'}</span>`;
-            const daqC = daqByName[mod.n];
-            const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
-            html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
-            html += `<span class="plbl">VMon / VSet</span><span class="pval"><span class="pval-live">${fmt(c.vmon, 2)}</span> / ${fmt(c.vset, 2)} V</span>`;
-            const popupDiff = (c.vmon != null && c.vset != null) ? (c.vmon - c.vset) : null;
-            const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.max(-1, Math.min(1, popupDiff / CR.diff_max))) : null;
-            const popupDiffStyle = popupDiffColor ? ('color:' + popupDiffColor + ';font-weight:600') : '';
-            const popupDiffSign = (popupDiff != null && popupDiff > 0) ? '+' : '';
-            html += `<span class="plbl">ΔV</span><span class="pval" ${popupDiffStyle ? ('style="' + popupDiffStyle + '"') : ''}>${popupDiffSign}${fmt(popupDiff, 2)} V</span>`;
-            if (c.iSupported === false) {
-                html += `<span class="plbl">IMon / ISet</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
-            } else {
-                html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
+
+        // ── Fast path: only patch live values (vmon, imon, diff, pwr, status) ──
+        if (_popupBuilt && c) {
+            const liveVmon = grid.querySelector('[data-pp="vmon"]');
+            const liveDiff = grid.querySelector('[data-pp="diff"]');
+            const liveImon = grid.querySelector('[data-pp="imon"]');
+            const livePwr  = grid.querySelector('[data-pp="pwr"]');
+            const liveSt   = grid.querySelector('[data-pp="st"]');
+            if (liveVmon) liveVmon.textContent = fmt(c.vmon, 2);
+            if (liveDiff) {
+                const popupDiff = (c.vmon != null && c.vset != null) ? (c.vmon - c.vset) : null;
+                const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.max(-1, Math.min(1, popupDiff / CR.diff_max))) : null;
+                const popupDiffSign = (popupDiff != null && popupDiff > 0) ? '+' : '';
+                liveDiff.textContent = popupDiffSign + fmt(popupDiff, 2) + ' V';
+                liveDiff.style.color = popupDiffColor || '';
+                liveDiff.style.fontWeight = popupDiffColor ? '600' : '';
             }
-            html += `<span class="plbl">Pwr</span><span class="pval">${pwrHtml(c)}</span>`;
-            const ppSt = classifyChannel(c).badgesHtml;
-            if (ppSt) html += `<span class="plbl">Status</span><span class="pval">${ppSt}</span>`;
-            // Don't overwrite inputs the user is currently editing
+            if (liveImon) liveImon.textContent = fmt(c.imon, 3);
+            if (livePwr) livePwr.innerHTML = pwrHtml(c);
+            if (liveSt) {
+                const ppSt = (c._cc || classifyChannel(c)).badgesHtml;
+                liveSt.innerHTML = ppSt || '';
+            }
             if (document.activeElement !== vsetInput) {
                 vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
                 vsetInput.dataset.orig = vsetInput.value;
@@ -702,16 +707,52 @@ function openModPopup(mod) {
                 isetInput.dataset.orig = isetInput.value;
             }
         } else {
-            html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
-            const daqC = daqByName[mod.n];
-            const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
-            html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
-            vsetInput.value = '';
-            vsetInput.dataset.orig = '';
-            isetInput.value = '';
-            isetInput.dataset.orig = '';
+            // ── Full rebuild (first paint or no channel) ──
+            let html = '';
+            html += `<span class="plbl">Type</span><span class="pval">${mod.t}</span>`;
+            html += `<span class="plbl">Position</span><span class="pval">(${mod.x.toFixed(1)}, ${mod.y.toFixed(1)}) mm</span>`;
+            if (c) {
+                html += `<span class="plbl">HV</span><span class="pval">${c.crate} s${c.slot} ch${c.channel}</span>`;
+                html += `<span class="plbl">HV Board</span><span class="pval">${c.model || '—'}</span>`;
+                const daqC = daqByName[mod.n];
+                const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
+                html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
+                html += `<span class="plbl">VMon / VSet</span><span class="pval"><span class="pval-live" data-pp="vmon">${fmt(c.vmon, 2)}</span> / ${fmt(c.vset, 2)} V</span>`;
+                const popupDiff = (c.vmon != null && c.vset != null) ? (c.vmon - c.vset) : null;
+                const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.max(-1, Math.min(1, popupDiff / CR.diff_max))) : null;
+                const popupDiffStyle = popupDiffColor ? ('color:' + popupDiffColor + ';font-weight:600') : '';
+                const popupDiffSign = (popupDiff != null && popupDiff > 0) ? '+' : '';
+                html += `<span class="plbl">ΔV</span><span class="pval" data-pp="diff" ${popupDiffStyle ? ('style="' + popupDiffStyle + '"') : ''}>${popupDiffSign}${fmt(popupDiff, 2)} V</span>`;
+                if (c.iSupported === false) {
+                    html += `<span class="plbl">IMon / ISet</span><span class="pval" style="color:var(--text-dim)">N/A</span>`;
+                } else {
+                    html += `<span class="plbl">IMon / ISet</span><span class="pval"><span class="pval-live" data-pp="imon">${fmt(c.imon, 3)}</span> / ${fmt(c.iset, 1)} µA</span>`;
+                }
+                html += `<span class="plbl">Pwr</span><span class="pval" data-pp="pwr">${pwrHtml(c)}</span>`;
+                const ppSt = (c._cc || classifyChannel(c)).badgesHtml;
+                if (ppSt) html += `<span class="plbl">Status</span><span class="pval" data-pp="st">${ppSt}</span>`;
+                if (document.activeElement !== vsetInput) {
+                    vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
+                    vsetInput.dataset.orig = vsetInput.value;
+                }
+                if (document.activeElement !== isetInput) {
+                    isetInput.value = (c.iSupported !== false && c.iset != null) ? c.iset.toFixed(1) : '';
+                    isetInput.dataset.orig = isetInput.value;
+                }
+                _popupBuilt = true;
+            } else {
+                html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
+                const daqC = daqByName[mod.n];
+                const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
+                html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
+                vsetInput.value = '';
+                vsetInput.dataset.orig = '';
+                isetInput.value = '';
+                isetInput.dataset.orig = '';
+                _popupBuilt = false;
+            }
+            grid.innerHTML = html;
         }
-        grid.innerHTML = html;
         const hasChannel = !!c;
         // VSet editing requires Expert (level >= 2)
         const canEdit = (accessLevel >= 2);
@@ -752,7 +793,7 @@ function openModPopup(mod) {
         addPendingSet(c.crate, c.slot, c.channel, 'vset', v, orig);
         vsetInput.value = v.toFixed(1);
         vsetInput.dataset.orig = vsetInput.value;
-        refresh();
+        _popupBuilt = false; refresh();
     });
     vsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetV.click(); });
 
@@ -766,7 +807,7 @@ function openModPopup(mod) {
         c.iset = v; dataDirty = true;
         addPendingSet(c.crate, c.slot, c.channel, 'iset', v, orig);
         isetInput.dataset.orig = isetInput.value;
-        refresh();
+        _popupBuilt = false; refresh();
     });
     isetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetI.click(); });
     btnOn.addEventListener('click', () => {
@@ -774,14 +815,14 @@ function openModPopup(mod) {
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, true);
         addPendingPower(c.crate, c.slot, c.channel, true);
-        dataDirty = true; refresh();
+        dataDirty = true; _popupBuilt = false; refresh();
     });
     btnOff.addEventListener('click', () => {
         if (!hvMonitor || accessLevel < 1) return;
         const c = chByName[mod.n]; if (!c) return;
         hvMonitor.setChannelPower(c.crate, c.slot, c.channel, false);
         addPendingPower(c.crate, c.slot, c.channel, false);
-        dataDirty = true; refresh();
+        dataDirty = true; _popupBuilt = false; refresh();
     });
 
     // Drag via header
