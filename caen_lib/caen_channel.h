@@ -70,6 +70,10 @@ private:
     // Generic parameter values — populated by Board::ReadAllParams()
     std::unordered_map<std::string, ParamValue> params_;
 
+    // Tracks last hardware status bits seen by EvaluateOVL(), so we only
+    // print to stderr on rising-edge transitions (not every poll cycle).
+    unsigned int prev_hw_status_ = 0;
+
 public:
     // Constructor
     CAEN_Channel(CAEN_Board *m, const unsigned short &c, const std::string &n)

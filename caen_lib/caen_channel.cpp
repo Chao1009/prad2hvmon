@@ -153,9 +153,13 @@ void CAEN_Channel::EvaluateOVL()
     // Write back to cache (not to hardware)
     params_["Status"] = ParamValue::fromUInt(st);
 
-    // Also check for hardware errors and print them
+    // Also check for hardware errors and print them — but only on rising
+    // edges (bits that just turned on), so persistent faults don't flood
+    // stderr every poll cycle.
     unsigned int hw_status = st & 0xFFFF;  // lower 16 bits = hardware
-    CAEN_ShowChError(name, hw_status);
+    unsigned int new_bits = hw_status & ~prev_hw_status_;
+    if (new_bits) CAEN_ShowChError(name, new_bits);
+    prev_hw_status_ = hw_status;
 }
 
 // ── GetStatusString ──────────────────────────────────────────────────────────
