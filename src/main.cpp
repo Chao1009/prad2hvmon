@@ -267,6 +267,7 @@ int main(int argc, char *argv[])
     int         verbosity    = 2;  // 0=silent, 1=fault, 2=warn+fault
     std::string userPass;              // -U: user-level access password
     std::string expertPass;            // -E: expert-level access password
+    std::string vmonRecDir;            // -R: VMon recording directory
 
     // DATABASE_DIR is a compile-time define (same as the original project)
 #ifdef DATABASE_DIR
@@ -277,7 +278,7 @@ int main(int argc, char *argv[])
 
     // ── Parse command-line ───────────────────────────────────────────────
     int opt;
-    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:n:v:U:E:h")) != -1) {
+    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:n:v:U:E:R:h")) != -1) {
         switch (opt) {
         case 'c': crateFile     = optarg; break;
         case 'm': moduleFile    = optarg; break;
@@ -293,6 +294,7 @@ int main(int argc, char *argv[])
         case 'v': verbosity     = std::atoi(optarg); break;
         case 'U': userPass      = optarg; break;
         case 'E': expertPass    = optarg; break;
+        case 'R': vmonRecDir   = optarg; break;
         case 'h':
         default:  printUsage(argv[0]); return (opt == 'h') ? 0 : 1;
         }
@@ -379,6 +381,14 @@ int main(int argc, char *argv[])
         std::cerr << "WARNING: not all crates connected — "
                      "daemon will serve partial data.\n";
     }
+
+    // ── VMon Recorder (optional — enabled with -R dir) ──────────────────
+    // Default to dbDir/vmon_data if -R is not specified
+    if (vmonRecDir.empty())
+        vmonRecDir = dbDir + "/vmon_data";
+    VMonRecorder vmonRecorder(vmonRecDir, static_cast<uint16_t>(vmonPollMs));
+    vmonRecorder.setChannels(hvPoller.crates());
+    hvPoller.setVMonRecorder(&vmonRecorder);
 
     // ── Booster Poller ───────────────────────────────────────────────────
     BoosterPoller bstPoller(boosterDefs);

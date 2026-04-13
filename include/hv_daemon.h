@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 #include <caen_channel.h>
 #include "booster_supply.h"
+#include "vmon_recorder.h"
 #include "channel_classifier.h"
 #include "fault_tracker.h"
 #include "fault_logger.h"
@@ -311,6 +312,7 @@ public:
     }
 
     void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
+    void setVMonRecorder(VMonRecorder *rec) { vmon_recorder_ = rec; }
 
     void setSettingsLogDir(const std::string &dir) {
         settings_auto_logger_ = SettingsAutoLogger(dir);
@@ -319,6 +321,8 @@ public:
 
     void setClassifier(const ChannelClassifier &cls) { classifier_ = cls; }
     ChannelClassifier &classifier() { return classifier_; }
+
+    const std::vector<CAEN_Crate*> &crates() const { return crates_; }
 
     void setVMonPollInterval(int ms) { vmon_poll_ms_ = (ms < 50) ? 50 : ms; }
     int  vmonPollInterval() const { return vmon_poll_ms_; }
@@ -382,6 +386,7 @@ public:
                     if (!before.empty())
                         settings_edit_logger_.recordEdit("load_settings", before);
                     store.setLoadResponse(loadSettings(cmd->payload));
+                    if (vmon_recorder_) vmon_recorder_->onNameChange();
                 } else {
                     json before = captureBeforeEdit(cmd->payload);
                     if (!before.empty())
@@ -409,6 +414,9 @@ public:
             auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                 sys_clk::now().time_since_epoch()).count();
             store.setVMon(buildVMonSnapshot(), static_cast<int64_t>(now_ms));
+
+            // Record to disk
+            if (vmon_recorder_) vmon_recorder_->writeSnapshot();
 
             ++cycle;
 
@@ -773,7 +781,10 @@ private:
         }
         else if (type == "set_name") {
             auto *ch = findChannel(crate, slot, ch_idx);
-            if (ch) ch->SetName(cmd.value("name", ""));
+            if (ch) {
+                ch->SetName(cmd.value("name", ""));
+                if (vmon_recorder_) vmon_recorder_->onNameChange();
+            }
         }
         else if (type == "set_poll_interval") {
             if (cmd.contains("vmon_ms"))
@@ -1203,6 +1214,7 @@ private:
     std::atomic<int> all_poll_every_n_;   // full poll every N fast cycles
     FaultTracker fault_tracker_;
     ChannelClassifier classifier_;
+    VMonRecorder *vmon_recorder_ = nullptr;   // optional, not owned
     std::vector<PendingOverride> pending_overrides_;
     SettingsAutoLogger settings_auto_logger_;
     SettingsEditLogger settings_edit_logger_;
