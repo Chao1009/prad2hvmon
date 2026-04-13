@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="monitor_geo.css">
 <link rel="stylesheet" href="monitor_booster.css">
 <link rel="stylesheet" href="monitor_faultlog.css">
+<link rel="stylesheet" href="monitor_hvmon.css">
 </head>
 <body>
 
@@ -58,6 +59,7 @@
         <button class="tab-btn" data-tab="geo-tab">HyCal Geometry</button>
         <button class="tab-btn" data-tab="booster-tab">Booster HV</button>
         <button class="tab-btn" data-tab="faultlog-tab">Fault Log</button>
+        <button class="tab-btn" data-tab="hvmon-tab">HV Monitor</button>
         <span class="tab-spacer"></span>
         <button class="tab-action-btn" id="btn-save-settings" title="Save all channel settings to JSON file">Save</button>
         <button class="tab-action-btn" id="btn-load-settings" title="Load channel settings from JSON file">Load</button>
@@ -225,6 +227,29 @@
         </div>
     </div>
 
+    <!-- ═══════════════ HV MONITOR TAB ═══════════════ -->
+    <div class="tab-content" id="hvmon-tab">
+        <div id="hvmon-split">
+            <div id="hvmon-left">
+                <div id="hvmon-geo-wrap">
+                    <canvas id="hvmon-geo-canvas"></canvas>
+                </div>
+                <div id="hvmon-legend"></div>
+            </div>
+            <div id="hvmon-right">
+                <div id="hvmon-info">Click a module to view VMon trace</div>
+                <div id="hvmon-fast-wrap">
+                    <div class="hvmon-plot-title">Fast buffer — VMon vs time</div>
+                    <canvas id="hvmon-fast-canvas"></canvas>
+                </div>
+                <div id="hvmon-ring-wrap">
+                    <div class="hvmon-plot-title">Ring buffer — mean &plusmn; &sigma; vs time</div>
+                    <canvas id="hvmon-ring-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer>
         <span id="last-update">Waiting for data…</span>
@@ -240,6 +265,7 @@
 <script src="monitor_geo.js"></script>
 <script src="monitor_booster.js"></script>
 <script src="monitor_faultlog.js"></script>
+<script src="monitor_hvmon.js"></script>
 <!-- Login modal -->
 <div id="login-overlay" class="login-overlay hidden">
   <div class="login-modal">

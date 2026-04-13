@@ -32,6 +32,7 @@ class DaemonClient {
         this._listeners = {
             channelsUpdated:    [],
             boardsUpdated:      [],
+            vmonUpdated:        [],    // fast VMon-only snapshots
             boosterUpdated:     [],
             crateStatusUpdated: [],
             onConnect:          [],
@@ -116,6 +117,10 @@ class DaemonClient {
             this._listeners.channelsUpdated.forEach(fn => fn(msg.data));
             break;
 
+        case 'hv_vmon_snapshot':
+            this._listeners.vmonUpdated.forEach(fn => fn(msg.data, msg.ts));
+            break;
+
         case 'board_snapshot':
             this._lastBoards = msg.data;
             this._listeners.boardsUpdated.forEach(fn => fn(msg.data));
@@ -176,6 +181,9 @@ class DaemonClient {
             // Signals (same .connect() API)
             channelsUpdated: {
                 connect(fn) { self._listeners.channelsUpdated.push(fn); }
+            },
+            vmonUpdated: {
+                connect(fn) { self._listeners.vmonUpdated.push(fn); }
             },
             boardsUpdated: {
                 connect(fn) { self._listeners.boardsUpdated.push(fn); }

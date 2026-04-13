@@ -346,10 +346,32 @@ int main(int argc, char *argv[])
     std::string settingsLogDir = dbDir + "/settings_log";
     std::cout << "Settings auto-logger: " << settingsLogDir << "/\n";
 
+    // ── Read polling config from gui_config.json ──────────────────────────
+    int vmonPollMs   = 200;
+    int allPollEveryN = 10;
+    if (!guiConfigFile.empty()) {
+        try {
+            std::ifstream gcf(guiConfigFile);
+            if (gcf.is_open()) {
+                json gc = json::parse(gcf);
+                if (gc.contains("polling")) {
+                    vmonPollMs    = gc["polling"].value("vmon_ms", 200);
+                    allPollEveryN = gc["polling"].value("all_every_n", 10);
+                }
+            }
+        } catch (const std::exception &e) {
+            std::cerr << "Warning: failed to read polling config: " << e.what() << "\n";
+        }
+    }
+    // Command-line -t overrides the fast poll interval
+    if (pollInterval != 2000)   // non-default → user specified -t
+        vmonPollMs = pollInterval;
+
     // ── HV Poller ────────────────────────────────────────────────────────
     HVPoller hvPoller(crateList);
     hvPoller.setFaultLogger(&faultLogger);
-    hvPoller.setPollInterval(pollInterval);
+    hvPoller.setVMonPollInterval(vmonPollMs);
+    hvPoller.setAllPollEveryN(allPollEveryN);
     hvPoller.setSettingsLogDir(settingsLogDir);
     loadDvWarnRules(dvWarnFile, hvPoller.classifier());
 
@@ -361,7 +383,7 @@ int main(int argc, char *argv[])
     // ── Booster Poller ───────────────────────────────────────────────────
     BoosterPoller bstPoller(boosterDefs);
     bstPoller.setFaultLogger(&faultLogger);
-    bstPoller.setPollInterval(pollInterval);
+    bstPoller.setPollInterval(vmonPollMs * allPollEveryN);  // match effective full-poll rate
 
     // ── Signal handling ──────────────────────────────────────────────────
     std::signal(SIGINT,  signalHandler);
@@ -376,8 +398,8 @@ int main(int argc, char *argv[])
         bstPoller.run(store, cmdq, g_running);
     });
 
-    std::cout << fmt::format("Poll threads started (interval: {} ms)\n",
-                             pollInterval);
+    std::cout << fmt::format("Poll threads started (VMon: {} ms, full: every {} cycles = {} ms)\n",
+                             vmonPollMs, allPollEveryN, vmonPollMs * allPollEveryN);
 
     // ── Locate resources directory (for built-in HTTP serving) ─────────
     if (resourceDir.empty()) {

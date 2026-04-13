@@ -400,7 +400,7 @@ private:
     {
         auto timer = std::make_shared<asio::steady_timer>(
             server_.get_io_service(),
-            std::chrono::milliseconds(200));
+            std::chrono::milliseconds(100));
 
         timer->async_wait([this, timer](const std::error_code &ec) {
             if (ec) return;  // timer cancelled (server stopping)
@@ -413,6 +413,24 @@ private:
     {
         if (connections_.empty()) return;
 
+        // ── Fast VMon snapshot (high-frequency) ─────────────────────────
+        auto [vmon_data, vmon_ver] = store_.getVMon();
+        if (vmon_ver != last_vmon_ver_) {
+            auto vmon_ts = store_.getVMonTs();
+            std::string vmsg = R"({"type":"hv_vmon_snapshot","ts":)" +
+                std::to_string(vmon_ts) + R"(,"data":)" + vmon_data + "}";
+            auto hdls = connections_;
+            for (auto &[hdl, info] : hdls) {
+                try {
+                    auto con = server_.get_con_from_hdl(hdl);
+                    if (con->get_buffered_amount() > MAX_SEND_BUFFER) continue;
+                    server_.send(hdl, vmsg, websocketpp::frame::opcode::text);
+                } catch (...) {}
+            }
+            last_vmon_ver_ = vmon_ver;
+        }
+
+        // ── Full snapshots (lower-frequency) ────────────────────────────
         auto [hv_data,  hv_ver]  = store_.getHV();
         auto [bd_data,  bd_ver]  = store_.getBoard();
         auto [bst_data, bst_ver] = store_.getBooster();
@@ -761,6 +779,7 @@ private:
     std::map<connection_hdl, ClientInfo, hdl_less> connections_;
 
     // Version tracking for change-detection broadcasts
+    uint64_t last_vmon_ver_ = 0;  // fast VMon-only
     uint64_t last_hv_ver_  = 0;
     uint64_t last_bd_ver_  = 0;
     uint64_t last_bst_ver_ = 0;
