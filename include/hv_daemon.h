@@ -1252,6 +1252,8 @@ public:
     void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
     void setPollInterval(int ms) { poll_interval_ms_ = (ms < 500) ? 500 : ms; }
 
+    const std::vector<BoosterSupply*> &supplies() const { return supplies_; }
+
     // ── Main poll loop (call from a std::thread) ─────────────────────────
     void run(SnapshotStore &store, CommandQueue &cmdq, std::atomic<bool> &running)
     {

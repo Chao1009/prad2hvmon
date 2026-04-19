@@ -395,6 +395,8 @@ int main(int argc, char *argv[])
     bstPoller.setFaultLogger(&faultLogger);
     bstPoller.setPollInterval(vmonPollMs * allPollEveryN);  // match effective full-poll rate
 
+    vmonRecorder.setBoosters(bstPoller.supplies());
+
     // ── Signal handling ──────────────────────────────────────────────────
     std::signal(SIGINT,  signalHandler);
     std::signal(SIGTERM, signalHandler);

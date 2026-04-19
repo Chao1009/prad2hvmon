@@ -1,13 +1,16 @@
 // ═════════════════════════════════════════════════════════════════════
-//  HV MONITOR TAB  —  VMon stability monitoring
+//  HV MONITOR TAB  —  dV stability monitoring (dV = VMon - V0Set)
 //
 //  Per-module data:
-//    fast buffer:  up to FAST_N VMon samples from fast polling
+//    fast buffer:  up to FAST_N dV samples from fast polling
 //    ring buffer:  up to RING_N entries, each = {mean, rms} from a
 //                  completed fast buffer epoch
 //
-//  Geo view shows sigma(VMon) color map.
-//  Click a module to see its fast + ring buffer plots.
+//  Geo view shows sigma(dV) color map.  Samples are only pushed once
+//  we have a V0Set value for the channel (from the slow hv_snapshot),
+//  so readings during the very first ~seconds after connect may be
+//  skipped until V0Set arrives.  Click a module to see its fast +
+//  ring buffer plots.
 // ═════════════════════════════════════════════════════════════════════
 
 // ── Config (overridden from gui_config.hvMonitor on init) ───────────
@@ -20,7 +23,7 @@ class ModuleMonitor {
     constructor() {
         this.fastN  = 0;
         this.fastTs = new Float32Array(FAST_N);   // relative ms (from shared t0)
-        this.fastV  = new Float32Array(FAST_N);   // VMon values
+        this.fastV  = new Float32Array(FAST_N);   // dV = VMon - V0Set
         this.fastT0 = null;                        // epoch-ms of first sample
 
         this.ringN    = 0;
@@ -31,11 +34,11 @@ class ModuleMonitor {
         this.ringT0   = null;
     }
 
-    push(epochMs, vmon) {
+    push(epochMs, dv) {
         if (this.fastN >= FAST_N) this.flush();
         if (this.fastT0 === null) this.fastT0 = epochMs;
         this.fastTs[this.fastN] = epochMs - this.fastT0;
-        this.fastV[this.fastN]  = vmon;
+        this.fastV[this.fastN]  = dv;
         this.fastN++;
     }
 
@@ -109,11 +112,17 @@ let _hvmRmsHi = 0.1;
 let _hvmFitted = false;
 
 // ── Data entry point (called from monitor.js on hv_vmon_snapshot) ───
+//    V0Set comes from the slow hv_snapshot and is cached on each channel
+//    object (ch.vset) by monitor.js.  Samples before V0Set is known are
+//    skipped so we never push raw VMon into the dV buffer.
 function onHVMonVMonData(data, ts) {
+    const chMap = (typeof chByName !== 'undefined') ? chByName : null;
     for (const entry of data) {
+        const ch = chMap ? chMap[entry.n] : null;
+        if (!ch || ch.vset == null) continue;     // wait for V0Set
         let mon = hvmonModules[entry.n];
         if (!mon) { mon = new ModuleMonitor(); hvmonModules[entry.n] = mon; }
-        mon.push(ts, entry.v);
+        mon.push(ts, entry.v - ch.vset);          // push dV
     }
 }
 
@@ -305,7 +314,7 @@ function renderHVMonGeo() {
         ctx.fillText('0', lx, ly - 2);
         const hi = _hvmRmsHi < 1 ? _hvmRmsHi.toFixed(4) : _hvmRmsHi.toFixed(2);
         ctx.fillText(hi + ' V', lx + lw + 4, ly + lh);
-        ctx.fillText('\u03c3(VMon)  [dbl-click reset]', lx, ly + lh + 12);
+        ctx.fillText('\u03c3(dV)  [dbl-click reset]', lx, ly + lh + 12);
     }
 }
 
@@ -530,8 +539,8 @@ function renderHVMonPlots() {
     if (infoEl) {
         infoEl.innerHTML =
             `<b>${name}</b> &nbsp; ` +
-            `VMon=${isNaN(cur)?'\u2014':cur.toFixed(3)}&thinsp;V &nbsp; ` +
-            `mean=${isNaN(meanF)?'\u2014':meanF.toFixed(3)}&thinsp;V &nbsp; ` +
+            `dV=${isNaN(cur)?'\u2014':cur.toFixed(4)}&thinsp;V &nbsp; ` +
+            `mean=${isNaN(meanF)?'\u2014':meanF.toFixed(4)}&thinsp;V &nbsp; ` +
             `\u03c3=${isNaN(stdF)?'\u2014':stdF.toFixed(4)}&thinsp;V &nbsp; ` +
             `fast=${n}/${FAST_N} &nbsp; ring=${mon.ringN}/${RING_N} &nbsp; ` +
             `<span style="color:#64748b">start ${t0str}</span>`;
@@ -542,7 +551,7 @@ function renderHVMonPlots() {
     if (fc && n > 0) {
         hvmonPlot(fc, {
             xs: mon.fastTs, ys: mon.fastV, n,
-            xLabel: 'Relative time [ms]', yLabel: 'VMon [V]',
+            xLabel: 'Relative time [ms]', yLabel: 'dV [V]',
             color: '#3b82f6',
         });
     } else if (fc) {
@@ -561,7 +570,7 @@ function renderHVMonPlots() {
         }
         hvmonPlot(rc, {
             xs: ring.ts, ys: ring.mean, yLo, yHi, n: rn,
-            xLabel: 'Relative time [ms]', yLabel: 'VMon [V]',
+            xLabel: 'Relative time [ms]', yLabel: 'dV [V]',
             color: '#22c55e', errorbar: true,
         });
     } else if (rc) {
