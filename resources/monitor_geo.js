@@ -469,6 +469,15 @@ function openModPopup(mod) {
     primaryGrid.className = 'popup-grid';
     body.appendChild(primaryGrid);
 
+    // Toggle row — click to reveal the primary controls.  Collapsed by
+    // default to avoid accidental primary changes; a primary voltage
+    // shift affects every channel on that slot at once, so operators
+    // should have to opt in before the knobs are visible.
+    const primaryToggle = document.createElement('div');
+    primaryToggle.className = 'popup-primary-toggle';
+    primaryToggle.textContent = '\u25B8 Show primary controls';
+    body.appendChild(primaryToggle);
+
     const primaryActions = document.createElement('div');
     primaryActions.className = 'popup-actions';
     const rowPV = document.createElement('div');
@@ -491,6 +500,16 @@ function openModPopup(mod) {
     body.appendChild(primaryActions);
 
     el.appendChild(body);
+
+    // Toggle state — starts collapsed.  Flipping sets .opened on the
+    // toggle row so CSS can switch the caret glyph and show the actions.
+    let _primaryOpen = false;
+    primaryToggle.addEventListener('click', () => {
+        _primaryOpen = !_primaryOpen;
+        primaryToggle.textContent = (_primaryOpen ? '\u25BE Hide' : '\u25B8 Show')
+                                    + ' primary controls';
+        primaryActions.style.display = _primaryOpen ? '' : 'none';
+    });
 
     let _popupBuilt = false;
     let _popupHadPrimary = false;
@@ -631,11 +650,14 @@ function openModPopup(mod) {
 
         // Primary section — the info sub-grid is always shown (standalone
         // channels get a "No primary" placeholder row), but the editor
-        // action rows collapse when there's nothing to control.
+        // action rows live behind a toggle so operators don't nudge a
+        // primary by accident.  No-primary modules have neither toggle
+        // nor actions.
         // VSet is Expert-gated (canEdit); power is User-gated (canPwr),
         // same as the channel's own controls.
         const hasPrimary = !!primaryByName[mod.n];
-        primaryActions.style.display = hasPrimary ? '' : 'none';
+        primaryToggle.style.display  = hasPrimary ? '' : 'none';
+        primaryActions.style.display = (hasPrimary && _primaryOpen) ? '' : 'none';
         pvsetInput.disabled = !hasPrimary || !canEdit;
         btnSetPV.disabled   = !hasPrimary || !canEdit;
         btnSetPV.style.display = (hasPrimary && canEdit) ? '' : 'none';
