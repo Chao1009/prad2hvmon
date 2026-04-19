@@ -500,36 +500,42 @@ function renderHVMonPlots() {
             `<span style="color:#64748b">oldest sample ${t0str}</span>`;
     }
 
-    // Fast plot (line): samples in chronological order.
+    // Fast plot (line): samples in chronological order, x-axis anchored
+    // at 0 = newest sample (all older samples have negative offsets).
     const fc = document.getElementById('hvmon-fast-canvas');
     if (fc && fast.n > 0) {
+        const lastTs = fast.ts[fast.n - 1];
+        const xs = new Float32Array(fast.n);
+        for (let i = 0; i < fast.n; i++) {
+            xs[i] = (fast.ts[i] - lastTs) / 1000;   // seconds, ≤ 0
+        }
         hvmonPlot(fc, {
-            xs: fast.ts, ys: fast.v, n: fast.n,
-            xLabel: 'Relative time [ms]', yLabel: 'dV [V]',
+            xs, ys: fast.v, n: fast.n,
+            xLabel: 'time before latest [s]', yLabel: 'dV [V]',
             color: '#3b82f6',
         });
     } else if (fc) {
         hvmonPlot(fc, { n: 0 });
     }
 
-    // Aggregated plot: x-axis is time before now, always ending at 0.
-    // Unit (h / m / s) picked from the oldest point's age so ticks stay
-    // readable as the buffer grows.
+    // Aggregated plot: x-axis is time relative to the newest aggregation
+    // point (at x=0); all older points have negative offsets.  Unit
+    // (h / m / s) picked from the full span so ticks stay readable.
     const rc = document.getElementById('hvmon-ring-canvas');
     if (rc && aggArr.length > 0) {
         const rn = aggArr.length;
-        const now = Date.now();
-        const oldestAgeS = Math.max(1, (now - aggArr[0].t) / 1000);
+        const latestT = aggArr[rn - 1].t;
+        const spanS = Math.max(1, (latestT - aggArr[0].t) / 1000);
         let unit, divisor;
-        if (oldestAgeS >= 3600)      { unit = 'h'; divisor = 3600000; }
-        else if (oldestAgeS >= 60)   { unit = 'm'; divisor = 60000; }
-        else                          { unit = 's'; divisor = 1000; }
+        if (spanS >= 3600)      { unit = 'h'; divisor = 3600000; }
+        else if (spanS >= 60)   { unit = 'm'; divisor = 60000; }
+        else                     { unit = 's'; divisor = 1000; }
 
         const xs  = new Float32Array(rn);
         const ys  = new Float32Array(rn);
         const yLo = new Float32Array(rn), yHi = new Float32Array(rn);
         for (let i = 0; i < rn; i++) {
-            xs[i]  = (aggArr[i].t - now) / divisor;
+            xs[i]  = (aggArr[i].t - latestT) / divisor;   // ≤ 0
             ys[i]  = aggArr[i].m;
             yLo[i] = aggArr[i].m - aggArr[i].r;
             yHi[i] = aggArr[i].m + aggArr[i].r;
@@ -546,7 +552,7 @@ function renderHVMonPlots() {
 
         hvmonPlot(rc, {
             xs, ys, yLo, yHi, n: rn,
-            xLabel: 'time before now', yLabel: 'dV [V]',
+            xLabel: 'time before latest', yLabel: 'dV [V]',
             color: '#22c55e', errorbar: true,
             xRange: [xLo - xPad, 0],
             xFormat,
