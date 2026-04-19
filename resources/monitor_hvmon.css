@@ -15,7 +15,7 @@
 
 /* ── Left pane: geo view ────────────────────────────────────────── */
 #hvmon-left {
-    flex: 0 0 42%;
+    flex: 0 0 50%;
     display: flex;
     flex-direction: column;
     min-width: 280px;

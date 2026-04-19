@@ -427,9 +427,11 @@ int main(int argc, char *argv[])
     std::cout << "Settings auto-logger: " << settingsLogDir << "/\n";
     std::cout << "HV settings snapshots: " << hvSettingsDir << "/\n";
 
-    // ── Read polling config from gui_config.json ──────────────────────────
-    int vmonPollMs   = 200;
-    int allPollEveryN = 10;
+    // ── Read polling + aggregator config from gui_config.json ────────────
+    int  vmonPollMs   = 200;
+    int  allPollEveryN = 10;
+    int  aggFastN = 5000;    // samples per aggregation flush
+    int  aggRingN = 100;     // ring depth per channel
     if (!guiConfigFile.empty()) {
         try {
             std::ifstream gcf(guiConfigFile);
@@ -438,6 +440,10 @@ int main(int argc, char *argv[])
                 if (gc.contains("polling")) {
                     vmonPollMs    = gc["polling"].value("vmon_ms", 200);
                     allPollEveryN = gc["polling"].value("all_every_n", 10);
+                }
+                if (gc.contains("hvAggregator")) {
+                    aggFastN = gc["hvAggregator"].value("fast_buffer_size", 5000);
+                    aggRingN = gc["hvAggregator"].value("ring_buffer_size", 100);
                 }
             }
         } catch (const std::exception &e) {
@@ -448,6 +454,16 @@ int main(int argc, char *argv[])
     if (pollInterval != 2000)   // non-default → user specified -t
         vmonPollMs = pollInterval;
 
+    // ── Server-side dV aggregator ────────────────────────────────────────
+    // Per-channel fast buffer → {mean, rms} aggregation ring.  Clients
+    // receive the full ring on connect and incremental deltas on each
+    // aggregation flush.  In-memory only (raw samples are persisted by
+    // the VMDF recorder below).
+    HVAggregator aggregator(static_cast<size_t>(std::max(10, aggFastN)),
+                             static_cast<size_t>(std::max(1,  aggRingN)));
+    std::cout << fmt::format("HV aggregator: fast_n={} ring_n={}\n",
+                             aggFastN, aggRingN);
+
     // ── HV Poller ────────────────────────────────────────────────────────
     HVPoller hvPoller(crateList);
     hvPoller.setFaultLogger(&faultLogger);
@@ -455,6 +471,7 @@ int main(int argc, char *argv[])
     hvPoller.setAllPollEveryN(allPollEveryN);
     hvPoller.setSettingsLogDir(settingsLogDir);
     hvPoller.setHvSettingsDir(hvSettingsDir);
+    hvPoller.setAggregator(&aggregator);
     loadDvWarnRules(dvWarnFile, hvPoller.classifier());
 
     if (!hvPoller.initCrates()) {
@@ -523,7 +540,7 @@ int main(int argc, char *argv[])
     // ── Start WebSocket + HTTP server (blocks on main thread) ────────────
     WsServer server(wsPort, store, cmdq, resourceDir,
                     moduleFile, guiConfigFile,
-                    userPass, expertPass, &opLogger);
+                    userPass, expertPass, &opLogger, &aggregator);
     g_server = &server;
 
     server.run();   // blocks until stop() is called

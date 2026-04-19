@@ -59,12 +59,14 @@ public:
              const std::string &gui_config_path = "",
              const std::string &user_password   = "",
              const std::string &expert_password = "",
-             FileOpLogger      *op_logger       = nullptr)
+             FileOpLogger      *op_logger       = nullptr,
+             HVAggregator      *aggregator      = nullptr)
         : port_(port), store_(store), cmdq_(cmdq),
           resource_dir_(resource_dir),
           user_pass_(user_password),
           expert_pass_(expert_password),
-          op_logger_(op_logger)
+          op_logger_(op_logger),
+          aggregator_(aggregator)
     {
         // Pre-load static config files into memory
         module_geo_json_ = readFile(module_geo_path, "[]");
@@ -161,6 +163,14 @@ private:
         init["fault_log_capacity"] = store_.faultLogCapacity();
         init["auth_required"]      = authRequired();
         init["access_level"]       = info.accessLevel;
+        // Full aggregation history — new client needs this to draw the
+        // Aggregated plot immediately instead of waiting for the next flush.
+        if (aggregator_) {
+            init["hv_aggregation"] = json::parse(aggregator_->fullSnapshotJson(),
+                                                  nullptr, false);
+        } else {
+            init["hv_aggregation"] = json::array();
+        }
 
         try {
             server_.send(hdl, init.dump(), websocketpp::frame::opcode::text);
@@ -448,6 +458,14 @@ private:
         if (cs_ver != last_crate_status_ver_) {
             broadcast("crate_status", cs_data);
             last_crate_status_ver_ = cs_ver;
+        }
+
+        // ── Aggregation deltas (only when something flushed this tick) ──
+        if (aggregator_) {
+            std::string agg_delta = aggregator_->takeDeltaJson();
+            if (agg_delta != "[]") {
+                broadcast("hv_aggregation_update", agg_delta);
+            }
         }
 
         // Fault logs: two separate buffers, two separate broadcasts
@@ -801,4 +819,6 @@ private:
 
     // Operation logger (optional — nullptr disables)
     FileOpLogger *op_logger_ = nullptr;
+    // Aggregator (optional — nullptr → no hv_aggregation init/deltas)
+    HVAggregator *aggregator_ = nullptr;
 };

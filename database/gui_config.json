@@ -19,8 +19,11 @@
         "all_every_n": 10
     },
     "hvMonitor": {
-        "fast_buffer_size": 5000,
-        "ring_buffer_size": 100,
+        "fast_buffer_size": 1000,
         "min_sigma_points": 20
+    },
+    "hvAggregator": {
+        "fast_buffer_size": 5000,
+        "ring_buffer_size": 100
     }
 }

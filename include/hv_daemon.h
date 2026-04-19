@@ -15,6 +15,7 @@
 #include <caen_channel.h>
 #include "booster_supply.h"
 #include "vmon_recorder.h"
+#include "hv_aggregator.h"
 #include "channel_classifier.h"
 #include "fault_tracker.h"
 #include "fault_logger.h"
@@ -313,6 +314,7 @@ public:
 
     void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
     void setVMonRecorder(VMonRecorder *rec) { vmon_recorder_ = rec; }
+    void setAggregator(HVAggregator *agg)  { aggregator_    = agg; }
 
     void setSettingsLogDir(const std::string &dir) {
         settings_auto_logger_ = SettingsAutoLogger(dir);
@@ -431,6 +433,25 @@ public:
 
             // Record to disk
             if (vmon_recorder_) vmon_recorder_->writeSnapshot();
+
+            // Push this cycle's samples into the server-side dV aggregator.
+            // CAEN status word: bit 0 = ON, bit 1 = RUP, bit 2 = RDN.
+            // Aggregate only when ON and not ramping — during a ramp dV
+            // is large and unrelated to channel stability.
+            if (aggregator_) {
+                for (auto *cr : crates_) {
+                    if (!crate_reconnect_[cr->GetName()].connected) continue;
+                    for (auto *bd : cr->GetBoardList()) {
+                        for (auto *ch : bd->GetChannelList()) {
+                            const unsigned int st = ch->GetStatus();
+                            const bool settled = (st & 1u) && !(st & 0b110u);
+                            aggregator_->push(ch->GetName(),
+                                              ch->GetVMon(), ch->GetVSet(),
+                                              settled, static_cast<int64_t>(now_ms));
+                        }
+                    }
+                }
+            }
 
             ++cycle;
 
@@ -1237,6 +1258,7 @@ private:
     FaultTracker fault_tracker_;
     ChannelClassifier classifier_;
     VMonRecorder *vmon_recorder_ = nullptr;   // optional, not owned
+    HVAggregator *aggregator_    = nullptr;   // optional, not owned
     std::vector<PendingOverride> pending_overrides_;
     SettingsAutoLogger settings_auto_logger_;
     SettingsEditLogger settings_edit_logger_;

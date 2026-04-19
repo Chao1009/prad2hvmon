@@ -132,6 +132,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof onHVMonVMonData === 'function') onHVMonVMonData(data, ts);
         });
 
+        // Server-side dV aggregation deltas — appended to each module's
+        // aggregation series by the HV monitor tab.
+        hvMonitor.aggregationUpdated.connect(data => {
+            if (typeof onHVMonAggUpdate === 'function') onHVMonAggUpdate(data);
+        });
+
         hvMonitor.boardsUpdated.connect(data => {
             allBoards = data;
             boardDirty = true;
@@ -160,6 +166,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 MODULES.forEach(m => { MOD_MAP[m.n] = m; });
                 rebuildColorCache();   // MODULES just arrived — populate colour cache
                 console.log('Loaded ' + MODULES.length + ' modules');
+            });
+            // Seed the HV Monitor tab's aggregation buffers with the full
+            // server-side history (sent once in the init payload).
+            hvMonitor.getAggregationHistory(history => {
+                if (typeof onHVMonAggHistory === 'function') onHVMonAggHistory(history);
             });
             // Load GUI config (ΔV thresholds, intervals, etc.)
             hvMonitor.getGuiConfig(cfg => {

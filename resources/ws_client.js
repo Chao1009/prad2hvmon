@@ -33,6 +33,7 @@ class DaemonClient {
             channelsUpdated:    [],
             boardsUpdated:      [],
             vmonUpdated:        [],    // fast VMon-only snapshots
+            aggregationUpdated: [],    // server-side dV aggregation deltas
             boosterUpdated:     [],
             crateStatusUpdated: [],
             onConnect:          [],
@@ -121,6 +122,10 @@ class DaemonClient {
             this._listeners.vmonUpdated.forEach(fn => fn(msg.data, msg.ts));
             break;
 
+        case 'hv_aggregation_update':
+            this._listeners.aggregationUpdated.forEach(fn => fn(msg.data));
+            break;
+
         case 'board_snapshot':
             this._lastBoards = msg.data;
             this._listeners.boardsUpdated.forEach(fn => fn(msg.data));
@@ -185,6 +190,9 @@ class DaemonClient {
             vmonUpdated: {
                 connect(fn) { self._listeners.vmonUpdated.push(fn); }
             },
+            aggregationUpdated: {
+                connect(fn) { self._listeners.aggregationUpdated.push(fn); }
+            },
             boardsUpdated: {
                 connect(fn) { self._listeners.boardsUpdated.push(fn); }
             },
@@ -221,6 +229,10 @@ class DaemonClient {
 
             getGuiConfig(cb) {
                 self._withInit(init => cb(init.gui_config || {}));
+            },
+
+            getAggregationHistory(cb) {
+                self._withInit(init => cb(init.hv_aggregation || []));
             },
 
             // Fire-and-forget commands
