@@ -11,7 +11,7 @@
 //     const boosterMonitor = ws.boosterMonitor;
 //
 // The daemon sends:
-//   {type:"init",       module_geometry:[...], gui_config:{...}, daq_map:[...]}
+//   {type:"init",       module_geometry:[...], gui_config:{...}}
 //   {type:"hv_snapshot",      data:[...]}
 //   {type:"board_snapshot",   data:[...]}
 //   {type:"booster_snapshot", data:[...]}
@@ -221,10 +221,6 @@ class DaemonClient {
 
             getGuiConfig(cb) {
                 self._withInit(init => cb(init.gui_config || {}));
-            },
-
-            getDAQMap(cb) {
-                self._withInit(init => cb(init.daq_map || []));
             },
 
             // Fire-and-forget commands

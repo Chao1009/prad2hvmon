@@ -48,6 +48,43 @@ make -j$(nproc)
 # http://localhost:8765/
 ```
 
+### Install (production)
+
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=/opt/prad2hvmon
+make -j$(nproc)
+make install
+
+# Add the install tree to PATH / LD_LIBRARY_PATH and export PRAD2HV_*_DIR
+source /opt/prad2hvmon/bin/setup.sh          # bash / zsh
+source /opt/prad2hvmon/bin/setup.csh         # csh / tcsh
+
+# Run — point -d at a writable state directory so the install tree itself
+# can stay read-only (fault_log/, op_log/, settings_log/, hv_settings/,
+# vmon_data/ live under $d).  Without -d the daemon writes into the
+# database directory, which is fine for a dev checkout but won't work for
+# a root-owned install.
+prad2hvd -d /var/lib/prad2hvmon
+```
+
+Layout after `make install`:
+
+```
+/opt/prad2hvmon/
+  bin/         prad2hvd, prad2hvmon, setup.sh, setup.csh,
+               faultgrep, merge_settings, json2table, …
+  lib/         libcaenhvwrapper.so
+  share/prad2hvmon/
+    database/  crates.json, hycal_modules.json, …
+    resources/ monitor.html + css/js
+    scripts/   Python tool sources
+```
+
+`setup.sh` exports `PRAD2HV_DATABASE_DIR` and `PRAD2HV_RESOURCE_DIR`; the
+daemon reads them at runtime so the install tree can be relocated without
+recompiling. Each daemon option still accepts an explicit path to override.
+
 ### Build with Qt GUI client (optional)
 
 ```bash
@@ -71,10 +108,11 @@ Headless process that polls hardware, classifies channel status, logs faults, an
 | `-c <file>` | Crates JSON (default: `database/crates.json`) |
 | `-m <file>` | Module geometry JSON (default: `database/hycal_modules.json`) |
 | `-g <file>` | GUI config JSON (default: `database/gui_config.json`) |
-| `-d <file>` | DAQ map JSON (default: `database/daq_map.json`) |
 | `-i <file>` | Error-ignore JSON (default: `database/error_ignore.json`) |
 | `-l <file>` | Voltage limits JSON (default: `database/voltage_limits.json`) |
 | `-w <file>` | ΔV warning rules JSON (default: `database/dv_warn.json`) |
+| `-d <dir>` | Data directory root (default: database dir). Contains `fault_log/`, `op_log/`, `settings_log/`, `hv_settings/`, `vmon_data/`. |
+| `-R <dir>` | Override VMon recorder directory (default: `$d/vmon_data`) |
 | `-r <dir>` | Resources directory for HTTP serving (default: auto-discover) |
 | `-p <port>` | WebSocket + HTTP port (default: 8765) |
 | `-t <ms>` | Poll interval in ms (default: 2000) |
@@ -116,7 +154,7 @@ The daemon supports three access levels, enforced server-side. Clients authentic
 
 The daemon logs authentication attempts to the console. All command gating is enforced server-side — client-side UI disabling is cosmetic only.
 
-Fault logs are written to `database/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected. User operations (voltage changes, power toggles, settings load, authentication) are logged separately to `database/op_log/YYYY-MM-DD.log`.
+Fault logs are written to `$d/fault_log/YYYY-MM-DD.log` continuously, whether or not any client is connected. User operations (voltage changes, power toggles, settings load, authentication) are logged separately to `$d/op_log/YYYY-MM-DD.log`. `$d` is the data directory root — by default the same as the database directory; override with `-d <dir>` (or pass a separate `PRAD2HV_DATABASE_DIR` for the database and `-d` for writable state so the install tree can stay read-only).
 
 ### Fault Log Format
 
@@ -132,7 +170,7 @@ Columns: timestamp, level (`FAULT`/`WARN`), direction (`APPEAR`/`DISAPPEAR`), ty
 
 ### Operation Log Format
 
-User operations are logged to `database/op_log/YYYY-MM-DD.log` (tab-separated, daily rotation):
+User operations are logged to `$d/op_log/YYYY-MM-DD.log` (tab-separated, daily rotation):
 
 ```
 2026-03-21 14:05:12.345	Expert	set_voltage	crate=PRadHV slot=0 ch=32 value=1525.00
@@ -181,7 +219,7 @@ Optional thin client — a `QWebEngineView` window that loads `monitor.html` and
 | `-p <port>` | Daemon WebSocket port (default: 8765) |
 | `-r <dir>` | Resources directory (default: auto-discover) |
 
-`Ctrl+S` saves a timestamped PNG screenshot to `database/screenshots/`.
+`Ctrl+S` saves a timestamped PNG screenshot to `$d/screenshots/` (defaults to the database dir; override with the GUI's `-d <dir>`).
 
 ### CLI read/write modes
 
@@ -259,7 +297,6 @@ All in `database/`. The daemon reads them at startup and serves relevant ones to
 | `crates.json` | Daemon | CAEN crate addresses `[{"name":"...","ip":"..."}]` |
 | `hycal_modules.json` | Daemon + Client | Module geometry and booster definitions |
 | `gui_config.json` | Client | Display thresholds, color ranges, render interval |
-| `daq_map.json` | Client | DAQ readout addresses (geo tooltips) |
 | `voltage_limits.json` | Daemon | Per-pattern voltage limits (OVL fault) |
 | `error_ignore.json` | Daemon | Per-channel error suppression |
 | `dv_warn.json` | Daemon | Per-pattern ΔV warning thresholds |
@@ -282,7 +319,7 @@ First matching pattern wins. Same wildcard scheme as `voltage_limits.json` and `
 
 ## Tools
 
-Standalone Python 3 utilities in `tools/`. No daemon required.
+Standalone Python 3 utilities in `scripts/`. No daemon required.
 
 | Tool | Purpose |
 |------|---------|
@@ -290,8 +327,9 @@ Standalone Python 3 utilities in `tools/`. No daemon required.
 | `merge_settings.py` | Merge two settings snapshots (by address or name) |
 | `json2table.py` | Pretty-print JSON config/settings as text tables |
 | `caenhv_reset.py` | Remote reboot of CAEN mainframes via tsconnect serial (JLab CLON env required) |
+| `vmon_reader.py` | Decode / plot VMDF v2 recorder files produced by `prad2hvd` |
 
-See [`tools/README.md`](tools/README.md) for full usage.
+See [`scripts/README.md`](scripts/README.md) for full usage. After `make install`, each script also gets a thin `bin/` wrapper (`faultgrep`, `merge_settings`, `json2table`, `caenhv_reset`, `vmon_reader`) that works without sourcing `setup.sh`.
 
 ## Dependencies
 

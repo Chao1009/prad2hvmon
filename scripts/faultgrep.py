@@ -237,8 +237,12 @@ examples:
 
     p.add_argument('files', nargs='*', default=None,
                    help='Log file(s) to read (default: today from -d)')
-    p.add_argument('-d', '--dir', default='database/fault_log',
-                   help='Fault log directory (default: database/fault_log)')
+    # Default log directory: $PRAD2HV_DATABASE_DIR/fault_log if set (installed
+    # wrappers export it), else database/fault_log in the current directory.
+    _db = os.environ.get('PRAD2HV_DATABASE_DIR')
+    _default_log_dir = os.path.join(_db, 'fault_log') if _db else 'database/fault_log'
+    p.add_argument('-d', '--dir', default=_default_log_dir,
+                   help=f'Fault log directory (default: {_default_log_dir})')
     p.add_argument('-p', '--persistent', action='store_true',
                    help='Show only persistent FAULTs (APPEAR without DISAPPEAR)')
     p.add_argument('-A', '--all-days', action='store_true',

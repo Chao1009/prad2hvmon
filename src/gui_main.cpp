@@ -44,6 +44,7 @@
 #include <map>
 #include <iomanip>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <unistd.h>
 
@@ -63,6 +64,8 @@ static void printUsage(const char *prog)
         << "  -H <host>   Daemon hostname (default: localhost)\n"
         << "  -p <port>   Daemon WebSocket port (default: 8765)\n"
         << "  -r <dir>    Resources directory (GUI mode)\n"
+        << "  -d <dir>    Data directory root — screenshots land in $d/screenshots\n"
+        << "              (default: $PRAD2HV_DATABASE_DIR or compiled-in path)\n"
         << "  -s <file>   Save output path (read mode)\n"
         << "  -f <file>   Settings file to load (write mode)\n"
         << "  -P <pass>   Expert password (write mode — required if daemon has auth)\n"
@@ -467,16 +470,17 @@ int main(int argc, char *argv[])
 
     // Parse options
     std::string host = "localhost", port_str = "8765", resourceDir;
-    std::string saveFile, settingsFile, cliPassword;
+    std::string saveFile, settingsFile, cliPassword, dataDir;
     int timeoutSec = 10;
 
     optind = 1;
     int opt;
-    while ((opt = getopt(eff_argc, argv, "H:p:r:s:f:t:P:h")) != -1) {
+    while ((opt = getopt(eff_argc, argv, "H:p:r:d:s:f:t:P:h")) != -1) {
         switch (opt) {
         case 'H': host         = optarg; break;
         case 'p': port_str     = optarg; break;
         case 'r': resourceDir  = optarg; break;
+        case 'd': dataDir      = optarg; break;
         case 's': saveFile     = optarg; break;
         case 'f': settingsFile = optarg; break;
         case 't': timeoutSec   = std::atoi(optarg); break;
@@ -493,9 +497,16 @@ int main(int argc, char *argv[])
         QApplication app(argc, argv);
         app.setApplicationName("PRad-II HV Monitor");
 
+        // Resolution order: -r flag → $PRAD2HV_RESOURCE_DIR → auto-discover
+        // relative to executable → compile-time RESOURCE_DIR.
+        if (resourceDir.empty()) {
+            if (const char *env = std::getenv("PRAD2HV_RESOURCE_DIR"))
+                resourceDir = env;
+        }
         if (resourceDir.empty()) {
             QStringList candidates = {
                 QCoreApplication::applicationDirPath() + "/../resources",
+                QCoreApplication::applicationDirPath() + "/../share/prad2hvmon/resources",
                 QCoreApplication::applicationDirPath() + "/../../resources",
 #ifdef RESOURCE_DIR
                 QString::fromStdString(RESOURCE_DIR),
@@ -532,10 +543,19 @@ int main(int argc, char *argv[])
         view.setUrl(url);
 
         // Screenshot shortcut (Ctrl+S)
-        std::string dbDir = DATABASE_DIR;
+        // Screenshot dir resolution: -d flag → $PRAD2HV_DATABASE_DIR
+        // → compile-time DATABASE_DIR.
+        std::string screenshotRoot = dataDir;
+        if (screenshotRoot.empty()) {
+            if (const char *env = std::getenv("PRAD2HV_DATABASE_DIR"))
+                screenshotRoot = env;
+        }
+#ifdef DATABASE_DIR
+        if (screenshotRoot.empty()) screenshotRoot = DATABASE_DIR;
+#endif
         auto *sc = new QShortcut(QKeySequence("Ctrl+S"), &view);
-        QObject::connect(sc, &QShortcut::activated, [&view, &dbDir]() {
-            const QString dir = QString::fromStdString(dbDir) + "/screenshots";
+        QObject::connect(sc, &QShortcut::activated, [&view, screenshotRoot]() {
+            const QString dir = QString::fromStdString(screenshotRoot) + "/screenshots";
             QDir().mkpath(dir);
             const QString ts   = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
             const QString path = dir + "/prad2hvmon_" + ts + ".png";

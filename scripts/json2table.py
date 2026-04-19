@@ -3,7 +3,6 @@
 # json2table.py — Pretty-print PRad-II JSON config files as text tables
 #
 # Supports:
-#   daq_map.json        — DAQ readout connection map
 #   hycal_modules.json  — Module geometry + booster definitions
 #   settings JSON       — Saved HV channel parameters (prad2hvmon read output)
 #
@@ -15,7 +14,7 @@
 # Options:
 #   -s, --sort COL      Sort by column name (case-insensitive)
 #   -f, --filter EXPR   Filter rows: COL=VAL or COL~PATTERN (substring match)
-#   -t, --type TYPE     Force type: daq, modules, settings (auto-detected)
+#   -t, --type TYPE     Force type: modules, settings (auto-detected)
 #   -c, --csv           Output as CSV instead of table
 #   -n, --no-header     Suppress the file-info header
 #   -h, --help          Show help
@@ -124,9 +123,6 @@ def detect_type(data):
             # hycal_modules: has "n", "t", "x", "y", "sx", "sy"
             if {'n', 't', 'x', 'y'}.issubset(keys):
                 return 'modules'
-            # daq_map: has "name", "crate", "slot", "channel"
-            if {'name', 'crate', 'slot', 'channel'}.issubset(keys):
-                return 'daq'
 
     return None
 
@@ -134,22 +130,6 @@ def detect_type(data):
 # ═════════════════════════════════════════════════════════════════════════════
 #  Extractors — turn JSON into (headers, rows)
 # ═════════════════════════════════════════════════════════════════════════════
-
-def extract_daq_map(data):
-    """
-    daq_map.json: [{name, crate, slot, channel}, ...]
-    """
-    headers = ['Name', 'Crate', 'Slot', 'Channel']
-    rows = []
-    for entry in data:
-        rows.append([
-            entry.get('name', ''),
-            entry.get('crate', ''),
-            entry.get('slot', ''),
-            entry.get('channel', ''),
-        ])
-    return headers, rows
-
 
 def extract_modules(data):
     """
@@ -318,19 +298,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''\
 examples:
-  %(prog)s database/daq_map.json
   %(prog)s database/hycal_modules.json -s name
   %(prog)s snapshot.json -f "crate=PRadHV_1"
   %(prog)s snapshot.json -f "name~W2" -s name
   %(prog)s database/hycal_modules.json --csv > modules.csv
-  %(prog)s database/daq_map.json -f "crate~3" -s slot
 ''')
     parser.add_argument('file', help='JSON file to display')
     parser.add_argument('-s', '--sort', metavar='COL',
                         help='Sort by column name')
     parser.add_argument('-f', '--filter', metavar='EXPR', action='append',
                         help='Filter: COL=VAL (exact) or COL~PAT (substring). Repeatable.')
-    parser.add_argument('-t', '--type', choices=['daq', 'modules', 'settings'],
+    parser.add_argument('-t', '--type', choices=['modules', 'settings'],
                         help='Force file type (default: auto-detect)')
     parser.add_argument('-c', '--csv', action='store_true',
                         help='Output as CSV instead of table')
@@ -360,11 +338,7 @@ examples:
     # Extract
     output_blocks = []   # list of (title, headers, rows)
 
-    if file_type == 'daq':
-        headers, rows = extract_daq_map(data)
-        output_blocks.append(('DAQ Map', headers, rows))
-
-    elif file_type == 'modules':
+    if file_type == 'modules':
         det_h, det_r, bst_h, bst_r = extract_modules(data)
         if det_r:
             output_blocks.append(('Detector Modules', det_h, det_r))

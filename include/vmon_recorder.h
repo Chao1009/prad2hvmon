@@ -86,7 +86,15 @@ public:
         : dir_(dir), interval_ms_(interval_ms)
     {
         if (!dir_.empty()) {
-            fs::create_directories(dir_);
+            std::error_code ec;
+            fs::create_directories(dir_, ec);
+            if (ec) {
+                std::cerr << "*** WARNING: VMonRecorder cannot create '"
+                          << dir_ << "': " << ec.message()
+                          << " — recording DISABLED\n";
+                dir_.clear();   // disables enabled() → no write attempts later
+                return;
+            }
             std::cout << "VMon recorder: " << dir_ << "/\n";
         }
     }

@@ -47,7 +47,7 @@ If a channel keeps tripping repeatedly or shows a persistent fault that does not
 
 ### Qt GUI (Ctrl+S)
 
-Press **Ctrl+S** in the Qt GUI window. A timestamped PNG is saved automatically to `database/screenshots/` (filename format: `prad2hvmon_YYYYMMDD_HHmmss.png`). A confirmation message prints to the terminal.
+Press **Ctrl+S** in the Qt GUI window. A timestamped PNG is saved automatically to `$d/screenshots/` where `$d` is the GUI's data-directory root (defaults to the database dir; pass `-d <dir>` to redirect). Filename format: `prad2hvmon_YYYYMMDD_HHmmss.png`. A confirmation message prints to the terminal.
 
 ### RHEL9 Desktop (GNOME)
 

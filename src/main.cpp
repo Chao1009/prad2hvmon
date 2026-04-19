@@ -12,7 +12,7 @@
 //
 // Usage:
 //   prad2hvd [-c crates.json] [-m modules.json] [-g gui_config.json]
-//            [-d daq_map.json] [-p port] [-i poll_ms]
+//            [-p port] [-i poll_ms]
 //
 // Author: Chao Peng — Argonne National Laboratory
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,10 +242,12 @@ static void printUsage(const char *prog)
               << "  -c <file>   Crate config JSON       (default: $DATABASE_DIR/crates.json)\n"
               << "  -m <file>   Module geometry JSON     (default: $DATABASE_DIR/hycal_modules.json)\n"
               << "  -g <file>   GUI config JSON          (default: $DATABASE_DIR/gui_config.json)\n"
-              << "  -d <file>   DAQ map JSON             (default: $DATABASE_DIR/daq_map.json)\n"
               << "  -i <file>   Error-ignore JSON        (default: $DATABASE_DIR/error_ignore.json)\n"
               << "  -l <file>   Voltage-limits JSON      (default: $DATABASE_DIR/voltage_limits.json)\n"
               << "  -w <file>   DeltaV warning rules JSON (default: $DATABASE_DIR/dv_warn.json)\n"
+              << "  -d <dir>    Data directory root      (default: $DATABASE_DIR)\n"
+              << "              Hosts fault_log/ op_log/ settings_log/ hv_settings/ vmon_data/\n"
+              << "  -R <dir>    VMon recorder directory  (default: $DATADIR/vmon_data)\n"
               << "  -r <dir>    Resources directory for HTTP serving (default: auto-discover)\n"
               << "  -p <port>   WebSocket + HTTP port     (default: 8765)\n"
               << "  -t <ms>     Poll interval in ms      (default: 2000)\n"
@@ -259,7 +261,7 @@ static void printUsage(const char *prog)
 int main(int argc, char *argv[])
 {
     // ── Defaults ─────────────────────────────────────────────────────────
-    std::string crateFile, moduleFile, guiConfigFile, daqMapFile;
+    std::string crateFile, moduleFile, guiConfigFile;
     std::string ignoreFile, limitsFile, dvWarnFile, resourceDir;
     uint16_t    wsPort       = 8765;
     int         pollInterval = 2000;
@@ -267,26 +269,30 @@ int main(int argc, char *argv[])
     int         verbosity    = 2;  // 0=silent, 1=fault, 2=warn+fault
     std::string userPass;              // -U: user-level access password
     std::string expertPass;            // -E: expert-level access password
-    std::string vmonRecDir;            // -R: VMon recording directory
+    std::string dataDir;               // -d: root for runtime-writable dirs
+    std::string vmonRecDir;            // -R: overrides $dataDir/vmon_data
 
-    // DATABASE_DIR is a compile-time define (same as the original project)
+    // Resolution order: $PRAD2HV_DATABASE_DIR → compile-time DATABASE_DIR → "."
+    // The env var lets the install tree be relocated without recompiling
+    // (setup.sh sets it to <prefix>/share/prad2hvmon/database).
+    std::string dbDir;
+    if (const char *env = std::getenv("PRAD2HV_DATABASE_DIR")) dbDir = env;
 #ifdef DATABASE_DIR
-    std::string dbDir = DATABASE_DIR;
-#else
-    std::string dbDir = ".";
+    if (dbDir.empty()) dbDir = DATABASE_DIR;
 #endif
+    if (dbDir.empty()) dbDir = ".";
 
     // ── Parse command-line ───────────────────────────────────────────────
     int opt;
-    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:n:v:U:E:R:h")) != -1) {
+    while ((opt = getopt(argc, argv, "c:m:g:i:l:w:d:r:p:t:n:v:U:E:R:h")) != -1) {
         switch (opt) {
         case 'c': crateFile     = optarg; break;
         case 'm': moduleFile    = optarg; break;
         case 'g': guiConfigFile = optarg; break;
-        case 'd': daqMapFile    = optarg; break;
         case 'i': ignoreFile    = optarg; break;
         case 'l': limitsFile    = optarg; break;
         case 'w': dvWarnFile    = optarg; break;
+        case 'd': dataDir       = optarg; break;
         case 'r': resourceDir   = optarg; break;
         case 'p': wsPort        = static_cast<uint16_t>(std::atoi(optarg)); break;
         case 't': pollInterval  = std::atoi(optarg); break;
@@ -294,9 +300,32 @@ int main(int argc, char *argv[])
         case 'v': verbosity     = std::atoi(optarg); break;
         case 'U': userPass      = optarg; break;
         case 'E': expertPass    = optarg; break;
-        case 'R': vmonRecDir   = optarg; break;
+        case 'R': vmonRecDir    = optarg; break;
         case 'h':
         default:  printUsage(argv[0]); return (opt == 'h') ? 0 : 1;
+        }
+    }
+
+    // ── Resolve dataDir ──────────────────────────────────────────────────
+    // -d flag → fall back to dbDir.  No separate env var: setups that want
+    // to redirect writes simply pass -d.  We try to create it up front and
+    // warn loudly if we cannot — the daemon keeps running so the WebSocket
+    // still serves live data, but none of the logs will be persisted.
+    if (dataDir.empty()) dataDir = dbDir;
+    {
+        std::error_code ec;
+        fs::create_directories(dataDir, ec);
+        if (ec) {
+            std::cerr << "\n"
+                      << "************************************************************\n"
+                      << "*** WARNING: cannot create data directory\n"
+                      << "***   " << dataDir << "\n"
+                      << "***   (" << ec.message() << ")\n"
+                      << "*** Daemon will continue running but NO LOGS WILL BE WRITTEN.\n"
+                      << "*** Pass -d <writable-dir> or create the directory manually.\n"
+                      << "************************************************************\n\n";
+        } else {
+            std::cout << "Data directory: " << dataDir << "\n";
         }
     }
 
@@ -304,7 +333,6 @@ int main(int argc, char *argv[])
     crateFile     = findFile(crateFile,     dbDir, "crates.json");
     moduleFile    = findFile(moduleFile,    dbDir, "hycal_modules.json");
     guiConfigFile = findFile(guiConfigFile, dbDir, "gui_config.json");
-    daqMapFile    = findFile(daqMapFile,    dbDir, "daq_map.json");
     ignoreFile    = findFile(ignoreFile,    dbDir, "error_ignore.json");
     limitsFile    = findFile(limitsFile,    dbDir, "voltage_limits.json");
     dvWarnFile    = findFile(dvWarnFile,    dbDir, "dv_warn.json");
@@ -331,7 +359,7 @@ int main(int argc, char *argv[])
     store.setFaultLogCapacity(static_cast<size_t>(faultLogCap));
     CommandQueue  cmdq;
 
-    std::string logDir = dbDir + "/fault_log";
+    std::string logDir = dataDir + "/fault_log";
     auto verb = (verbosity <= 0) ? FileFaultLogger::Verbosity::Silent
               : (verbosity == 1) ? FileFaultLogger::Verbosity::FaultOnly
               :                    FileFaultLogger::Verbosity::WarnAndFault;
@@ -341,12 +369,14 @@ int main(int argc, char *argv[])
     const char *verbNames[] = { "silent", "faults only", "warn + fault" };
     std::cout << "Console verbosity: " << verbNames[std::min(verbosity, 2)] << "\n";
 
-    std::string opLogDir = dbDir + "/op_log";
+    std::string opLogDir = dataDir + "/op_log";
     FileOpLogger opLogger(opLogDir);
     std::cout << "Operation logger: " << opLogDir << "/\n";
 
-    std::string settingsLogDir = dbDir + "/settings_log";
+    std::string settingsLogDir = dataDir + "/settings_log";
+    std::string hvSettingsDir  = dataDir + "/hv_settings";
     std::cout << "Settings auto-logger: " << settingsLogDir << "/\n";
+    std::cout << "HV settings snapshots: " << hvSettingsDir << "/\n";
 
     // ── Read polling config from gui_config.json ──────────────────────────
     int vmonPollMs   = 200;
@@ -375,6 +405,7 @@ int main(int argc, char *argv[])
     hvPoller.setVMonPollInterval(vmonPollMs);
     hvPoller.setAllPollEveryN(allPollEveryN);
     hvPoller.setSettingsLogDir(settingsLogDir);
+    hvPoller.setHvSettingsDir(hvSettingsDir);
     loadDvWarnRules(dvWarnFile, hvPoller.classifier());
 
     if (!hvPoller.initCrates()) {
@@ -382,10 +413,11 @@ int main(int argc, char *argv[])
                      "daemon will serve partial data.\n";
     }
 
-    // ── VMon Recorder (optional — enabled with -R dir) ──────────────────
-    // Default to dbDir/vmon_data if -R is not specified
+    // ── VMon Recorder ──────────────────────────────────────────────────
+    // Default to dataDir/vmon_data; -R overrides (useful when recorder files
+    // should live on a separate disk with more headroom than the logs).
     if (vmonRecDir.empty())
-        vmonRecDir = dbDir + "/vmon_data";
+        vmonRecDir = dataDir + "/vmon_data";
     VMonRecorder vmonRecorder(vmonRecDir, static_cast<uint16_t>(vmonPollMs));
     vmonRecorder.setChannels(hvPoller.crates());
     hvPoller.setVMonRecorder(&vmonRecorder);
@@ -414,10 +446,18 @@ int main(int argc, char *argv[])
                              vmonPollMs, allPollEveryN, vmonPollMs * allPollEveryN);
 
     // ── Locate resources directory (for built-in HTTP serving) ─────────
+    // Resolution order: -r flag → $PRAD2HV_RESOURCE_DIR → auto-discover
+    // relative to dbDir → compile-time RESOURCE_DIR.
     if (resourceDir.empty()) {
-        // Auto-discover relative to DATABASE_DIR or executable
+        if (const char *env = std::getenv("PRAD2HV_RESOURCE_DIR"))
+            resourceDir = env;
+    }
+    if (resourceDir.empty()) {
         std::vector<std::string> candidates = {
             dbDir + "/../resources",
+#ifdef RESOURCE_DIR
+            RESOURCE_DIR,
+#endif
         };
         for (const auto &p : candidates) {
             if (fs::exists(p + "/monitor.html")) {
@@ -433,7 +473,7 @@ int main(int argc, char *argv[])
 
     // ── Start WebSocket + HTTP server (blocks on main thread) ────────────
     WsServer server(wsPort, store, cmdq, resourceDir,
-                    moduleFile, guiConfigFile, daqMapFile,
+                    moduleFile, guiConfigFile,
                     userPass, expertPass, &opLogger);
     g_server = &server;
 

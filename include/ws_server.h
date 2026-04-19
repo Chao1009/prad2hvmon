@@ -57,7 +57,6 @@ public:
              const std::string &resource_dir    = "",
              const std::string &module_geo_path = "",
              const std::string &gui_config_path = "",
-             const std::string &daq_map_path    = "",
              const std::string &user_password   = "",
              const std::string &expert_password = "",
              FileOpLogger      *op_logger       = nullptr)
@@ -70,7 +69,6 @@ public:
         // Pre-load static config files into memory
         module_geo_json_ = readFile(module_geo_path, "[]");
         gui_config_json_ = readFile(gui_config_path, "{}");
-        daq_map_json_    = readFile(daq_map_path,    "[]");
 
         // Configure websocketpp
         server_.set_access_channels(websocketpp::log::alevel::none);
@@ -160,7 +158,6 @@ private:
         init["type"]               = "init";
         init["module_geometry"]    = json::parse(module_geo_json_, nullptr, false);
         init["gui_config"]         = json::parse(gui_config_json_, nullptr, false);
-        init["daq_map"]            = json::parse(daq_map_json_,    nullptr, false);
         init["fault_log_capacity"] = store_.faultLogCapacity();
         init["auth_required"]      = authRequired();
         init["access_level"]       = info.accessLevel;
@@ -797,7 +794,6 @@ private:
     // Pre-loaded static config (sent to each client on connect)
     std::string module_geo_json_;
     std::string gui_config_json_;
-    std::string daq_map_json_;
 
     // Access control passwords (empty = not configured)
     std::string user_pass_;

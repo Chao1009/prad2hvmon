@@ -1,0 +1,45 @@
+# Source this file to set up the prad2hvmon environment (csh/tcsh).
+#   source <prefix>/bin/setup.csh
+#
+# PRAD2HV_DIR is resolved in this order:
+#   1. $PRAD2HV_DIR already set by the caller.
+#   2. tcsh $_ self-detection — works when sourced directly from the shell
+#      prompt, but not under nested `source` (csh has no BASH_SOURCE).
+#   3. Install-time prefix baked in by CMake (@CMAKE_INSTALL_PREFIX@).
+
+if ( ! $?PRAD2HV_DIR ) then
+    set _src = ( $_ )
+    set _setup_path = ""
+    if ( $#_src > 1 ) then
+        set _cand = "$_src[$#_src]"
+        if ( "$_cand:t" == "setup.csh" ) then
+            set _setup_path = "$_cand"
+        endif
+        unset _cand
+    endif
+    unset _src
+
+    if ( "$_setup_path" != "" ) then
+        set _setup_dir = `dirname "$_setup_path"`
+        setenv PRAD2HV_DIR `cd "$_setup_dir/.." && pwd`
+        unset _setup_dir
+    else
+        setenv PRAD2HV_DIR "@CMAKE_INSTALL_PREFIX@"
+    endif
+    unset _setup_path
+endif
+
+if ( $?PRAD2HV_DIR ) then
+    if ( $?PATH ) then
+        setenv PATH "${PRAD2HV_DIR}/bin:${PATH}"
+    else
+        setenv PATH "${PRAD2HV_DIR}/bin"
+    endif
+    if ( $?LD_LIBRARY_PATH ) then
+        setenv LD_LIBRARY_PATH "${PRAD2HV_DIR}/lib64:${PRAD2HV_DIR}/lib:${LD_LIBRARY_PATH}"
+    else
+        setenv LD_LIBRARY_PATH "${PRAD2HV_DIR}/lib64:${PRAD2HV_DIR}/lib"
+    endif
+    setenv PRAD2HV_DATABASE_DIR "${PRAD2HV_DIR}/share/prad2hvmon/database"
+    setenv PRAD2HV_RESOURCE_DIR "${PRAD2HV_DIR}/share/prad2hvmon/resources"
+endif

@@ -49,9 +49,6 @@ let geoCanvas, geoCtx, geoWrap;
 // Channel lookup by name for geometry
 let chByName = {};
 
-// DAQ connection map lookup by module name (loaded from daq_map.json)
-let daqByName = {};
-
 // ΔV display thresholds for table cell coloring (overridden by gui_config.json)
 // NOTE: status classification (fault/warn/ok) is determined by the daemon,
 // not by these thresholds.  These only control the green/amber/red text color
@@ -163,14 +160,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 MODULES.forEach(m => { MOD_MAP[m.n] = m; });
                 rebuildColorCache();   // MODULES just arrived — populate colour cache
                 console.log('Loaded ' + MODULES.length + ' modules');
-            });
-            // Load DAQ connection map
-            hvMonitor.getDAQMap(daqData => {
-                daqByName = {};
-                daqData.forEach(e => {
-                    daqByName[e.name] = { crate: e.crate, slot: e.slot, channel: e.channel };
-                });
-                console.log('Loaded DAQ map: ' + Object.keys(daqByName).length + ' entries');
             });
             // Load GUI config (ΔV thresholds, intervals, etc.)
             hvMonitor.getGuiConfig(cfg => {

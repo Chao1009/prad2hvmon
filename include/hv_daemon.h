@@ -319,6 +319,20 @@ public:
         settings_edit_logger_ = SettingsEditLogger(dir);
     }
 
+    // Directory for Save Settings snapshots ("hv_settings_<ts>.json").  Kept
+    // separate from the settings_log dir so the two can live under the same
+    // or different roots as the operator prefers.
+    void setHvSettingsDir(const std::string &dir) {
+        namespace fs = std::filesystem;
+        hv_settings_dir_ = dir;
+        std::error_code ec;
+        fs::create_directories(hv_settings_dir_, ec);
+        if (ec) {
+            std::cerr << "HVPoller: cannot create hv_settings dir '"
+                      << hv_settings_dir_ << "': " << ec.message() << "\n";
+        }
+    }
+
     void setClassifier(const ChannelClassifier &cls) { classifier_ = cls; }
     ChannelClassifier &classifier() { return classifier_; }
 
@@ -957,12 +971,18 @@ private:
     std::string saveSettingsFile(const std::string &snapshot)
     {
         namespace fs = std::filesystem;
-        std::string dir = settings_auto_logger_.logDir() + "/../hv_settings";
+        if (hv_settings_dir_.empty()) {
+            std::cerr << "*** WARNING: hv_settings directory not configured; "
+                         "settings snapshot dropped\n";
+            return {};
+        }
         std::error_code ec;
-        fs::create_directories(dir, ec);
+        fs::create_directories(hv_settings_dir_, ec);
         if (ec) {
-            // Fallback to settings_log dir
-            dir = settings_auto_logger_.logDir();
+            std::cerr << "*** WARNING: cannot create hv_settings dir '"
+                      << hv_settings_dir_ << "': " << ec.message()
+                      << " — snapshot dropped\n";
+            return {};
         }
 
         auto now = std::chrono::system_clock::now();
@@ -974,14 +994,16 @@ private:
                       local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
                       local.tm_hour, local.tm_min, local.tm_sec);
 
-        fs::path path = fs::path(dir) / fmt::format("hv_settings_{}.json", ts);
+        fs::path path = fs::path(hv_settings_dir_) /
+                        fmt::format("hv_settings_{}.json", ts);
         std::ofstream f(path, std::ios::trunc);
         if (f) {
             f << snapshot << "\n";
             std::cout << fmt::format("Settings saved to {}\n", path.string());
             return path.string();
         }
-        std::cerr << "Failed to save settings to " << path.string() << "\n";
+        std::cerr << "*** WARNING: failed to save settings to "
+                  << path.string() << "\n";
         return {};
     }
 
@@ -1218,6 +1240,7 @@ private:
     std::vector<PendingOverride> pending_overrides_;
     SettingsAutoLogger settings_auto_logger_;
     SettingsEditLogger settings_edit_logger_;
+    std::string hv_settings_dir_;             // set by setHvSettingsDir()
 };
 
 

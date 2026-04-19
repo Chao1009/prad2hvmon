@@ -1,28 +1,31 @@
-# PRad-II HV Tools
+# PRad-II HV Scripts
 
-Offline utilities for fault logs, settings snapshots, config files, and hardware operations. Standalone Python 3, no external dependencies, no daemon connection.
+This directory holds two things:
+
+- **Environment scripts** — `setup.sh` / `setup.csh.in` are installed into `<prefix>/bin/`. Source them to put `prad2hvd`, `prad2hvmon`, the Python tool wrappers, and `libcaenhvwrapper.so` on your `PATH` / `LD_LIBRARY_PATH` and export `PRAD2HV_DATABASE_DIR` / `PRAD2HV_RESOURCE_DIR`. You normally don't run them from here.
+- **Offline Python utilities** — fault-log filtering, settings-snapshot manipulation, config-file printing, and remote CAEN reset. Standalone Python 3, no daemon connection. Each tool also gets a thin `bin/` wrapper at install time, so after `make install` you can run `faultgrep`, `merge_settings`, `json2table`, `caenhv_reset`, `vmon_reader` directly without sourcing `setup.sh`.
 
 ```bash
 cd /path/to/prad2hvmon        # or ~clasrun/prad2hvmon
-./tools/faultgrep.py -p
-./tools/merge_settings.py -c base.json new.json -o merged.json
-./tools/json2table.py database/daq_map.json
-./tools/caenhv_reset.py --soft hallb-hv1
+./scripts/faultgrep.py -p
+./scripts/merge_settings.py -c base.json new.json -o merged.json
+./scripts/json2table.py database/hycal_modules.json
+./scripts/caenhv_reset.py --soft hallb-hv1
 ```
 
 ---
 
 ## faultgrep.py
 
-Filter fault log files. Default: today's FAULTs from `database/fault_log/`.
+Filter fault log files. Default log dir: `$PRAD2HV_DATABASE_DIR/fault_log` if set, else `database/fault_log`. If the daemon is writing logs elsewhere (via `prad2hvd -d <dir>`), point `faultgrep.py -d <dir>/fault_log` at that location.
 
 ```bash
-./tools/faultgrep.py                          # today's FAULTs
-./tools/faultgrep.py -p                       # persistent only (no matching DISAPPEAR)
-./tools/faultgrep.py -A -p                    # all days, persistent only
-./tools/faultgrep.py --date 2026-03-14        # specific date
-./tools/faultgrep.py -p --name 'W*'           # filter by channel (wildcards)
-./tools/faultgrep.py -A | grep OVC            # pipe-friendly (summary → stderr)
+./scripts/faultgrep.py                          # today's FAULTs
+./scripts/faultgrep.py -p                       # persistent only (no matching DISAPPEAR)
+./scripts/faultgrep.py -A -p                    # all days, persistent only
+./scripts/faultgrep.py --date 2026-03-14        # specific date
+./scripts/faultgrep.py -p --name 'W*'           # filter by channel (wildcards)
+./scripts/faultgrep.py -A | grep OVC            # pipe-friendly (summary → stderr)
 ```
 
 | Option | Description |
@@ -31,7 +34,7 @@ Filter fault log files. Default: today's FAULTs from `database/fault_log/`.
 | `-A`, `--all-days` | All `.log` files in the log directory |
 | `--date YYYY-MM-DD` | Specific date |
 | `--name PATTERN` | Filter by name (`*` `?` wildcards) |
-| `-d DIR` | Log directory (default: `database/fault_log`) |
+| `-d DIR` | Log directory (default: `$PRAD2HV_DATABASE_DIR/fault_log` if set, else `database/fault_log`) |
 | `--no-color` | Plain output (auto when piped) |
 
 Positional args are treated as explicit file paths. Persistent mode replays APPEAR/DISAPPEAR pairs chronologically; files sorted by name so multi-day resolution works.
@@ -44,13 +47,13 @@ Merge two settings files. Base channels with no match in new are kept; channels 
 
 ```bash
 # By address (crate,slot,ch) — replaces name + params
-./tools/merge_settings.py -c base.json new.json -o merged.json
+./scripts/merge_settings.py -c base.json new.json -o merged.json
 
 # By name — replaces params only, skips duplicate names
-./tools/merge_settings.py -n base.json new.json -o merged.json
+./scripts/merge_settings.py -n base.json new.json -o merged.json
 
 # Stdout (diagnostics → stderr)
-./tools/merge_settings.py -c base.json new.json > merged.json
+./scripts/merge_settings.py -c base.json new.json > merged.json
 ```
 
 | Option | Description |
@@ -69,30 +72,28 @@ Pretty-print JSON config/settings files as aligned text tables. Auto-detects fil
 
 ```bash
 # Config files
-./tools/json2table.py database/daq_map.json
-./tools/json2table.py database/hycal_modules.json
+./scripts/json2table.py database/hycal_modules.json
 
 # Settings snapshot (shows address, name, and all writable params)
-./tools/json2table.py snapshot.json
+./scripts/json2table.py snapshot.json
 
 # Filter + sort
-./tools/json2table.py snapshot.json -f "crate=PRadHV_1" -s V0Set
-./tools/json2table.py snapshot.json -f "name~W" -f "crate=PRadHV_2" -s name
-./tools/json2table.py database/daq_map.json -f "name~G" -s slot
+./scripts/json2table.py snapshot.json -f "crate=PRadHV_1" -s V0Set
+./scripts/json2table.py snapshot.json -f "name~W" -f "crate=PRadHV_2" -s name
 
 # CSV export
-./tools/json2table.py snapshot.json --csv > channels.csv
+./scripts/json2table.py snapshot.json --csv > channels.csv
 ```
 
 | Option | Description |
 |--------|-------------|
 | `-s COL` | Sort by column name |
 | `-f EXPR` | Filter: `COL=VAL` (exact) or `COL~PAT` (substring). Repeatable. |
-| `-t TYPE` | Force type: `daq`, `modules`, `settings` (default: auto) |
+| `-t TYPE` | Force type: `modules`, `settings` (default: auto) |
 | `-c`, `--csv` | Output as CSV |
 | `-n`, `--no-header` | Suppress file-info header line |
 
-Supported files: `daq_map.json` (name/crate/slot/ch table), `hycal_modules.json` (detector modules and boosters as separate blocks), and settings snapshots (address + name + param columns). Numbers right-align automatically.
+Supported files: `hycal_modules.json` (detector modules and boosters as separate blocks), and settings snapshots (address + name + param columns). Numbers right-align automatically.
 
 ---
 
@@ -104,10 +105,10 @@ Original author: Nathan Baltzell (Jefferson Lab). Modernised for Python 3.
 
 ```bash
 # CPU reboot (should not affect voltages)
-./tools/caenhv_reset.py --soft hallb-hv1
+./scripts/caenhv_reset.py --soft hallb-hv1
 
 # Full power cycle (brings down ALL voltages — asks for confirmation)
-./tools/caenhv_reset.py --hard hallb-hv1
+./scripts/caenhv_reset.py --hard hallb-hv1
 ```
 
 | Option | Description |

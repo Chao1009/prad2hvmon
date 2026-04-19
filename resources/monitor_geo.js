@@ -538,7 +538,7 @@ function updateGeoHover(e) {
         let html = `<div class="tt-name">${mod.n}</div>`;
         html += `<div class="tt-row"><span class="tt-label">Type</span><span class="tt-val">${mod.t}</span></div>`;
 
-        // ── Booster tooltip (no HV/DAQ rows) ─────────────────────────────
+        // ── Booster tooltip (no HV rows) ─────────────────────────────────
         if (mod.t === 'booster') {
             html += `<div class="tt-row"><span class="tt-label">IP</span><span class="tt-val" style="font-family:monospace">${escHtml(mod.ip || '—')}</span></div>`;
             const bs = boosterByName[mod.n];
@@ -566,9 +566,6 @@ function updateGeoHover(e) {
 
         if (ch) {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val">${ch.crate} s${ch.slot} ch${ch.channel}</span></div>`;
-            const daqEntry = daqByName[mod.n];
-            const daqStr = daqEntry ? ('c' + daqEntry.crate + ' s' + daqEntry.slot + ' ch' + daqEntry.channel) : '<span style="color:var(--text-dim)">—</span>';
-            html += `<div class="tt-row"><span class="tt-label">DAQ</span><span class="tt-val">${daqStr}</span></div>`;
             html += `<div class="tt-row"><span class="tt-label">VMon / VSet</span><span class="tt-val"><span class="tt-live">${fmt(ch.vmon, 2)}</span> / ${fmt(ch.vset, 2)} V</span></div>`;
             const diff = (ch.vmon != null && ch.vset != null) ? (ch.vmon - ch.vset) : null;
             const diffColor = (diff != null && ch.on) ? diffColorScale(Math.max(-1, Math.min(1, diff / CR.diff_max))) : null;
@@ -582,9 +579,6 @@ function updateGeoHover(e) {
             if (ttSt) html += `<div class="tt-row"><span class="tt-label">Status</span><span class="tt-val">${ttSt}</span></div>`;
         } else {
             html += `<div class="tt-row"><span class="tt-label">HV</span><span class="tt-val" style="color:var(--text-dim)">not linked</span></div>`;
-            const daqEntry = daqByName[mod.n];
-            const daqStr = daqEntry ? ('c' + daqEntry.crate + ' s' + daqEntry.slot + ' ch' + daqEntry.channel) : '<span style="color:var(--text-dim)">—</span>';
-            html += `<div class="tt-row"><span class="tt-label">DAQ</span><span class="tt-val">${daqStr}</span></div>`;
         }
         tooltip.innerHTML = html;
         tooltip.style.display = 'block';
@@ -714,9 +708,6 @@ function openModPopup(mod) {
             if (c) {
                 html += `<span class="plbl">HV</span><span class="pval">${c.crate} s${c.slot} ch${c.channel}</span>`;
                 html += `<span class="plbl">HV Board</span><span class="pval">${c.model || '—'}</span>`;
-                const daqC = daqByName[mod.n];
-                const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
-                html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
                 html += `<span class="plbl">VMon / VSet</span><span class="pval"><span class="pval-live" data-pp="vmon">${fmt(c.vmon, 2)}</span> / ${fmt(c.vset, 2)} V</span>`;
                 const popupDiff = (c.vmon != null && c.vset != null) ? (c.vmon - c.vset) : null;
                 const popupDiffColor = (popupDiff != null && c.on) ? diffColorScale(Math.max(-1, Math.min(1, popupDiff / CR.diff_max))) : null;
@@ -742,9 +733,6 @@ function openModPopup(mod) {
                 _popupBuilt = true;
             } else {
                 html += `<span class="plbl">HV</span><span class="pval" style="color:var(--text-dim)">No linked channel</span>`;
-                const daqC = daqByName[mod.n];
-                const daqStr = daqC ? ('c' + daqC.crate + ' s' + daqC.slot + ' ch' + daqC.channel) : '—';
-                html += `<span class="plbl">DAQ</span><span class="pval">${daqStr}</span>`;
                 vsetInput.value = '';
                 vsetInput.dataset.orig = '';
                 isetInput.value = '';

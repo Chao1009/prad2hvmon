@@ -43,6 +43,10 @@ public:
         namespace fs = std::filesystem;
         std::error_code ec;
         fs::create_directories(log_dir_, ec);
+        if (ec) {
+            std::cerr << "SettingsEditLogger: cannot create directory '"
+                      << log_dir_ << "': " << ec.message() << "\n";
+        }
 
         loadHistory();
     }
