@@ -267,13 +267,14 @@ function hvmonPlot(canvas, opts) {
     const n = opts.n || 0;
     if (n < 1) {
         ctx.fillStyle = '#64748b';
-        ctx.font = '12px JetBrains Mono, monospace';
+        ctx.font = '14px JetBrains Mono, monospace';
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         ctx.fillText('No data', W/2, H/2);
         return;
     }
 
-    const ml = 64, mr = 16, mt = 8, mb = 32;
+    const ml = 80, mr = 18, mt = 12, mb = 48;
     const pw = W - ml - mr, ph = H - mt - mb;
     if (pw < 20 || ph < 20) return;
 
@@ -316,7 +317,7 @@ function hvmonPlot(canvas, opts) {
     ctx.strokeStyle = 'rgba(148,163,184,0.12)';
     ctx.lineWidth = 0.5;
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.font = '12px JetBrains Mono, monospace';
 
     const yTicks = _niceRange(yMin, yMax, 5);
     ctx.textAlign = 'right';
@@ -324,7 +325,7 @@ function hvmonPlot(canvas, opts) {
     for (const v of yTicks) {
         const sy = toSy(v);
         ctx.beginPath(); ctx.moveTo(ml, sy); ctx.lineTo(ml + pw, sy); ctx.stroke();
-        ctx.fillText(v.toPrecision(6).replace(/\.?0+$/, ''), ml - 4, sy);
+        ctx.fillText(v.toPrecision(6).replace(/\.?0+$/, ''), ml - 6, sy);
     }
 
     const xTicks = _niceRange(xMin, xMax, 6);
@@ -336,20 +337,27 @@ function hvmonPlot(canvas, opts) {
         const label = opts.xFormat ? opts.xFormat(v)
                     : (xMax - xMin) > 10000 ? (v / 1000).toFixed(1) + 's'
                     : v.toFixed(0);
-        ctx.fillText(label, sx, mt + ph + 4);
+        ctx.fillText(label, sx, mt + ph + 5);
     }
 
     ctx.strokeStyle = 'rgba(148,163,184,0.3)';
     ctx.lineWidth = 1;
     ctx.strokeRect(ml, mt, pw, ph);
 
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px JetBrains Mono, monospace';
+    // Axis labels — larger, with explicit baselines so they don't drift off
+    // the canvas (earlier versions reused the 'top' baseline from the tick
+    // loop and the xLabel was drawn below the bottom edge).
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '13px JetBrains Mono, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(opts.xLabel || '', ml + pw / 2, H - 2);
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(opts.xLabel || '', ml + pw / 2, H - 6);
+
     ctx.save();
-    ctx.translate(12, mt + ph / 2);
+    ctx.translate(22, mt + ph / 2);
     ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillText(opts.yLabel || '', 0, 0);
     ctx.restore();
 
