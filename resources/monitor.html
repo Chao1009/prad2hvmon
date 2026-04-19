@@ -149,7 +149,7 @@
                 <option value="diff" selected>VMon − VSet</option>
                 <option value="status">Status</option>
             </select>
-            <div id="geo-legend">
+            <div id="geo-legend" class="geo-legend">
                 <span class="leg-label" id="leg-lo">0</span>
                 <input class="range-edit" id="geo-range-min-edit" type="number" step="any">
                 <span class="range-btn" id="geo-range-min-btn" title="Edit min">&#x270E;</span>
@@ -231,10 +231,26 @@
     <div class="tab-content" id="hvmon-tab">
         <div id="hvmon-split">
             <div id="hvmon-left">
+                <div id="hvmon-toolbar">
+                    <label>Color by:</label>
+                    <select id="hvmon-color-mode">
+                        <option value="sigma" selected>&#x3C3;(dV)</option>
+                        <option value="mean">mean(dV)</option>
+                    </select>
+                    <div id="hvmon-legend" class="geo-legend">
+                        <span class="leg-label" id="hvmon-leg-lo">0</span>
+                        <input class="range-edit" id="hvmon-range-min-edit" type="number" step="any">
+                        <span class="range-btn" id="hvmon-range-min-btn" title="Edit min">&#x270E;</span>
+                        <canvas id="hvmon-leg-bar" class="leg-bar" width="180" height="10" style="cursor:pointer" title="Click to change palette"></canvas>
+                        <span class="leg-label" id="hvmon-leg-hi">—</span>
+                        <input class="range-edit" id="hvmon-range-max-edit" type="number" step="any">
+                        <span class="range-btn" id="hvmon-range-max-btn" title="Edit max">&#x270E;</span>
+                    </div>
+                    <button class="btn" id="hvmon-autoscale" title="Autoscale range to current data percentiles">Autoscale</button>
+                </div>
                 <div id="hvmon-geo-wrap">
                     <canvas id="hvmon-geo-canvas"></canvas>
                 </div>
-                <div id="hvmon-legend"></div>
             </div>
             <div id="hvmon-right">
                 <div id="hvmon-info">Click a module to view dV trace</div>
@@ -243,7 +259,7 @@
                     <canvas id="hvmon-fast-canvas"></canvas>
                 </div>
                 <div id="hvmon-ring-wrap">
-                    <div class="hvmon-plot-title">Ring buffer — mean &plusmn; &sigma; vs time</div>
+                    <div class="hvmon-plot-title">Aggregated — mean &plusmn; &sigma;</div>
                     <canvas id="hvmon-ring-canvas"></canvas>
                 </div>
             </div>
@@ -262,6 +278,7 @@
 <script src="monitor_table.js"></script>
 <script src="monitor_alarm.js"></script>
 <script src="monitor_board.js"></script>
+<script src="monitor_geo_view.js"></script>
 <script src="monitor_geo.js"></script>
 <script src="monitor_booster.js"></script>
 <script src="monitor_faultlog.js"></script>

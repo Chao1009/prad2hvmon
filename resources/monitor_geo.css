@@ -39,27 +39,29 @@
 }
 #geo-toolbar select:focus { border-color: var(--accent); }
 
-#geo-legend {
+/* Shared legend styling — used by the HyCal Geometry toolbar
+   (#geo-legend) and the HV Monitor toolbar (#hvmon-legend). */
+.geo-legend {
     display: flex;
     align-items: center;
     gap: 4px;
     margin-left: 16px;
 }
-#geo-legend .leg-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); cursor: default; min-width: 24px; text-align: center; }
-#geo-legend .leg-bar {
+.geo-legend .leg-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); cursor: default; min-width: 24px; text-align: center; }
+.geo-legend .leg-bar {
     width: 180px; height: 10px; border-radius: 3px;
     border: 1px solid var(--border);
 }
-#geo-legend .range-edit {
+.geo-legend .range-edit {
     display: none; width: 56px; background: var(--bg); border: 1px solid var(--accent); color: var(--text-bright);
     padding: 1px 4px; border-radius: 3px; font-family: var(--mono); font-size: 10px; text-align: center; outline: none;
 }
-#geo-legend .range-edit.active { display: inline-block; }
-#geo-legend .range-btn {
+.geo-legend .range-edit.active { display: inline-block; }
+.geo-legend .range-btn {
     cursor: pointer; font-size: 11px; color: var(--text-dim); user-select: none; padding: 0 1px;
 }
-#geo-legend .range-btn:hover { color: var(--accent); }
-#geo-legend .range-btn.editing { color: var(--accent); }
+.geo-legend .range-btn:hover { color: var(--accent); }
+.geo-legend .range-btn.editing { color: var(--accent); }
 
 #geo-search {
     font-family: var(--mono); font-size: 11px;
