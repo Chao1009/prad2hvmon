@@ -2,8 +2,8 @@
 
 This directory holds two things:
 
-- **Environment scripts** — `setup.sh` / `setup.csh.in` are installed into `<prefix>/bin/`. Source them to put `prad2hvd`, `prad2hvmon`, the Python tool wrappers, and `libcaenhvwrapper.so` on your `PATH` / `LD_LIBRARY_PATH` and export `PRAD2HV_DATABASE_DIR` / `PRAD2HV_RESOURCE_DIR`. You normally don't run them from here.
-- **Offline Python utilities** — fault-log filtering, settings-snapshot manipulation, config-file printing, and remote CAEN reset. Standalone Python 3, no daemon connection. Each tool also gets a thin `bin/` wrapper at install time, so after `make install` you can run `faultgrep`, `merge_settings`, `json2table`, `caenhv_reset`, `vmon_reader` directly without sourcing `setup.sh`.
+- **Environment scripts** — `prad2hv_setup.sh` / `prad2hv_setup.csh.in` are installed into `<prefix>/bin/`. Source them to put `prad2hvd`, `prad2hvmon`, the Python tool wrappers, and `libcaenhvwrapper.so` on your `PATH` / `LD_LIBRARY_PATH` and export `PRAD2HV_DATABASE_DIR` / `PRAD2HV_RESOURCE_DIR`. You normally don't run them from here. The `prad2hv_` prefix keeps these files from colliding with `prad2evviewer`'s `setup.sh` / `setup.csh` when both projects are installed under the same `<prefix>`.
+- **Offline Python utilities** — fault-log filtering, settings-snapshot manipulation, config-file printing, and remote CAEN reset. Standalone Python 3, no daemon connection. Each tool also gets a thin `bin/` wrapper at install time, so after `make install` you can run `faultgrep`, `merge_settings`, `json2table`, `caenhv_reset`, `vmon_reader` directly without sourcing `prad2hv_setup.sh`.
 
 ```bash
 cd /path/to/prad2hvmon        # or ~clasrun/prad2hvmon

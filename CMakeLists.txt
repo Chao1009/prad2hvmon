@@ -13,8 +13,8 @@ include(GNUInstallDirs)
 
 # ── Compile-time paths (auto-discovered, overridable at configure time) ──────
 # Both are also overridable at runtime via $PRAD2HV_DATABASE_DIR /
-# $PRAD2HV_RESOURCE_DIR.  setup.sh (installed next to the binary) sets them
-# so the install tree can be relocated freely.
+# $PRAD2HV_RESOURCE_DIR.  prad2hv_setup.sh (installed next to the binary)
+# sets them so the install tree can be relocated freely.
 if(NOT DEFINED DATABASE_DIR)
     set(DATABASE_DIR "${CMAKE_SOURCE_DIR}/database")
 endif()
@@ -85,7 +85,7 @@ target_include_directories(caen_lib PUBLIC ${CAEN_LIB_DIR})
 # Link against the vendor shared library.  The .so is shipped in caen_lib/
 # because there is no system package on the target hosts; we install it to
 # <prefix>/lib so the loader picks it up from LD_LIBRARY_PATH (set by
-# setup.sh).
+# prad2hv_setup.sh).
 set(CAENHV_VENDOR_SO "${CAEN_LIB_DIR}/libcaenhvwrapper.so")
 find_library(CAENHVWRAPPER_LIB caenhvwrapper
     PATHS ${CAEN_LIB_DIR} /usr/lib /usr/local/lib
@@ -136,7 +136,7 @@ target_link_libraries(prad2hvd PRIVATE
 
 # Embed $ORIGIN/../lib in the installed binary so the loader finds
 # libcaenhvwrapper.so even if the vendor .so lacks a proper DT_SONAME.
-# setup.sh also sets LD_LIBRARY_PATH as a belt-and-suspenders.
+# prad2hv_setup.sh also sets LD_LIBRARY_PATH as a belt-and-suspenders.
 set_target_properties(prad2hvd PROPERTIES
     INSTALL_RPATH "\$ORIGIN/../${CMAKE_INSTALL_LIBDIR}"
     INSTALL_RPATH_USE_LINK_PATH TRUE
@@ -179,8 +179,9 @@ endif()
 #  Install
 # ─────────────────────────────────────────────────────────────────────────────
 # Layout:
-#   <prefix>/bin/                        prad2hvd, prad2hvmon, setup.sh,
-#                                        setup.csh, Python tool wrappers
+#   <prefix>/bin/                        prad2hvd, prad2hvmon,
+#                                        prad2hv_setup.sh/.csh,
+#                                        Python tool wrappers
 #   <prefix>/lib/                        libcaenhvwrapper.so
 #   <prefix>/share/prad2hvmon/database/  crates, hycal_modules, gui_config, …
 #   <prefix>/share/prad2hvmon/resources/ monitor.html + css/js
@@ -212,8 +213,9 @@ install(DIRECTORY database/
 install(DIRECTORY resources/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/prad2hvmon/resources)
 
-# Python tool sources — wrappers go in bin/ (see below).  setup.sh and
-# setup.csh.in also live here but are installed separately into bin/.
+# Python tool sources — wrappers go in bin/ (see below).  prad2hv_setup.sh
+# and prad2hv_setup.csh.in also live here but are installed separately
+# into bin/.
 install(DIRECTORY scripts/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/prad2hvmon/scripts
     FILES_MATCHING
@@ -221,15 +223,18 @@ install(DIRECTORY scripts/
         PATTERN "README.md"
         PATTERN "__pycache__" EXCLUDE)
 
-# setup.csh is generated so @CMAKE_INSTALL_PREFIX@ can be baked in as a
-# fallback (csh has no BASH_SOURCE equivalent under nested `source`).
-# setup.sh uses BASH_SOURCE and is installed as-is.
-configure_file(${CMAKE_SOURCE_DIR}/scripts/setup.csh.in
-    ${CMAKE_BINARY_DIR}/bin/setup.csh @ONLY)
-install(FILES scripts/setup.sh ${CMAKE_BINARY_DIR}/bin/setup.csh
+# prad2hv_setup.csh is generated so @CMAKE_INSTALL_PREFIX@ can be baked in
+# as a fallback (csh has no BASH_SOURCE equivalent under nested `source`).
+# prad2hv_setup.sh uses BASH_SOURCE and is installed as-is.
+# Prefix distinguishes us from prad2evviewer's setup.sh/.csh when both
+# are installed to the same <prefix>.
+configure_file(${CMAKE_SOURCE_DIR}/scripts/prad2hv_setup.csh.in
+    ${CMAKE_BINARY_DIR}/bin/prad2hv_setup.csh @ONLY)
+install(FILES scripts/prad2hv_setup.sh ${CMAKE_BINARY_DIR}/bin/prad2hv_setup.csh
     DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-# Thin bin/ wrappers so Python tools run without sourcing setup.sh.  Each
+# Thin bin/ wrappers so Python tools run without sourcing prad2hv_setup.sh.
+# Each
 # wrapper exports PRAD2HV_DATABASE_DIR / PRAD2HV_RESOURCE_DIR and execs the
 # installed script.
 set(_PRAD2HV_PY_WRAPPERS

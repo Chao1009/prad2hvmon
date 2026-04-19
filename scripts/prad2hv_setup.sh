@@ -1,5 +1,7 @@
 # Source this file to set up the prad2hvmon environment (bash/zsh).
-#   source <prefix>/bin/setup.sh
+#   source <prefix>/bin/prad2hv_setup.sh
+# (Prefixed with prad2hv_ to avoid colliding with prad2evviewer's setup.sh
+# when both are installed under the same <prefix>.)
 
 PRAD2HV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

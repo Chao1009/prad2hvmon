@@ -1,5 +1,7 @@
 # Source this file to set up the prad2hvmon environment (csh/tcsh).
-#   source <prefix>/bin/setup.csh
+#   source <prefix>/bin/prad2hv_setup.csh
+# (Prefixed with prad2hv_ to avoid colliding with prad2evviewer's setup.csh
+# when both are installed under the same <prefix>.)
 #
 # PRAD2HV_DIR is resolved in this order:
 #   1. $PRAD2HV_DIR already set by the caller.
@@ -12,7 +14,7 @@ if ( ! $?PRAD2HV_DIR ) then
     set _setup_path = ""
     if ( $#_src > 1 ) then
         set _cand = "$_src[$#_src]"
-        if ( "$_cand:t" == "setup.csh" ) then
+        if ( "$_cand:t" == "prad2hv_setup.csh" ) then
             set _setup_path = "$_cand"
         endif
         unset _cand

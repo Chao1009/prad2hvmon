@@ -57,8 +57,8 @@ make -j$(nproc)
 make install
 
 # Add the install tree to PATH / LD_LIBRARY_PATH and export PRAD2HV_*_DIR
-source /opt/prad2hvmon/bin/setup.sh          # bash / zsh
-source /opt/prad2hvmon/bin/setup.csh         # csh / tcsh
+source /opt/prad2hvmon/bin/prad2hv_setup.sh  # bash / zsh
+source /opt/prad2hvmon/bin/prad2hv_setup.csh # csh / tcsh
 
 # Run — point -d at a writable state directory so the install tree itself
 # can stay read-only (fault_log/, op_log/, settings_log/, hv_settings/,
@@ -72,7 +72,8 @@ Layout after `make install`:
 
 ```
 /opt/prad2hvmon/
-  bin/         prad2hvd, prad2hvmon, setup.sh, setup.csh,
+  bin/         prad2hvd, prad2hvmon,
+               prad2hv_setup.sh, prad2hv_setup.csh,
                faultgrep, merge_settings, json2table, …
   lib/         libcaenhvwrapper.so
   share/prad2hvmon/
@@ -81,9 +82,12 @@ Layout after `make install`:
     scripts/   Python tool sources
 ```
 
-`setup.sh` exports `PRAD2HV_DATABASE_DIR` and `PRAD2HV_RESOURCE_DIR`; the
-daemon reads them at runtime so the install tree can be relocated without
-recompiling. Each daemon option still accepts an explicit path to override.
+`prad2hv_setup.sh` exports `PRAD2HV_DATABASE_DIR` and `PRAD2HV_RESOURCE_DIR`;
+the daemon reads them at runtime so the install tree can be relocated
+without recompiling. Each daemon option still accepts an explicit path to
+override. The `prad2hv_` prefix keeps these files from colliding with
+`prad2evviewer`'s `setup.sh` / `setup.csh` when both are installed under
+the same `<prefix>`.
 
 ### Build with Qt GUI client (optional)
 
@@ -329,7 +333,7 @@ Standalone Python 3 utilities in `scripts/`. No daemon required.
 | `caenhv_reset.py` | Remote reboot of CAEN mainframes via tsconnect serial (JLab CLON env required) |
 | `vmon_reader.py` | Decode / plot VMDF v2 recorder files produced by `prad2hvd` |
 
-See [`scripts/README.md`](scripts/README.md) for full usage. After `make install`, each script also gets a thin `bin/` wrapper (`faultgrep`, `merge_settings`, `json2table`, `caenhv_reset`, `vmon_reader`) that works without sourcing `setup.sh`.
+See [`scripts/README.md`](scripts/README.md) for full usage. After `make install`, each script also gets a thin `bin/` wrapper (`faultgrep`, `merge_settings`, `json2table`, `caenhv_reset`, `vmon_reader`) that works without sourcing `prad2hv_setup.sh`.
 
 ## Dependencies
 

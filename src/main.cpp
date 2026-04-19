@@ -274,7 +274,7 @@ int main(int argc, char *argv[])
 
     // Resolution order: $PRAD2HV_DATABASE_DIR → compile-time DATABASE_DIR → "."
     // The env var lets the install tree be relocated without recompiling
-    // (setup.sh sets it to <prefix>/share/prad2hvmon/database).
+    // (prad2hv_setup.sh sets it to <prefix>/share/prad2hvmon/database).
     std::string dbDir;
     if (const char *env = std::getenv("PRAD2HV_DATABASE_DIR")) dbDir = env;
 #ifdef DATABASE_DIR

@@ -3,7 +3,7 @@
 #
 # Resolves <prefix> from the wrapper's own location and sets
 # PRAD2HV_DATABASE_DIR / PRAD2HV_RESOURCE_DIR before running the target
-# Python script.  Sourcing setup.sh is NOT required.
+# Python script.  Sourcing prad2hv_setup.sh is NOT required.
 
 case "$0" in
     /*)   _self="$0" ;;
