@@ -13,9 +13,10 @@
 
 # ── Site-specific config — edit these for your setup ───────────────────
 set SESSION     = "prad2hvd"
-set DATA_DIR    = "/home/clasrun/prad2_daq/monitor/hv_data"
-set LOG         = "$DATA_DIR/console.log"
-set DAEMON_ARGS = "-v 1 -U prad2_user -E prad2_admin -d $DATA_DIR"
+set LOG_DIR     = "/home/clasrun/prad2_daq/monitor/high_voltage"
+set LOG         = "$LOG_DIR/console.log"
+set DATA_DIR    = "/data/prad2/hv_data"
+set DAEMON_ARGS = "-v 1 -U prad2_user -E prad2_admin -d $LOG_DIR -R $DATA_DIR"
 
 # ── Pre-flight checks ──────────────────────────────────────────────────
 tmux has-session -t $SESSION >& /dev/null
@@ -32,6 +33,7 @@ if ( $status != 0 ) then
     exit 1
 endif
 
+mkdir -p "$LOG_DIR"
 mkdir -p "$DATA_DIR"
 
 # ── Build the sh command that will run inside tmux ─────────────────────
