@@ -209,6 +209,7 @@ public:
 
     // ── Polling (called every cycle) ─────────────────────────────────────
     void ReadAllParams();        // read all board + channel params generically
+    void ReadVMonOnly();         // fast poll: bulk-read VMon only
 
     // ── Generic board-level param access ─────────────────────────────────
     float        GetBdFloat(const std::string &pname) const;
@@ -297,6 +298,7 @@ public:
 
     // Polling: reads all board + channel params for every board
     void ReadAllParams();
+    void ReadVMonOnly();         // fast poll: bulk-read VMon only
 
     void SetPower(const bool &on_off);
     const int &GetHandle() { return handle; }

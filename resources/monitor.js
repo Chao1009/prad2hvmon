@@ -119,6 +119,22 @@ document.addEventListener('DOMContentLoaded', () => {
             // so we don't rebuild popup DOM on every data tick outside the render loop.
         });
 
+        // Fast VMon-only updates — patch live VMon into cached channels
+        hvMonitor.vmonUpdated.connect((data, ts) => {
+            for (const entry of data) {
+                const ch = chByName[entry.n];
+                if (ch) {
+                    ch.vmon = entry.v;
+                    // Recompute diff-based fields
+                    if (ch.vset != null) ch._dv = entry.v - ch.vset;
+                }
+            }
+            dataDirty = true;
+            _colorCacheDirty = true;
+            // Feed the HV Monitor tab (if function exists)
+            if (typeof onHVMonVMonData === 'function') onHVMonVMonData(data, ts);
+        });
+
         hvMonitor.boardsUpdated.connect(data => {
             allBoards = data;
             boardDirty = true;
@@ -166,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         renderIntervalMs = cfg.intervals.renderMs;
                     }
                 }
+                window._guiConfig = cfg;  // expose for HV Monitor tab
                 console.log('GUI config loaded — DV:', DV, 'CR:', CR, 'GV:', GV);
             });
             document.getElementById('loading').classList.add('hidden');
@@ -400,6 +417,7 @@ function renderActiveTab() {
     else if (active.id === 'board-tab') { if (boardDirty) { renderBoardTable(); boardDirty = false; } updateFooter(); }
     else if (active.id === 'geo-tab') { renderGeo(); updateFooter(); }
     else if (active.id === 'booster-tab') updateFooter();
+    else if (active.id === 'hvmon-tab') { if (typeof renderHVMonTab === 'function') renderHVMonTab(); dataDirty = false; }
     // Render booster cards only when their tab is active (4 cards = cheap,
     // but avoids rebuilding card DOM while viewing other tabs).
     if (boosterDirty) {
@@ -428,6 +446,9 @@ function initTabs() {
             if (btn.dataset.tab === 'geo-tab') {
                 resizeGeoCanvas();
                 resetGeoView();
+            }
+            if (btn.dataset.tab === 'hvmon-tab' && typeof initHVMonGeo === 'function') {
+                initHVMonGeo();
             }
         });
     });

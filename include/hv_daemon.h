@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 #include <caen_channel.h>
 #include "booster_supply.h"
+#include "vmon_recorder.h"
 #include "channel_classifier.h"
 #include "fault_tracker.h"
 #include "fault_logger.h"
@@ -35,6 +36,7 @@
 #include <vector>
 #include <iostream>
 #include <cmath>
+#include <cstdio>
 
 using json = nlohmann::json;
 
@@ -64,6 +66,22 @@ public:
         std::lock_guard lk(mu_);
         crate_status_ = std::move(s);
         ++crate_status_ver_;
+    }
+
+    // Fast VMon-only snapshot (lightweight, high-frequency)
+    void setVMon(std::string s, int64_t ts_ms) {
+        std::lock_guard lk(mu_);
+        vmon_ = std::move(s);
+        vmon_ts_ = ts_ms;
+        ++vmon_ver_;
+    }
+    std::pair<std::string, uint64_t> getVMon() const {
+        std::lock_guard lk(mu_);
+        return { vmon_, vmon_ver_ };
+    }
+    int64_t getVMonTs() const {
+        std::lock_guard lk(mu_);
+        return vmon_ts_;
     }
 
     std::pair<std::string, uint64_t> getHV() const {
@@ -210,9 +228,12 @@ private:
     std::string hv_    = "[]";
     std::string board_ = "[]";
     std::string bst_   = "[]";
+    std::string vmon_  = "[]";   // fast VMon-only snapshot
     uint64_t hv_ver_    = 0;
     uint64_t board_ver_ = 0;
     uint64_t bst_ver_   = 0;
+    uint64_t vmon_ver_  = 0;
+    int64_t  vmon_ts_   = 0;     // epoch-ms when VMon was read
     std::string crate_status_ = "[]";
     uint64_t crate_status_ver_ = 0;
 
@@ -284,13 +305,14 @@ public:
     using CrateDef = std::pair<std::string, std::string>;  // {name, ip}
 
     explicit HVPoller(const std::vector<CrateDef> &crate_defs)
-        : crate_defs_(crate_defs), poll_interval_ms_(3000) {}
+        : crate_defs_(crate_defs), vmon_poll_ms_(200), all_poll_every_n_(10) {}
 
     ~HVPoller() {
         for (auto *c : crates_) delete c;
     }
 
     void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
+    void setVMonRecorder(VMonRecorder *rec) { vmon_recorder_ = rec; }
 
     void setSettingsLogDir(const std::string &dir) {
         settings_auto_logger_ = SettingsAutoLogger(dir);
@@ -300,8 +322,14 @@ public:
     void setClassifier(const ChannelClassifier &cls) { classifier_ = cls; }
     ChannelClassifier &classifier() { return classifier_; }
 
-    void setPollInterval(int ms) { poll_interval_ms_ = (ms < 500) ? 500 : ms; }
-    int  pollInterval() const { return poll_interval_ms_; }
+    const std::vector<CAEN_Crate*> &crates() const { return crates_; }
+
+    void setVMonPollInterval(int ms) { vmon_poll_ms_ = (ms < 50) ? 50 : ms; }
+    int  vmonPollInterval() const { return vmon_poll_ms_; }
+    void setAllPollEveryN(int n) { all_poll_every_n_ = (n < 1) ? 1 : n; }
+    int  allPollEveryN() const { return all_poll_every_n_; }
+    // Backward-compat: set the effective full-poll interval
+    void setPollInterval(int ms) { vmon_poll_ms_ = (ms < 50) ? 50 : ms; }
 
     // Must be called before starting the poll thread.
     bool initCrates()
@@ -335,14 +363,18 @@ public:
     }
 
     // ── Main poll loop (call from a std::thread) ─────────────────────────
+    // Dual-speed: fast VMon-only reads every vmon_poll_ms_, full
+    // ReadAllParams every all_poll_every_n_ fast cycles.
     void run(SnapshotStore &store, CommandQueue &cmdq, std::atomic<bool> &running)
     {
-        using clock = std::chrono::steady_clock;
+        using clock   = std::chrono::steady_clock;
+        using sys_clk = std::chrono::system_clock;
+        int cycle = 0;
 
         while (running) {
             auto t0 = clock::now();
 
-            // Drain pending HV commands
+            // Drain pending HV commands (every cycle for responsiveness)
             while (auto cmd = cmdq.tryPop(Command::HV)) {
                 std::string type = cmd->payload.value("type", "");
                 if (type == "save_settings") {
@@ -354,8 +386,8 @@ public:
                     if (!before.empty())
                         settings_edit_logger_.recordEdit("load_settings", before);
                     store.setLoadResponse(loadSettings(cmd->payload));
+                    if (vmon_recorder_) vmon_recorder_->onNameChange();
                 } else {
-                    // Capture pre-edit state for restore points
                     json before = captureBeforeEdit(cmd->payload);
                     if (!before.empty())
                         settings_edit_logger_.recordEdit(type, before);
@@ -363,25 +395,35 @@ public:
                 }
             }
 
-            // Poll all crates
-            doPoll();
+            const bool fullCycle = (cycle % all_poll_every_n_.load() == 0);
 
-            // Re-apply any pending set-value overrides so the snapshot
-            // reflects recent user edits even if hardware readback lags.
-            applyPendingOverrides();
+            if (fullCycle) {
+                // ── Slow cycle: full parameter read ─────────────────────
+                doPoll();
+                applyPendingOverrides();
+                store.setHV(buildChannelSnapshot());
+                store.setBoard(buildBoardSnapshot());
+                store.setCrateStatus(buildCrateStatusSnapshot());
+                settings_auto_logger_.tick([this]() { return buildSettingsSnapshot(); });
+            } else {
+                // ── Fast cycle: VMon only ───────────────────────────────
+                doFastPoll();
+            }
 
-            // Publish snapshots
-            store.setHV(buildChannelSnapshot());
-            store.setBoard(buildBoardSnapshot());
-            store.setCrateStatus(buildCrateStatusSnapshot());
+            // Always publish the lightweight VMon snapshot
+            auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                sys_clk::now().time_since_epoch()).count();
+            store.setVMon(buildVMonSnapshot(), static_cast<int64_t>(now_ms));
 
-            // Daily settings auto-log (lazy — only builds snapshot on date change)
-            settings_auto_logger_.tick([this]() { return buildSettingsSnapshot(); });
+            // Record to disk
+            if (vmon_recorder_) vmon_recorder_->writeSnapshot();
 
-            // Sleep for remainder of interval
+            ++cycle;
+
+            // Sleep for remainder of the fast interval
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                 clock::now() - t0);
-            auto sleep_ms = std::chrono::milliseconds(poll_interval_ms_) - elapsed;
+            auto sleep_ms = std::chrono::milliseconds(vmon_poll_ms_.load()) - elapsed;
             if (sleep_ms.count() > 0 && running) {
                 std::this_thread::sleep_for(sleep_ms);
             }
@@ -475,6 +517,44 @@ private:
             }
         }
         fault_tracker_.endCycle();
+    }
+
+    // ── Fast VMon-only poll (no reconnect/heartbeat/faults) ─────────────
+    void doFastPoll()
+    {
+        for (auto *cr : crates_) {
+            if (!crate_reconnect_[cr->GetName()].connected) continue;
+            cr->ReadVMonOnly();
+        }
+    }
+
+    // ── Lightweight VMon snapshot (manual JSON for speed) ────────────────
+    std::string buildVMonSnapshot()
+    {
+        std::string s;
+        s.reserve(60000);   // ~1700 ch × ~30 bytes
+        s += '[';
+        bool first = true;
+        for (auto *cr : crates_) {
+            if (!crate_reconnect_[cr->GetName()].connected) continue;
+            for (auto *bd : cr->GetBoardList()) {
+                for (auto *ch : bd->GetChannelList()) {
+                    float v = ch->GetVMon();
+                    if (std::isnan(v)) continue;
+                    if (!first) s += ',';
+                    first = false;
+                    s += R"({"n":")";
+                    s += ch->GetName();
+                    s += R"(","v":)";
+                    char buf[16];
+                    std::snprintf(buf, sizeof(buf), "%.2f", v);
+                    s += buf;
+                    s += '}';
+                }
+            }
+        }
+        s += ']';
+        return s;
     }
 
     // ── Capture pre-edit state for restore points ─────────────────────
@@ -701,10 +781,18 @@ private:
         }
         else if (type == "set_name") {
             auto *ch = findChannel(crate, slot, ch_idx);
-            if (ch) ch->SetName(cmd.value("name", ""));
+            if (ch) {
+                ch->SetName(cmd.value("name", ""));
+                if (vmon_recorder_) vmon_recorder_->onNameChange();
+            }
         }
         else if (type == "set_poll_interval") {
-            setPollInterval(cmd.value("ms", 3000));
+            if (cmd.contains("vmon_ms"))
+                setVMonPollInterval(cmd.value("vmon_ms", 200));
+            if (cmd.contains("all_every_n"))
+                setAllPollEveryN(cmd.value("all_every_n", 10));
+            if (cmd.contains("ms") && !cmd.contains("vmon_ms"))
+                setVMonPollInterval(cmd.value("ms", 200));
         }
         else if (type == "set_all_voltage") {
             float v = cmd.value("value", 0.0f);
@@ -1122,9 +1210,11 @@ private:
     std::vector<CAEN_Crate*> crates_;
     std::map<std::string, CAEN_Crate*> crate_map_;
     std::map<std::string, CrateReconnectState> crate_reconnect_;
-    std::atomic<int> poll_interval_ms_;
+    std::atomic<int> vmon_poll_ms_;        // fast VMon-only interval
+    std::atomic<int> all_poll_every_n_;   // full poll every N fast cycles
     FaultTracker fault_tracker_;
     ChannelClassifier classifier_;
+    VMonRecorder *vmon_recorder_ = nullptr;   // optional, not owned
     std::vector<PendingOverride> pending_overrides_;
     SettingsAutoLogger settings_auto_logger_;
     SettingsEditLogger settings_edit_logger_;
@@ -1161,6 +1251,8 @@ public:
 
     void setFaultLogger(FaultLogger *logger) { fault_tracker_.setLogger(logger); }
     void setPollInterval(int ms) { poll_interval_ms_ = (ms < 500) ? 500 : ms; }
+
+    const std::vector<BoosterSupply*> &supplies() const { return supplies_; }
 
     // ── Main poll loop (call from a std::thread) ─────────────────────────
     void run(SnapshotStore &store, CommandQueue &cmdq, std::atomic<bool> &running)

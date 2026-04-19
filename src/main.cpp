@@ -267,6 +267,7 @@ int main(int argc, char *argv[])
     int         verbosity    = 2;  // 0=silent, 1=fault, 2=warn+fault
     std::string userPass;              // -U: user-level access password
     std::string expertPass;            // -E: expert-level access password
+    std::string vmonRecDir;            // -R: VMon recording directory
 
     // DATABASE_DIR is a compile-time define (same as the original project)
 #ifdef DATABASE_DIR
@@ -277,7 +278,7 @@ int main(int argc, char *argv[])
 
     // ── Parse command-line ───────────────────────────────────────────────
     int opt;
-    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:n:v:U:E:h")) != -1) {
+    while ((opt = getopt(argc, argv, "c:m:g:d:i:l:w:r:p:t:n:v:U:E:R:h")) != -1) {
         switch (opt) {
         case 'c': crateFile     = optarg; break;
         case 'm': moduleFile    = optarg; break;
@@ -293,6 +294,7 @@ int main(int argc, char *argv[])
         case 'v': verbosity     = std::atoi(optarg); break;
         case 'U': userPass      = optarg; break;
         case 'E': expertPass    = optarg; break;
+        case 'R': vmonRecDir   = optarg; break;
         case 'h':
         default:  printUsage(argv[0]); return (opt == 'h') ? 0 : 1;
         }
@@ -346,10 +348,32 @@ int main(int argc, char *argv[])
     std::string settingsLogDir = dbDir + "/settings_log";
     std::cout << "Settings auto-logger: " << settingsLogDir << "/\n";
 
+    // ── Read polling config from gui_config.json ──────────────────────────
+    int vmonPollMs   = 200;
+    int allPollEveryN = 10;
+    if (!guiConfigFile.empty()) {
+        try {
+            std::ifstream gcf(guiConfigFile);
+            if (gcf.is_open()) {
+                json gc = json::parse(gcf);
+                if (gc.contains("polling")) {
+                    vmonPollMs    = gc["polling"].value("vmon_ms", 200);
+                    allPollEveryN = gc["polling"].value("all_every_n", 10);
+                }
+            }
+        } catch (const std::exception &e) {
+            std::cerr << "Warning: failed to read polling config: " << e.what() << "\n";
+        }
+    }
+    // Command-line -t overrides the fast poll interval
+    if (pollInterval != 2000)   // non-default → user specified -t
+        vmonPollMs = pollInterval;
+
     // ── HV Poller ────────────────────────────────────────────────────────
     HVPoller hvPoller(crateList);
     hvPoller.setFaultLogger(&faultLogger);
-    hvPoller.setPollInterval(pollInterval);
+    hvPoller.setVMonPollInterval(vmonPollMs);
+    hvPoller.setAllPollEveryN(allPollEveryN);
     hvPoller.setSettingsLogDir(settingsLogDir);
     loadDvWarnRules(dvWarnFile, hvPoller.classifier());
 
@@ -358,10 +382,20 @@ int main(int argc, char *argv[])
                      "daemon will serve partial data.\n";
     }
 
+    // ── VMon Recorder (optional — enabled with -R dir) ──────────────────
+    // Default to dbDir/vmon_data if -R is not specified
+    if (vmonRecDir.empty())
+        vmonRecDir = dbDir + "/vmon_data";
+    VMonRecorder vmonRecorder(vmonRecDir, static_cast<uint16_t>(vmonPollMs));
+    vmonRecorder.setChannels(hvPoller.crates());
+    hvPoller.setVMonRecorder(&vmonRecorder);
+
     // ── Booster Poller ───────────────────────────────────────────────────
     BoosterPoller bstPoller(boosterDefs);
     bstPoller.setFaultLogger(&faultLogger);
-    bstPoller.setPollInterval(pollInterval);
+    bstPoller.setPollInterval(vmonPollMs * allPollEveryN);  // match effective full-poll rate
+
+    vmonRecorder.setBoosters(bstPoller.supplies());
 
     // ── Signal handling ──────────────────────────────────────────────────
     std::signal(SIGINT,  signalHandler);
@@ -376,8 +410,8 @@ int main(int argc, char *argv[])
         bstPoller.run(store, cmdq, g_running);
     });
 
-    std::cout << fmt::format("Poll threads started (interval: {} ms)\n",
-                             pollInterval);
+    std::cout << fmt::format("Poll threads started (VMon: {} ms, full: every {} cycles = {} ms)\n",
+                             vmonPollMs, allPollEveryN, vmonPollMs * allPollEveryN);
 
     // ── Locate resources directory (for built-in HTTP serving) ─────────
     if (resourceDir.empty()) {

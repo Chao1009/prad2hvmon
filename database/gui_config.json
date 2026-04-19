@@ -13,5 +13,14 @@
     },
     "intervals": {
         "renderMs": 200
+    },
+    "polling": {
+        "vmon_ms": 200,
+        "all_every_n": 10
+    },
+    "hvMonitor": {
+        "fast_buffer_size": 5000,
+        "ring_buffer_size": 100,
+        "min_sigma_points": 20
     }
 }

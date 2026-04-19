@@ -768,6 +768,40 @@ void CAEN_Crate::ReadAllParams()
         bd->ReadAllParams();
 }
 
+// ── Fast VMon-only read (one bulk CAEN call per board) ───────────────────────
+
+void CAEN_Board::ReadVMonOnly()
+{
+    int handle = mother->GetHandle();
+    if (handle < 0) return;
+
+    // Respect fallback list if a previous ReadAllParams cycle determined
+    // that bulk VMon read fails for some channels (e.g. PRIMARY ch on A1932).
+    auto fbIt = ch_param_fallback_list_.find("VMon");
+    bool useFallback = (fbIt != ch_param_fallback_list_.end());
+
+    unsigned short allList[nChan];
+    for (int k = 0; k < nChan; ++k) allList[k] = k;
+
+    unsigned short *readList = useFallback ? fbIt->second.data() : allList;
+    int readCount = useFallback ? static_cast<int>(fbIt->second.size()) : nChan;
+    if (readCount == 0) return;
+
+    float vals[readCount];
+    int err = CAENHV_GetChParam(handle, slot, "VMon", readCount, readList, vals);
+    if (err == CAENHV_OK) {
+        for (int k = 0; k < readCount; ++k)
+            channelList[readList[k]]->SetParamDirect("VMon", vals[k]);
+    }
+    // On error: silently skip — reconnect handled by slow poll cycle
+}
+
+void CAEN_Crate::ReadVMonOnly()
+{
+    for (auto *bd : boardList)
+        bd->ReadVMonOnly();
+}
+
 void CAEN_Crate::SetPower(const bool &on_off)
 {
     for (auto *bd : boardList) bd->SetPower(on_off);
