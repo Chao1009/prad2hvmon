@@ -460,9 +460,17 @@ function openModPopup(mod) {
     btnOff.className = 'btn-sm btn-off'; btnOff.textContent = 'OFF';
     rowPwr.append(btnOn, btnOff);
 
-    // Primary-VSet editor — shown only when this module has a primary
-    // supply linked (same crate/slot as a PRIMARY* channel).  Uses the
-    // same Expert guard as the regular VSet input.
+    actions.append(rowV, rowI, rowPwr); body.appendChild(actions);
+
+    // Primary-supply section (info + VSet editor).  Lives BELOW the
+    // channel actions so the frequently-used per-channel controls stay
+    // on top.  Shown only when the module has a primary linked.
+    const primaryGrid = document.createElement('div');
+    primaryGrid.className = 'popup-grid';
+    body.appendChild(primaryGrid);
+
+    const primaryActions = document.createElement('div');
+    primaryActions.className = 'popup-actions';
     const rowPV = document.createElement('div');
     rowPV.className = 'popup-action-row';
     const pvsetInput = document.createElement('input');
@@ -471,7 +479,17 @@ function openModPopup(mod) {
     btnSetPV.className = 'btn-sm btn-set'; btnSetPV.textContent = 'Set Primary V';
     rowPV.append(pvsetInput, btnSetPV);
 
-    actions.append(rowV, rowI, rowPwr, rowPV); body.appendChild(actions);
+    const rowPPwr = document.createElement('div');
+    rowPPwr.className = 'popup-action-row';
+    const btnPOn = document.createElement('button');
+    btnPOn.className = 'btn-sm btn-on'; btnPOn.textContent = 'Primary ON';
+    const btnPOff = document.createElement('button');
+    btnPOff.className = 'btn-sm btn-off'; btnPOff.textContent = 'Primary OFF';
+    rowPPwr.append(btnPOn, btnPOff);
+
+    primaryActions.append(rowPV, rowPPwr);
+    body.appendChild(primaryActions);
+
     el.appendChild(body);
 
     let _popupBuilt = false;
@@ -548,17 +566,6 @@ function openModPopup(mod) {
                 html += `<span class="plbl">Pwr</span><span class="pval" data-pp="pwr">${pwrHtml(c)}</span>`;
                 const ppSt = (c._cc || classifyChannel(c)).badgesHtml;
                 if (ppSt) html += `<span class="plbl">Status</span><span class="pval" data-pp="st">${ppSt}</span>`;
-                // Primary row (shared HV supply for all channels on this slot)
-                const pInit = primaryByName[mod.n];
-                if (pInit) {
-                    html += `<span class="plbl">Primary</span><span class="pval">${pInit.name} <span style="color:var(--text-dim)">· ${pInit.crate} s${pInit.slot} ch${pInit.channel}</span></span>`;
-                    html += `<span class="plbl">Primary VMon / VSet</span><span class="pval"><span class="pval-live" data-pp="pvmon">${fmt(pInit.vmon, 2)}</span> / <span data-pp="pvset">${fmt(pInit.vset, 2)}</span> V</span>`;
-                    html += `<span class="plbl">Primary Pwr</span><span class="pval" data-pp="ppwr">${pwrHtml(pInit)}</span>`;
-                    if (document.activeElement !== pvsetInput) {
-                        pvsetInput.value = pInit.vset != null ? pInit.vset.toFixed(1) : '';
-                        pvsetInput.dataset.orig = pvsetInput.value;
-                    }
-                }
                 if (document.activeElement !== vsetInput) {
                     vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
                     vsetInput.dataset.orig = vsetInput.value;
@@ -578,6 +585,28 @@ function openModPopup(mod) {
             }
             _popupHadPrimary = hasPrimaryNow;
             grid.innerHTML = html;
+
+            // Primary sub-grid — populated separately so the primary rows
+            // sit below the channel's Set V / Set I / ON / OFF controls.
+            // When there's no linked primary we still show a single row so
+            // the operator knows the mapping was considered (avoids "did
+            // the dashboard forget about primaries?" confusion).
+            const pInit = primaryByName[mod.n];
+            if (pInit) {
+                let pHtml = '';
+                pHtml += `<span class="plbl">Primary</span><span class="pval">${pInit.name} <span style="color:var(--text-dim)">· ${pInit.crate} s${pInit.slot} ch${pInit.channel}</span></span>`;
+                pHtml += `<span class="plbl">Primary VMon / VSet</span><span class="pval"><span class="pval-live" data-pp="pvmon">${fmt(pInit.vmon, 2)}</span> / <span data-pp="pvset">${fmt(pInit.vset, 2)}</span> V</span>`;
+                pHtml += `<span class="plbl">Primary Pwr</span><span class="pval" data-pp="ppwr">${pwrHtml(pInit)}</span>`;
+                primaryGrid.innerHTML = pHtml;
+                if (document.activeElement !== pvsetInput) {
+                    pvsetInput.value = pInit.vset != null ? pInit.vset.toFixed(1) : '';
+                    pvsetInput.dataset.orig = pvsetInput.value;
+                }
+            } else {
+                primaryGrid.innerHTML =
+                    `<span class="plbl">Primary</span>` +
+                    `<span class="pval" style="color:var(--text-dim);font-style:italic">No primary \u2014 standalone channel</span>`;
+            }
         }
 
         const hasChannel = !!c;
@@ -600,14 +629,21 @@ function openModPopup(mod) {
         btnOn.style.opacity  = (hasChannel && canPwr) ? '1' : '0.35';
         btnOff.style.opacity = (hasChannel && canPwr) ? '1' : '0.35';
 
-        // Primary-VSet editor guard — hidden entirely when no primary is
-        // mapped for this module, otherwise shown + Expert-gated.
+        // Primary section — the info sub-grid is always shown (standalone
+        // channels get a "No primary" placeholder row), but the editor
+        // action rows collapse when there's nothing to control.
+        // VSet is Expert-gated (canEdit); power is User-gated (canPwr),
+        // same as the channel's own controls.
         const hasPrimary = !!primaryByName[mod.n];
-        rowPV.style.display = hasPrimary ? '' : 'none';
+        primaryActions.style.display = hasPrimary ? '' : 'none';
         pvsetInput.disabled = !hasPrimary || !canEdit;
         btnSetPV.disabled   = !hasPrimary || !canEdit;
         btnSetPV.style.display = (hasPrimary && canEdit) ? '' : 'none';
         pvsetInput.style.opacity = (hasPrimary && canEdit) ? '1' : '0.35';
+        btnPOn.disabled    = !hasPrimary || !canPwr;
+        btnPOff.disabled   = !hasPrimary || !canPwr;
+        btnPOn.style.opacity  = (hasPrimary && canPwr) ? '1' : '0.35';
+        btnPOff.style.opacity = (hasPrimary && canPwr) ? '1' : '0.35';
     }
     refresh();
     popups.set(mod.n, { el, refresh });
@@ -658,8 +694,8 @@ function openModPopup(mod) {
         dataDirty = true; _popupBuilt = false; refresh();
     });
 
-    // Set Primary VSet — mirrors btnSetV but targets primaryByName[mod.n]
-    // instead of the module itself.  Also Expert-guarded.
+    // Set Primary VSet / ON / OFF — mirror the channel's own controls but
+    // target primaryByName[mod.n] instead of the module itself.
     btnSetPV.addEventListener('mousedown', e => e.preventDefault());
     btnSetPV.addEventListener('click', () => {
         if (!hvMonitor || accessLevel < 2) return;
@@ -675,6 +711,21 @@ function openModPopup(mod) {
         _popupBuilt = false; refresh();
     });
     pvsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetPV.click(); });
+
+    btnPOn.addEventListener('click', () => {
+        if (!hvMonitor || accessLevel < 1) return;
+        const p = primaryByName[mod.n]; if (!p) return;
+        hvMonitor.setChannelPower(p.crate, p.slot, p.channel, true);
+        addPendingPower(p.crate, p.slot, p.channel, true);
+        dataDirty = true; _popupBuilt = false; refresh();
+    });
+    btnPOff.addEventListener('click', () => {
+        if (!hvMonitor || accessLevel < 1) return;
+        const p = primaryByName[mod.n]; if (!p) return;
+        hvMonitor.setChannelPower(p.crate, p.slot, p.channel, false);
+        addPendingPower(p.crate, p.slot, p.channel, false);
+        dataDirty = true; _popupBuilt = false; refresh();
+    });
 
     // Drag via header
     let drag = null;
