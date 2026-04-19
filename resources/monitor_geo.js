@@ -460,12 +460,28 @@ function openModPopup(mod) {
     btnOff.className = 'btn-sm btn-off'; btnOff.textContent = 'OFF';
     rowPwr.append(btnOn, btnOff);
 
-    actions.append(rowV, rowI, rowPwr); body.appendChild(actions);
+    // Primary-VSet editor — shown only when this module has a primary
+    // supply linked (same crate/slot as a PRIMARY* channel).  Uses the
+    // same Expert guard as the regular VSet input.
+    const rowPV = document.createElement('div');
+    rowPV.className = 'popup-action-row';
+    const pvsetInput = document.createElement('input');
+    pvsetInput.type = 'text'; pvsetInput.placeholder = 'Primary VSet (V)';
+    const btnSetPV = document.createElement('button');
+    btnSetPV.className = 'btn-sm btn-set'; btnSetPV.textContent = 'Set Primary V';
+    rowPV.append(pvsetInput, btnSetPV);
+
+    actions.append(rowV, rowI, rowPwr, rowPV); body.appendChild(actions);
     el.appendChild(body);
 
     let _popupBuilt = false;
+    let _popupHadPrimary = false;
     function refresh() {
         const c = chByName[mod.n];
+        // If primary availability flipped since last build, rebuild the
+        // grid so the primary rows appear / disappear.
+        const hasPrimaryNow = !!primaryByName[mod.n];
+        if (_popupBuilt && hasPrimaryNow !== _popupHadPrimary) _popupBuilt = false;
         if (_popupBuilt && c) {
             const liveVmon = grid.querySelector('[data-pp="vmon"]');
             const liveDiff = grid.querySelector('[data-pp="diff"]');
@@ -486,6 +502,22 @@ function openModPopup(mod) {
             if (liveSt) {
                 const ppSt = (c._cc || classifyChannel(c)).badgesHtml;
                 liveSt.innerHTML = ppSt || '';
+            }
+            // Primary live fields (if present in the grid).  Primary
+            // VSet can change via this popup or an external command, so
+            // we refresh both VMon and VSet every tick.
+            const pFast = primaryByName[mod.n];
+            if (pFast) {
+                const livePVmon = grid.querySelector('[data-pp="pvmon"]');
+                const livePVset = grid.querySelector('[data-pp="pvset"]');
+                const livePPwr  = grid.querySelector('[data-pp="ppwr"]');
+                if (livePVmon) livePVmon.textContent = fmt(pFast.vmon, 2);
+                if (livePVset) livePVset.textContent = fmt(pFast.vset, 2);
+                if (livePPwr)  livePPwr.innerHTML = pwrHtml(pFast);
+                if (document.activeElement !== pvsetInput) {
+                    pvsetInput.value = pFast.vset != null ? pFast.vset.toFixed(1) : '';
+                    pvsetInput.dataset.orig = pvsetInput.value;
+                }
             }
             if (document.activeElement !== vsetInput) {
                 vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
@@ -516,6 +548,17 @@ function openModPopup(mod) {
                 html += `<span class="plbl">Pwr</span><span class="pval" data-pp="pwr">${pwrHtml(c)}</span>`;
                 const ppSt = (c._cc || classifyChannel(c)).badgesHtml;
                 if (ppSt) html += `<span class="plbl">Status</span><span class="pval" data-pp="st">${ppSt}</span>`;
+                // Primary row (shared HV supply for all channels on this slot)
+                const pInit = primaryByName[mod.n];
+                if (pInit) {
+                    html += `<span class="plbl">Primary</span><span class="pval">${pInit.name} <span style="color:var(--text-dim)">· ${pInit.crate} s${pInit.slot} ch${pInit.channel}</span></span>`;
+                    html += `<span class="plbl">Primary VMon / VSet</span><span class="pval"><span class="pval-live" data-pp="pvmon">${fmt(pInit.vmon, 2)}</span> / <span data-pp="pvset">${fmt(pInit.vset, 2)}</span> V</span>`;
+                    html += `<span class="plbl">Primary Pwr</span><span class="pval" data-pp="ppwr">${pwrHtml(pInit)}</span>`;
+                    if (document.activeElement !== pvsetInput) {
+                        pvsetInput.value = pInit.vset != null ? pInit.vset.toFixed(1) : '';
+                        pvsetInput.dataset.orig = pvsetInput.value;
+                    }
+                }
                 if (document.activeElement !== vsetInput) {
                     vsetInput.value = c.vset != null ? c.vset.toFixed(1) : '';
                     vsetInput.dataset.orig = vsetInput.value;
@@ -533,6 +576,7 @@ function openModPopup(mod) {
                 isetInput.dataset.orig = '';
                 _popupBuilt = false;
             }
+            _popupHadPrimary = hasPrimaryNow;
             grid.innerHTML = html;
         }
 
@@ -555,6 +599,15 @@ function openModPopup(mod) {
         btnOff.disabled   = !hasChannel || !canPwr;
         btnOn.style.opacity  = (hasChannel && canPwr) ? '1' : '0.35';
         btnOff.style.opacity = (hasChannel && canPwr) ? '1' : '0.35';
+
+        // Primary-VSet editor guard — hidden entirely when no primary is
+        // mapped for this module, otherwise shown + Expert-gated.
+        const hasPrimary = !!primaryByName[mod.n];
+        rowPV.style.display = hasPrimary ? '' : 'none';
+        pvsetInput.disabled = !hasPrimary || !canEdit;
+        btnSetPV.disabled   = !hasPrimary || !canEdit;
+        btnSetPV.style.display = (hasPrimary && canEdit) ? '' : 'none';
+        pvsetInput.style.opacity = (hasPrimary && canEdit) ? '1' : '0.35';
     }
     refresh();
     popups.set(mod.n, { el, refresh });
@@ -604,6 +657,24 @@ function openModPopup(mod) {
         addPendingPower(c.crate, c.slot, c.channel, false);
         dataDirty = true; _popupBuilt = false; refresh();
     });
+
+    // Set Primary VSet — mirrors btnSetV but targets primaryByName[mod.n]
+    // instead of the module itself.  Also Expert-guarded.
+    btnSetPV.addEventListener('mousedown', e => e.preventDefault());
+    btnSetPV.addEventListener('click', () => {
+        if (!hvMonitor || accessLevel < 2) return;
+        const p = primaryByName[mod.n]; if (!p) return;
+        const v = resolveVSetInput(pvsetInput.value, p.vset);
+        if (isNaN(v) || v < 0) return;
+        const orig = p.vset;
+        hvMonitor.setChannelVoltage(p.crate, p.slot, p.channel, v);
+        p.vset = v; dataDirty = true;
+        addPendingSet(p.crate, p.slot, p.channel, 'vset', v, orig);
+        pvsetInput.value = v.toFixed(1);
+        pvsetInput.dataset.orig = pvsetInput.value;
+        _popupBuilt = false; refresh();
+    });
+    pvsetInput.addEventListener('keydown', e => { if (e.key === 'Enter') btnSetPV.click(); });
 
     // Drag via header
     let drag = null;

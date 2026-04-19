@@ -49,6 +49,13 @@ let geoCanvas, geoCtx, geoWrap;
 // Channel lookup by name for geometry
 let chByName = {};
 
+// Module/channel name → primary channel object (or undefined).  The
+// primary is inferred from the HV layout: every channel that sits on
+// the same (crate, slot) as a channel whose name starts with
+// "PRIMARY" is mapped to that channel.  If a PRIMARY* channel doesn't
+// exist for a given slot, that module simply has no primary.
+let primaryByName = {};
+
 // ΔV display thresholds for table cell coloring (overridden by gui_config.json)
 // NOTE: status classification (fault/warn/ok) is determined by the daemon,
 // not by these thresholds.  These only control the green/amber/red text color
@@ -391,6 +398,23 @@ function initLoginModal(client) {
 function rebuildChMap() {
     chByName = {};
     allChannels.forEach(ch => { chByName[ch.name] = ch; });
+
+    // Build primary map: one pass to find PRIMARY* channels keyed by
+    // (crate, slot), a second pass to link every non-primary channel on
+    // that same slot to its primary.
+    const primaryBySlot = {};
+    for (const ch of allChannels) {
+        if (ch.name && ch.name.startsWith('PRIMARY')) {
+            primaryBySlot[ch.crate + '|' + ch.slot] = ch;
+        }
+    }
+    primaryByName = {};
+    for (const ch of allChannels) {
+        if (!ch.name || ch.name.startsWith('PRIMARY')) continue;
+        const p = primaryBySlot[ch.crate + '|' + ch.slot];
+        if (p) primaryByName[ch.name] = p;
+    }
+
     _colorCacheDirty = true;   // defer geo colour rebuild until needed
 }
 
