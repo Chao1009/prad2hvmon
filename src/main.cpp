@@ -32,8 +32,12 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <cerrno>
 #include <csignal>
 #include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
+#include <sys/file.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <filesystem>
@@ -326,6 +330,51 @@ int main(int argc, char *argv[])
                       << "************************************************************\n\n";
         } else {
             std::cout << "Data directory: " << dataDir << "\n";
+        }
+    }
+
+    // ── Single-instance guard ────────────────────────────────────────────
+    // Advisory flock on a pidfile inside dataDir.  A second prad2hvd on
+    // the same machine refuses to start here, BEFORE any CAEN connection
+    // is opened.  (Port 8765 would collide too, but by that point the
+    // second process has already touched the hardware.)  If the pidfile
+    // can't be created (dataDir unwritable), the earlier banner already
+    // flagged it — we warn and continue so the port-bind collision still
+    // catches most double-starts.
+    // The fd is intentionally held open for the life of the process; the
+    // kernel releases the lock on exit, crash, or SIGKILL.
+    {
+        std::string pidfile = dataDir + "/prad2hvd.pid";
+        int fd = ::open(pidfile.c_str(), O_CREAT | O_RDWR, 0644);
+        if (fd < 0) {
+            std::cerr << "*** WARNING: cannot open " << pidfile << " ("
+                      << std::strerror(errno) << ") — "
+                      "continuing without single-instance protection.\n";
+        } else if (::flock(fd, LOCK_EX | LOCK_NB) != 0) {
+            char buf[32] = {0};
+            (void)::lseek(fd, 0, SEEK_SET);
+            ssize_t n = ::read(fd, buf, sizeof(buf) - 1);
+            std::cerr << "ERROR: another prad2hvd is already running on "
+                         "this machine";
+            if (n > 0) {
+                buf[n] = '\0';
+                // Trim trailing newline for clean display
+                while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == ' '))
+                    buf[--n] = '\0';
+                std::cerr << " (pid " << buf << ")";
+            }
+            std::cerr << ".\n"
+                      << "Inspect with:  ps -fp $(cat " << pidfile << ")\n"
+                      << "Or:            tmux ls\n";
+            ::close(fd);
+            return 1;
+        } else {
+            // Lock acquired — record our pid for operator convenience.
+            (void)::ftruncate(fd, 0);
+            (void)::lseek(fd, 0, SEEK_SET);
+            std::string pid_str = std::to_string(::getpid()) + "\n";
+            (void)::write(fd, pid_str.data(), pid_str.size());
+            // fd left open on purpose — closing would release the lock.
         }
     }
 

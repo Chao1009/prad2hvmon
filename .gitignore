@@ -52,3 +52,16 @@ compile_commands.json
 *creator.user*
 
 *_qmlcache.qrc
+
+# prad2hvd runtime artifacts (when dataDir is the source tree)
+database/prad2hvd.pid
+database/fault_log/
+database/op_log/
+database/settings_log/
+database/hv_settings/
+database/vmon_data/
+database/screenshots/
+build/
+build-*/
+__pycache__/
+scripts/__pycache__/

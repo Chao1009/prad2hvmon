@@ -208,7 +208,8 @@ install(DIRECTORY database/
     PATTERN "hv_settings"  EXCLUDE
     PATTERN "screenshots"  EXCLUDE
     PATTERN "vmon_data"    EXCLUDE
-    PATTERN "prad1"        EXCLUDE)
+    PATTERN "prad1"        EXCLUDE
+    PATTERN "prad2hvd.pid" EXCLUDE)
 
 install(DIRECTORY resources/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/prad2hvmon/resources)
