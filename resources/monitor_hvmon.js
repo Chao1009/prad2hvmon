@@ -184,6 +184,7 @@ function initHVMonGeo() {
             _hvmView.render();
             renderHVMonPlots();
         },
+        onHoverChange: _hvmOnHoverChange,
         onRangeChange: (lo, hi) => {
             _hvmRanges[_hvmMode()] = [lo, hi];
         },
@@ -217,6 +218,48 @@ function _hvmDrawSelection(ctx, m) {
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2 / t.scale;
     ctx.strokeRect(m.x - hw, m.y - hh, hw * 2, hh * 2);
+}
+
+// Hover tooltip — reuses the #geo-tooltip div (shared across tabs; only
+// one tab is visible at a time, so populating it from HVMon is fine).
+function _hvmOnHoverChange(mod, e) {
+    const tooltip = document.getElementById('geo-tooltip');
+    if (!tooltip) return;
+    if (!mod || !e) {
+        tooltip.style.display = 'none';
+        return;
+    }
+    if (!document.getElementById('hvmon-tab').classList.contains('active')) {
+        tooltip.style.display = 'none';
+        return;
+    }
+
+    const mon    = hvmonModules[mod.n];
+    const st     = mon ? mon.stats() : null;
+    const aggArr = hvmonAgg[mod.n] || [];
+    const latest = aggArr.length > 0 ? aggArr[aggArr.length - 1] : null;
+
+    const f4 = v => (v == null || isNaN(v)) ? '\u2014' : v.toFixed(4);
+
+    let html = `<div class="tt-name">${mod.n}</div>`;
+    html += `<div class="tt-row"><span class="tt-label">Type</span><span class="tt-val">${mod.t}</span></div>`;
+    if (st) {
+        html += `<div class="tt-row"><span class="tt-label">fast mean</span><span class="tt-val"><span class="tt-live">${f4(st.mean)}</span> V</span></div>`;
+        html += `<div class="tt-row"><span class="tt-label">fast \u03c3</span><span class="tt-val"><span class="tt-live">${f4(st.sigma)}</span> V</span></div>`;
+        html += `<div class="tt-row"><span class="tt-label">fast n</span><span class="tt-val">${st.n}/${FAST_N}</span></div>`;
+    } else {
+        const cnt = mon ? mon.count : 0;
+        html += `<div class="tt-row"><span class="tt-label">fast</span><span class="tt-val" style="color:var(--text-dim)">accumulating ${cnt}/${FAST_N}\u2026</span></div>`;
+    }
+    if (latest) {
+        html += `<div class="tt-row"><span class="tt-label">latest agg</span><span class="tt-val">${f4(latest.m)} \u00b1 ${f4(latest.r)} V</span></div>`;
+    }
+    html += `<div class="tt-row"><span class="tt-label">agg points</span><span class="tt-val">${aggArr.length}</span></div>`;
+
+    tooltip.innerHTML = html;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top  = (e.clientY + 14) + 'px';
 }
 
 function _hvmAutoscale() {
