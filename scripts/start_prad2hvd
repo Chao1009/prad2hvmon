@@ -12,11 +12,21 @@
 # ───────────────────────────────────────────────────────────────────────
 
 # ── Site-specific config — edit these for your setup ───────────────────
-set SESSION     = "prad2hvd"
-set LOG_DIR     = "/home/clasrun/prad2_daq/monitor/high_voltage"
-set DATA_DIR    = "/data/prad2/hv_data"
-set LOG         = "$LOG_DIR/console.log"
-set DAEMON_ARGS = "-v 1 -U prad2_user -E prad2_admin -d $LOG_DIR -R $DATA_DIR"
+set HOST_MACHINE = "clonfarm11"
+set SESSION      = "prad2hvd"
+set LOG_DIR      = "/home/clasrun/prad2_daq/monitor/high_voltage"
+set DATA_DIR     = "/data/prad2/hv_data"
+set LOG          = "$LOG_DIR/console.log"
+set DAEMON_ARGS  = "-v 1 -U prad2_user -E prad2_admin -d $LOG_DIR -R $DATA_DIR"
+
+# ── Remote dispatch: bounce to $HOST_MACHINE if we're elsewhere ────────
+# Assumes the script path ($0) resolves on the target host too — true
+# on JLab hall setups where /home is NFS-mounted across the cluster.
+set THIS_HOST = `hostname -s`
+if ( "$THIS_HOST" != "$HOST_MACHINE" ) then
+    echo "Not on ${HOST_MACHINE} (this is ${THIS_HOST}) — forwarding via ssh…"
+    exec ssh -t $HOST_MACHINE "$0" $argv:q
+endif
 
 # ── Pre-flight checks ──────────────────────────────────────────────────
 tmux has-session -t $SESSION >& /dev/null
