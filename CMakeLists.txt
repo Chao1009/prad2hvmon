@@ -222,7 +222,10 @@ install(DIRECTORY scripts/
     FILES_MATCHING
         PATTERN "*.py"
         PATTERN "README.md"
-        PATTERN "__pycache__" EXCLUDE)
+        PATTERN "__pycache__"     EXCLUDE
+        # Template scripts with site-specific hard-coded paths — meant to be
+        # copied + tweaked, never installed verbatim.
+        PATTERN "start_prad2hvd"  EXCLUDE)
 
 # prad2hv_setup.csh is generated so @CMAKE_INSTALL_PREFIX@ can be baked in
 # as a fallback (csh has no BASH_SOURCE equivalent under nested `source`).
