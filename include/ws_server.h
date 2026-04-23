@@ -29,6 +29,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <functional>
 #include <chrono>
 
@@ -731,17 +732,35 @@ private:
             return;
         }
 
-        // Build filesystem path
+        // Build filesystem path. Reject anything that isn't a regular
+        // file: opening a directory succeeds on Linux, but the first
+        // read throws ios_base::failure ("Is a directory") which would
+        // propagate out of the handler and terminate the daemon.
         std::string filepath = resource_dir_ + uri;
-        std::ifstream f(filepath, std::ios::binary);
-        if (!f.is_open()) {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(filepath, ec)) {
             con->set_status(websocketpp::http::status_code::not_found);
             con->set_body("404 Not Found: " + uri);
             return;
         }
 
-        std::string body((std::istreambuf_iterator<char>(f)),
-                          std::istreambuf_iterator<char>());
+        std::string body;
+        try {
+            std::ifstream f(filepath, std::ios::binary);
+            if (!f.is_open()) {
+                con->set_status(websocketpp::http::status_code::not_found);
+                con->set_body("404 Not Found: " + uri);
+                return;
+            }
+            body.assign(std::istreambuf_iterator<char>(f),
+                        std::istreambuf_iterator<char>());
+        } catch (const std::exception &e) {
+            std::cerr << "onHttp: read failed for " << filepath
+                      << ": " << e.what() << "\n";
+            con->set_status(websocketpp::http::status_code::internal_server_error);
+            con->set_body("500 Internal Server Error");
+            return;
+        }
 
         con->set_status(websocketpp::http::status_code::ok);
         con->append_header("Content-Type", mimeType(uri));
@@ -768,13 +787,25 @@ private:
                                 const char *fallback)
     {
         if (path.empty()) return fallback;
-        std::ifstream f(path);
-        if (!f.is_open()) {
-            std::cerr << "Cannot open file: " << path << "\n";
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec)) {
+            std::cerr << "Cannot open file (not a regular file): "
+                      << path << "\n";
             return fallback;
         }
-        return std::string((std::istreambuf_iterator<char>(f)),
-                            std::istreambuf_iterator<char>());
+        try {
+            std::ifstream f(path);
+            if (!f.is_open()) {
+                std::cerr << "Cannot open file: " << path << "\n";
+                return fallback;
+            }
+            return std::string(std::istreambuf_iterator<char>(f),
+                               std::istreambuf_iterator<char>());
+        } catch (const std::exception &e) {
+            std::cerr << "Read failed for " << path << ": "
+                      << e.what() << "\n";
+            return fallback;
+        }
     }
 
     // ── Data ─────────────────────────────────────────────────────────────
