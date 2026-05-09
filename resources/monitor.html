@@ -47,6 +47,8 @@
                 <span class="dot"></span>
                 <span id="conn-text">connecting</span>
             </div>
+            <div class="status-pill auto-pill off" id="auto-status"
+                 title="Auto-report status">Auto: OFF</div>
             <button class="btn" id="btn-refresh" title="Force refresh now">↻ Refresh</button>
             <button class="btn" id="btn-mute" title="No active faults">🔔 Alarm</button>
         </div>
@@ -270,9 +272,11 @@
     <footer>
         <span id="last-update">Waiting for data…</span>
         <span id="row-count"></span>
+        <span id="auto-status-msg"></span>
     </footer>
 </div>
 
+<script src="report.js"></script>
 <script src="monitor.js"></script>
 <script src="monitor_pending.js"></script>
 <script src="monitor_table.js"></script>

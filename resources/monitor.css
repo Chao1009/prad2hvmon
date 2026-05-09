@@ -84,6 +84,30 @@ header .status-pill .dot {
 @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
 header .status-pill.disconnected .dot { background: var(--red); animation: none; }
 
+/* Auto-report status pill ─────────────────────────────────────────────
+   Three states reflect what the daemon is doing right now:
+   .off       — disabled in gui_config.json (dim grey)
+   .on        — daemon's auto_report.enabled is true (subdued green)
+   .reporting — this browser was picked as the on-demand reporter and is
+                screenshotting + uploading (bright accent + pulse).
+   The pill is purely informational: there's no manual click target. */
+header .auto-pill {
+    cursor: default;
+    user-select: none;
+    border-color: var(--border);
+}
+header .auto-pill.off { color: var(--dim); background: var(--bg-card-alt); }
+header .auto-pill.on  { color: var(--green); border-color: var(--green); }
+header .auto-pill.reporting {
+    color: var(--accent); border-color: var(--accent);
+    background: var(--accent-dim);
+    animation: pulse-dot 1.4s ease-in-out infinite;
+}
+#auto-status-msg {
+    margin-left: 12px; color: var(--dim); font-size: 11px;
+    font-family: var(--mono);
+}
+
 .btn {
     font-family: var(--mono); font-size: 11px;
     background: var(--bg-card-alt); color: var(--text);

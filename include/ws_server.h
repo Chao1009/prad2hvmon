@@ -26,14 +26,46 @@
 #include "file_op_logger.h"
 
 #include <map>
+#include <set>
 #include <string>
+#include <vector>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <filesystem>
 #include <functional>
 #include <chrono>
+#include <ctime>
+#include <cstdio>
+#include <optional>
+#include <sys/stat.h>
 
 using json = nlohmann::json;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-report config block (read from gui_config.json["auto_report"]).
+//
+// The dispatcher lives inside WsServer; setAutoReportConfig() takes a fully-
+// populated struct and probes local_save_dir at startup.  When enabled +
+// scheduled_interval_s > 0, the existing 100 ms broadcast timer fires a
+// capture_request to one reporter-capable client every interval_s seconds.
+// The chosen client screenshots its tabs, builds the elog XML, and POSTs to
+// /api/elog/post; the daemon mirrors the body on disk and (if post_to_elog)
+// uploads via curl --cert --key --upload-file.
+// ─────────────────────────────────────────────────────────────────────────────
+struct AutoReportConfig {
+    bool        enabled              = false;
+    bool        post_to_elog         = false;
+    std::string local_save_dir;
+    int         min_interval_ms      = 600000;   // 10 min
+    int         scheduled_interval_s = 0;        // 0 = manual replay only
+    std::string elog_url;
+    std::string elog_logbook;
+    std::string elog_author;
+    std::vector<std::string> elog_tags;
+    std::string elog_cert;
+    std::string elog_key;
+};
 
 // ── Custom websocketpp config: Asio (no TLS) + permessage-deflate ────
 // The hv_snapshot JSON for ~1700 channels is 400–600 KB of highly
@@ -134,6 +166,33 @@ public:
 
     size_t clientCount() const { return connections_.size(); }
 
+    // Apply the auto_report block parsed from gui_config.json.  Probes
+    // local_save_dir for writability and prints a one-line summary so the
+    // operator sees at startup whether reports will be archived.  Safe to
+    // call before run(); the timer thread reads auto_report_cfg_ from the
+    // same asio thread that we're on here.
+    void setAutoReportConfig(AutoReportConfig cfg)
+    {
+        auto_report_cfg_ = std::move(cfg);
+        checkSaveDirWritable();
+        std::cerr << "AutoReport: enabled="
+                  << (auto_report_cfg_.enabled ? "ON" : "OFF")
+                  << " post_to_elog=" << (auto_report_cfg_.post_to_elog ? "yes" : "no")
+                  << " min_interval_ms=" << auto_report_cfg_.min_interval_ms
+                  << " scheduled_interval_s=" << auto_report_cfg_.scheduled_interval_s
+                  << (auto_report_cfg_.local_save_dir.empty()
+                       ? std::string()
+                       : " local_save=" + auto_report_cfg_.local_save_dir)
+                  << "\n";
+        if (!auto_report_cfg_.elog_url.empty()) {
+            std::cerr << "Elog      : " << auto_report_cfg_.elog_url
+                      << " logbook=" << auto_report_cfg_.elog_logbook
+                      << (auto_report_cfg_.elog_cert.empty() ? ""
+                           : " cert=" + auto_report_cfg_.elog_cert)
+                      << "\n";
+        }
+    }
+
 private:
     // ── Per-connection state ─────────────────────────────────────────────
 
@@ -164,6 +223,7 @@ private:
         init["fault_log_capacity"] = store_.faultLogCapacity();
         init["auth_required"]      = authRequired();
         init["access_level"]       = info.accessLevel;
+        init["auto_report"]        = autoReportClientView();
         // Full aggregation history — new client needs this to draw the
         // Aggregated plot immediately instead of waiting for the next flush.
         if (aggregator_) {
@@ -200,6 +260,7 @@ private:
     void onClose(connection_hdl hdl)
     {
         connections_.erase(hdl);
+        reporter_capable_.erase(hdl);
         std::cout << fmt::format("Client disconnected ({} remaining)\n",
                                  connections_.size());
     }
@@ -209,6 +270,34 @@ private:
         try {
             json cmd = json::parse(msg->get_payload());
             std::string type = cmd.value("type", "");
+
+            // ── Capability advertisement (auto-report eligibility) ───────
+            // A reporter-capable client opts into the dispatcher pool by
+            // sending {"type":"client_hello","capabilities":["auto_report"]}
+            // after the WS opens.  Tabs that don't ship report.js never
+            // send this and stay out of the pool, so the watchdog never
+            // burns 30 s timing out a peer that wouldn't know what to do
+            // with a capture_request.
+            if (type == "client_hello") {
+                bool can_capture = false;
+                if (cmd.contains("capabilities") &&
+                    cmd["capabilities"].is_array())
+                {
+                    for (const auto &c : cmd["capabilities"]) {
+                        if (c.is_string() &&
+                            c.get<std::string>() == "auto_report")
+                        { can_capture = true; break; }
+                    }
+                }
+                if (can_capture) reporter_capable_.insert(hdl);
+                json hello = {{"type", "server_hello"},
+                              {"capabilities", json::array({"auto_report"})}};
+                try {
+                    server_.send(hdl, hello.dump(),
+                                 websocketpp::frame::opcode::text);
+                } catch (...) {}
+                return;
+            }
 
             // ── Authentication request (handled directly, not queued) ────
             if (type == "auth") {
@@ -413,6 +502,10 @@ private:
         timer->async_wait([this, timer](const std::error_code &ec) {
             if (ec) return;  // timer cancelled (server stopping)
             broadcastIfChanged();
+            // Cheap to call every 100 ms — both functions exit immediately
+            // if there's nothing to do.
+            autoReportTick();
+            autoReportWatchdog();
             scheduleBroadcast();  // reschedule
         });
     }
@@ -536,7 +629,14 @@ private:
         // We build the string manually to avoid re-parsing the already-
         // serialised JSON array from the pollers.
         std::string msg = R"({"type":")" + type + R"(","data":)" + data + "}";
+        broadcastRaw(msg);
+    }
 
+    // Broadcast a JSON message verbatim — used for control-plane events
+    // (auto_capture_done, …) whose payload is a flat object that already
+    // owns its "type" field, instead of the type+data envelope above.
+    void broadcastRaw(const std::string &msg)
+    {
         // Copy handles — a failed send could trigger an async close that
         // modifies connections_ on the next event-loop tick.
         auto hdls = connections_;
@@ -707,6 +807,20 @@ private:
                 return;
             }
 
+            // POST /api/elog/post  — chosen reporter uploads its capture.
+            // Body: { "xml": "<elog xml>", "auto": true, "request_id": "…" }
+            // Always archives <save_dir>/<UTC date>/report_<UTC>.xml +
+            // decoded PNG attachments; if post_to_elog is true, then also
+            // shells out to curl --upload-file with the configured cert.
+            if (uri == "/api/elog/post" && method == "POST") {
+                json result = handleElogPost(con->get_request_body());
+                bool ok = result.value("ok", false);
+                httpJson(hdl, ok ? websocketpp::http::status_code::ok
+                                 : websocketpp::http::status_code::bad_request,
+                         result);
+                return;
+            }
+
             httpJson(hdl, websocketpp::http::status_code::not_found,
                      {{"error", "unknown API endpoint"}});
             return;
@@ -781,6 +895,533 @@ private:
         return "application/octet-stream";
     }
 
+    // ─── Auto-report dispatcher ──────────────────────────────────────────
+
+    // Probe local_save_dir.  Disable post-to-elog cleanly if the dir
+    // can't be created or written to — we mirror eviewer's "save first,
+    // upload second" discipline so we never push an XML to elog without
+    // having the same bytes archived locally for later replay.
+    void checkSaveDirWritable()
+    {
+        save_dir_writable_ = false;
+        if (auto_report_cfg_.local_save_dir.empty()) {
+            std::cerr << "AutoReport: local_save_dir not configured — "
+                         "/api/elog/post will refuse posts\n";
+            return;
+        }
+        std::filesystem::path dir = auto_report_cfg_.local_save_dir;
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        if (ec) {
+            std::cerr << "AutoReport: cannot create " << dir
+                      << " (" << ec.message() << ") — disabled\n";
+            return;
+        }
+        std::filesystem::path probe = dir / ".prad2hv_write_check";
+        {
+            std::ofstream f(probe);
+            if (!f) {
+                std::cerr << "AutoReport: " << dir
+                          << " is not writable — disabled\n";
+                return;
+            }
+            f << "ok\n";
+        }
+        std::filesystem::remove(probe, ec);
+        save_dir_writable_ = true;
+        std::cerr << "AutoReport: save_dir " << dir << " is writable\n";
+    }
+
+    // Sanitised view of the auto_report config that the browser receives
+    // on /init.  Cert/key paths are intentionally *not* exposed; they
+    // belong on the daemon host only and are read by the curl child
+    // process when post_to_elog fires.
+    json autoReportClientView() const
+    {
+        return {
+            {"enabled",              auto_report_cfg_.enabled},
+            {"post_to_elog",         auto_report_cfg_.post_to_elog},
+            {"min_interval_ms",      auto_report_cfg_.min_interval_ms},
+            {"scheduled_interval_s", auto_report_cfg_.scheduled_interval_s},
+            {"elog", {
+                {"url",     auto_report_cfg_.elog_url},
+                {"logbook", auto_report_cfg_.elog_logbook},
+                {"author",  auto_report_cfg_.elog_author},
+                {"tags",    auto_report_cfg_.elog_tags},
+            }},
+        };
+    }
+
+    // ── Time helpers ─────────────────────────────────────────────────
+    // ISO-8601 Z, used in summary.json records.
+    static std::string isoNowZ()
+    {
+        std::time_t t = std::time(nullptr);
+        char buf[32];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&t));
+        return buf;
+    }
+    // Today's UTC date — bucket key for archive layout.
+    static std::string utcDate()
+    {
+        std::time_t t = std::time(nullptr);
+        char buf[16];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d", std::gmtime(&t));
+        return buf;
+    }
+    // Compact UTC stamp, used in archived XML basenames + upload names.
+    static std::string utcStamp()
+    {
+        std::time_t t = std::time(nullptr);
+        char buf[24];
+        std::strftime(buf, sizeof(buf), "%Y%m%dT%H%M%SZ", std::gmtime(&t));
+        return buf;
+    }
+
+    // ── Base64 decode for <Attachment><data encoding="base64"> blocks ──
+    // Streaming variant — strips whitespace, ignores anything outside the
+    // standard alphabet.  Mirrors viewer_server_http.cpp:_b64Decode so an
+    // archived prad2hv XML opens with the same tooling as a prad2 XML.
+    static std::string b64Decode(const std::string &s)
+    {
+        static const int8_t TBL[256] = {
+            -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+            52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,-1, 0, 1, 2, 3, 4, 5, 6,
+             7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+            -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,
+            49,50,51,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+            -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+        };
+        std::string out;
+        out.reserve(s.size() * 3 / 4);
+        int val = 0, valb = -8;
+        for (unsigned char c : s) {
+            if (TBL[c] < 0) continue;
+            val = (val << 6) | TBL[c];
+            valb += 6;
+            if (valb >= 0) {
+                out.push_back(static_cast<char>((val >> valb) & 0xFF));
+                valb -= 8;
+            }
+        }
+        return out;
+    }
+
+    // Walk <Attachment> blocks in the elog XML, decode each base64 body,
+    // and write the bytes to <dir>/<filename>.  filename is sanitised
+    // (path components stripped) so a hostile client can't escape the
+    // bucket directory.
+    static void extractXmlAttachments(const std::string &xml,
+                                      const std::filesystem::path &dir)
+    {
+        static const std::string A_OPEN  = "<Attachment>";
+        static const std::string A_CLOSE = "</Attachment>";
+        static const std::string F_OPEN  = "<filename>";
+        static const std::string F_CLOSE = "</filename>";
+        static const std::string D_OPEN  = "<data encoding=\"base64\">";
+        static const std::string D_CLOSE = "</data>";
+        size_t pos = 0;
+        while (true) {
+            auto a_beg = xml.find(A_OPEN, pos);
+            if (a_beg == std::string::npos) break;
+            auto a_end = xml.find(A_CLOSE, a_beg);
+            if (a_end == std::string::npos) break;
+            const std::string block = xml.substr(a_beg, a_end - a_beg);
+            pos = a_end + A_CLOSE.size();
+
+            auto fb = block.find(F_OPEN);
+            auto fe = block.find(F_CLOSE);
+            auto db = block.find(D_OPEN);
+            auto de = block.find(D_CLOSE);
+            if (fb == std::string::npos || fe == std::string::npos ||
+                db == std::string::npos || de == std::string::npos) continue;
+            std::string filename = block.substr(fb + F_OPEN.size(),
+                                                fe - fb - F_OPEN.size());
+            std::string b64      = block.substr(db + D_OPEN.size(),
+                                                de - db - D_OPEN.size());
+            auto slash = filename.find_last_of("/\\");
+            if (slash != std::string::npos) filename = filename.substr(slash + 1);
+            if (filename.empty()) continue;
+
+            std::ofstream f(dir / filename, std::ios::binary);
+            if (!f) {
+                std::cerr << "AutoReport: open " << (dir / filename)
+                          << " failed\n";
+                continue;
+            }
+            std::string raw = b64Decode(b64);
+            f.write(raw.data(), static_cast<std::streamsize>(raw.size()));
+        }
+    }
+
+    struct LocalSaveResult {
+        std::filesystem::path dir;
+        std::filesystem::path xml;
+        bool        ok = false;
+        std::string error;
+    };
+
+    LocalSaveResult saveReportLocally(const std::string &xml_body)
+    {
+        LocalSaveResult r;
+        if (auto_report_cfg_.local_save_dir.empty()) {
+            r.error = "local_save_dir not configured";
+            return r;
+        }
+        r.dir = std::filesystem::path(auto_report_cfg_.local_save_dir) / utcDate();
+        std::error_code ec;
+        std::filesystem::create_directories(r.dir, ec);
+        if (ec) {
+            r.error = "mkdir " + r.dir.string() + ": " + ec.message();
+            return r;
+        }
+        r.xml = r.dir / (std::string("report_") + utcStamp() + ".xml");
+        {
+            std::ofstream f(r.xml);
+            if (!f) { r.error = "open " + r.xml.string() + " failed"; return r; }
+            f << xml_body;
+            if (!f.good()) {
+                r.error = "write " + r.xml.string() + " failed";
+                return r;
+            }
+        }
+        extractXmlAttachments(xml_body, r.dir);
+        r.ok = true;
+        return r;
+    }
+
+    // Append a one-line summary record per attempt — same shape eviewer
+    // writes, so existing replay tooling that diffs success/fail across
+    // both daemons works unchanged.
+    void appendAutoReportSummary(const std::string &saved_xml,
+                                 bool posted,
+                                 const std::string &lognumber,
+                                 const std::string &reason,
+                                 const std::string &error)
+    {
+        if (auto_report_cfg_.local_save_dir.empty()) return;
+        std::filesystem::path path =
+            std::filesystem::path(auto_report_cfg_.local_save_dir) / "summary.json";
+        json doc = json::object();
+        {
+            std::ifstream f(path);
+            if (f) {
+                std::stringstream ss; ss << f.rdbuf();
+                auto parsed = json::parse(ss.str(), nullptr, false);
+                if (!parsed.is_discarded() && parsed.is_object()) doc = parsed;
+            }
+        }
+        doc["updated"]            = isoNowZ();
+        doc["auto_post_enabled"]  = auto_report_cfg_.enabled;
+        doc["post_to_elog"]       = auto_report_cfg_.post_to_elog;
+        doc["save_dir_writable"]  = save_dir_writable_;
+        doc["min_interval_ms"]    = auto_report_cfg_.min_interval_ms;
+        if (!doc.contains("entries") || !doc["entries"].is_array())
+            doc["entries"] = json::array();
+
+        json rec = {
+            {"saved_xml", saved_xml},
+            {"saved_at",  isoNowZ()},
+            {"posted",    posted},
+            {"lognumber", lognumber},
+            {"reason",    reason},
+        };
+        if (!error.empty()) rec["error"] = error;
+        doc["entries"].push_back(rec);
+
+        std::ofstream f(path, std::ios::trunc);
+        if (!f) {
+            std::cerr << "AutoReport summary: cannot write " << path << "\n";
+            return;
+        }
+        f << doc.dump(2) << "\n";
+    }
+
+    // Send capture_request to one reporter-capable client that hasn't
+    // already failed for this in-flight capture.  Returns false if no
+    // such client exists (caller decides whether to log + clear pending).
+    // Mirrors viewer_server_http.cpp:dispatchCapture, minus the run
+    // number plumbing — HV is event-less.
+    static constexpr int CAPTURE_TIMEOUT_S = 30;
+
+    bool dispatchCapture(const std::string &reason,
+                         const std::string &request_id_in)
+    {
+        if (!auto_report_cfg_.enabled) return false;
+        if (!save_dir_writable_) {
+            std::cerr << "AutoReport: dispatch skipped (save_dir not writable)\n";
+            appendAutoReportSummary("", false, "", reason,
+                                    "save_dir not writable");
+            return false;
+        }
+        if (reporter_capable_.empty()) {
+            std::string detail = connections_.empty()
+                ? "no connected client"
+                : "no reporter-capable client (" +
+                  std::to_string(connections_.size()) +
+                  " legacy tab(s) connected — refresh required)";
+            std::cerr << "AutoReport: " << detail
+                      << " (" << reason << ")\n";
+            appendAutoReportSummary("", false, "", reason, detail);
+            return false;
+        }
+
+        std::time_t now_t = std::time(nullptr);
+        PendingCapture pc;
+        if (!request_id_in.empty() && pending_capture_ &&
+            pending_capture_->request_id == request_id_in) {
+            // Watchdog retry — keep the same request_id, advance to next.
+            pc = *pending_capture_;
+        } else if (pending_capture_ &&
+                   (now_t - pending_capture_->started) < CAPTURE_TIMEOUT_S) {
+            std::cerr << "AutoReport: dispatch skipped — capture (request "
+                      << pending_capture_->request_id << ") still in flight\n";
+            return false;
+        } else {
+            char buf[40];
+            std::snprintf(buf, sizeof(buf), "%lx-%u",
+                          static_cast<long>(now_t), ++req_counter_);
+            pc.request_id = buf;
+            pc.reason     = reason;
+            pc.tried.clear();
+        }
+        pc.started = now_t;
+
+        connection_hdl chosen;
+        bool found = false;
+        for (const auto &h : reporter_capable_) {
+            if (pc.tried.find(h) == pc.tried.end()) {
+                chosen = h; found = true; break;
+            }
+        }
+        if (!found) {
+            std::cerr << "AutoReport: all reporters exhausted (request "
+                      << pc.request_id << ")\n";
+            appendAutoReportSummary("", false, "", reason,
+                                    "all clients timed out");
+            pending_capture_.reset();
+            return false;
+        }
+        pc.tried.insert(chosen);
+        pending_capture_ = pc;
+
+        json msg = {
+            {"type",       "capture_request"},
+            {"request_id", pc.request_id},
+            {"reason",     pc.reason},
+        };
+        try {
+            server_.send(chosen, msg.dump(),
+                         websocketpp::frame::opcode::text);
+        } catch (const std::exception &e) {
+            std::cerr << "AutoReport: send failed (" << e.what()
+                      << "), letting watchdog retry\n";
+            return false;
+        }
+        std::cerr << "AutoReport: dispatched capture_request (request "
+                  << pc.request_id << ", attempt " << pc.tried.size()
+                  << ", reason=" << pc.reason << ")\n";
+        return true;
+    }
+
+    // 100-ms timer hook — re-dispatch a stuck capture to the next
+    // reporter-capable client.
+    void autoReportWatchdog()
+    {
+        if (!pending_capture_) return;
+        if (std::time(nullptr) - pending_capture_->started <= CAPTURE_TIMEOUT_S)
+            return;
+        auto stale = *pending_capture_;
+        std::cerr << "AutoReport: watchdog timeout (request "
+                  << stale.request_id << ")\n";
+        dispatchCapture(stale.reason, stale.request_id);
+    }
+
+    // 100-ms timer hook — fire a scheduled capture if the configured
+    // interval has elapsed since the last attempt.  We update
+    // last_scheduled_fire_ even on dispatch failures so a misconfigured
+    // run (no reporters, save_dir broken, …) doesn't loop-fire every
+    // tick.
+    void autoReportTick()
+    {
+        if (!auto_report_cfg_.enabled) return;
+        if (auto_report_cfg_.scheduled_interval_s <= 0) return;
+        std::time_t now_t = std::time(nullptr);
+        if (last_scheduled_fire_ == 0) {
+            last_scheduled_fire_ = now_t;
+            return;  // skip the first tick — daemon just started
+        }
+        if (now_t - last_scheduled_fire_ < auto_report_cfg_.scheduled_interval_s)
+            return;
+        last_scheduled_fire_ = now_t;
+        dispatchCapture("scheduled", "");
+    }
+
+    // POST /api/elog/post — body is JSON {xml, auto, request_id}.
+    // Always writes to <save_dir>/<UTC date>/report_<UTC>.xml first, then
+    // optionally shells out to curl for the upload.  Same dedup +
+    // local-save discipline as viewer_server_http.cpp:handleElogPost,
+    // but date-bucketed (no run number) and minus the ws_clients_ split.
+    json handleElogPost(const std::string &body)
+    {
+        if (body.empty())
+            return {{"ok", false}, {"error", "empty body"}};
+        if (auto_report_cfg_.elog_url.empty())
+            return {{"ok", false}, {"error", "elog url not configured"}};
+
+        auto req = json::parse(body, nullptr, false);
+        if (req.is_discarded() || !req.is_object() || !req.contains("xml"))
+            return {{"ok", false}, {"error", "invalid request"}};
+
+        std::string xml_body  = req["xml"].get<std::string>();
+        bool        is_auto   = req.value("auto", false);
+        std::string request_id = req.value("request_id", std::string());
+
+        // auto:true must reference the current pending request — guards
+        // against a buggy / replayed POST clobbering an in-flight capture.
+        if (is_auto) {
+            if (request_id.empty())
+                return {{"ok", false},
+                        {"error", "auto post requires request_id"}};
+            if (!pending_capture_ ||
+                pending_capture_->request_id != request_id)
+                return {{"ok", false}, {"error", "stale request_id"}};
+        }
+
+        if (auto_report_cfg_.local_save_dir.empty())
+            return {{"ok", false},
+                    {"error", "auto_report.local_save_dir is required"}};
+        if (!save_dir_writable_)
+            return {{"ok", false},
+                    {"error", "local_save_dir not writable"}};
+
+        std::unique_lock<std::mutex> post_lock(elog_post_mtx_);
+
+        // Server-side dedup.  Skip if today's bucket already holds an XML
+        // newer than min_interval_ms ago.  Catches scheduled-tick + watchdog
+        // retry races.
+        if (auto_report_cfg_.min_interval_ms > 0) {
+            std::filesystem::path bucket =
+                std::filesystem::path(auto_report_cfg_.local_save_dir) / utcDate();
+            std::error_code ec;
+            if (std::filesystem::exists(bucket, ec) &&
+                std::filesystem::is_directory(bucket, ec))
+            {
+                std::time_t now_t = std::time(nullptr);
+                int window_sec = auto_report_cfg_.min_interval_ms / 1000;
+                std::filesystem::path most_recent;
+                std::time_t most_recent_t = 0;
+                for (auto &e : std::filesystem::directory_iterator(bucket, ec)) {
+                    if (!e.is_regular_file()) continue;
+                    if (e.path().extension() != ".xml") continue;
+                    struct stat st;
+                    if (::stat(e.path().c_str(), &st) != 0) continue;
+                    if (st.st_mtime > most_recent_t) {
+                        most_recent_t = st.st_mtime;
+                        most_recent   = e.path();
+                    }
+                }
+                if (most_recent_t && (now_t - most_recent_t) < window_sec) {
+                    std::cerr << "AutoReport: server-side dup skip ("
+                              << most_recent << ", "
+                              << (now_t - most_recent_t) << "s old)\n";
+                    return {
+                        {"ok", true}, {"skipped", true},
+                        {"detail", "server-side dedup: recent save within "
+                                   + std::to_string(window_sec / 60) + " min"},
+                        {"saved_dir", bucket.string()},
+                        {"saved_xml", most_recent.string()}};
+                }
+            }
+        }
+
+        auto sr = saveReportLocally(xml_body);
+        if (!sr.ok) {
+            std::cerr << "AutoReport: local-save failed: " << sr.error << "\n";
+            return {{"ok", false}, {"error", "local save failed: " + sr.error}};
+        }
+        const std::string saved_dir = sr.dir.string();
+        const std::string saved_xml = sr.xml.string();
+
+        // Dry-run: archive only, no upload.
+        if (is_auto && !auto_report_cfg_.post_to_elog) {
+            std::cerr << "AutoReport: auto-mode dry run (post_to_elog=false)"
+                      << " saved=" << saved_xml << "\n";
+            // Capture the reason BEFORE clearing pending_capture_ —
+            // appendAutoReportSummary needs it for the audit record.
+            std::string reason_for_log = pending_capture_
+                ? pending_capture_->reason : std::string("manual");
+            // Clear the pending slot + notify all clients before
+            // returning so the badge drops cleanly even on dry runs.
+            if (is_auto && !request_id.empty() && pending_capture_ &&
+                pending_capture_->request_id == request_id)
+            {
+                pending_capture_.reset();
+                json done = {{"type", "auto_capture_done"},
+                             {"posted", false}, {"dry_run", true},
+                             {"saved_xml", saved_xml}};
+                broadcastRaw(done.dump());
+            }
+            appendAutoReportSummary(saved_xml, false, "", reason_for_log, "");
+            return {{"ok", true}, {"posted", false}, {"dry_run", true},
+                    {"saved_dir", saved_dir}, {"saved_xml", saved_xml},
+                    {"status", "dry_run"}};
+        }
+
+        post_lock.unlock();
+
+        // Upload via curl, mirroring eviewer's command.  /incoming/<name>
+        // is a one-shot key on the elog side, so the timestamped basename
+        // doubles as a per-attempt uniqueness guard.
+        std::string cert_flag;
+        if (!auto_report_cfg_.elog_cert.empty())
+            cert_flag = " --cert '" + auto_report_cfg_.elog_cert
+                      + "' --key '"  + auto_report_cfg_.elog_key + "'";
+        std::string upload_name = "prad2hv_" + utcStamp() + ".xml";
+        std::string cmd = "curl -s -o /dev/null -w '%{http_code}'" + cert_flag
+                        + " --upload-file '" + saved_xml + "' '"
+                        + auto_report_cfg_.elog_url + "/incoming/" + upload_name
+                        + "' 2>/dev/null";
+        std::string http_code;
+        FILE *p = popen(cmd.c_str(), "r");
+        if (p) {
+            char buf[256] = {};
+            if (fgets(buf, sizeof(buf), p)) http_code = buf;
+            while (!http_code.empty() &&
+                   (http_code.back() == '\n' || http_code.back() == '\r'))
+                http_code.pop_back();
+            pclose(p);
+        }
+        bool ok = (http_code.find("200") != std::string::npos ||
+                   http_code.find("201") != std::string::npos);
+        std::cerr << "AutoReport: " << auto_report_cfg_.elog_url << " <- "
+                  << saved_xml << " -> HTTP " << http_code
+                  << (ok ? " OK" : " FAIL") << "\n";
+
+        std::string reason_for_log = is_auto && pending_capture_
+            ? pending_capture_->reason : std::string("manual");
+
+        if (is_auto && !request_id.empty() && pending_capture_ &&
+            pending_capture_->request_id == request_id)
+        {
+            pending_capture_.reset();
+            json done = {{"type", "auto_capture_done"},
+                         {"posted", ok},
+                         {"saved_xml", saved_xml}};
+            broadcast("auto_capture_done", done.dump());
+        }
+        appendAutoReportSummary(saved_xml, ok, "", reason_for_log,
+                                ok ? std::string()
+                                   : "upload http " + http_code);
+        return {{"ok", ok}, {"posted", ok}, {"status", http_code},
+                {"saved_dir", saved_dir}, {"saved_xml", saved_xml}};
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     static std::string readFile(const std::string &path,
@@ -852,4 +1493,29 @@ private:
     FileOpLogger *op_logger_ = nullptr;
     // Aggregator (optional — nullptr → no hv_aggregation init/deltas)
     HVAggregator *aggregator_ = nullptr;
+
+    // ── Auto-report state ───────────────────────────────────────────────
+    AutoReportConfig auto_report_cfg_;
+    bool             save_dir_writable_ = false;
+    // Reporter-capable subset of connections_.  Populated when a client
+    // sends client_hello with capabilities:["auto_report"]; pruned in
+    // onClose.  The asio io_context single-threads all connection events
+    // so no extra mutex is needed beyond the implicit thread safety.
+    std::set<connection_hdl, hdl_less> reporter_capable_;
+
+    struct PendingCapture {
+        std::string request_id;
+        std::string reason;
+        std::time_t started = 0;     // unix seconds, last dispatch attempt
+        std::set<connection_hdl, hdl_less> tried;
+    };
+    std::optional<PendingCapture> pending_capture_;
+    std::time_t                   last_scheduled_fire_ = 0;
+    unsigned                      req_counter_         = 0;
+    // Guards the dedup-check + local-save sequence inside
+    // /api/elog/post.  Even though websocketpp serialises HTTP handlers
+    // on the asio thread, holding a lock keeps the discipline explicit
+    // and matches eviewer's invariant (and lets us drop into a worker
+    // thread later without re-thinking the race window).
+    std::mutex                    elog_post_mtx_;
 };

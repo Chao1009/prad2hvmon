@@ -170,6 +170,45 @@ static void loadErrorIgnoreRules(const std::string &path)
                              rules.size(), path);
 }
 
+// ── Load auto-report config from gui_config.json ─────────────────────────────
+// Returns a struct with sane defaults when the file is missing or the
+// "auto_report" block is absent — the dispatcher then stays disabled
+// (enabled=false), so the daemon still serves HV data normally.
+static AutoReportConfig loadAutoReportConfig(const std::string &guiConfigPath)
+{
+    AutoReportConfig out;
+    if (guiConfigPath.empty()) return out;
+    std::ifstream f(guiConfigPath);
+    if (!f.is_open()) return out;
+
+    json doc = json::parse(f, nullptr, false);
+    if (doc.is_discarded() || !doc.is_object() ||
+        !doc.contains("auto_report") || !doc["auto_report"].is_object())
+        return out;
+
+    const auto &ar = doc["auto_report"];
+    out.enabled              = ar.value("enabled",              false);
+    out.post_to_elog         = ar.value("post_to_elog",         false);
+    out.local_save_dir       = ar.value("local_save_dir",       std::string());
+    out.min_interval_ms      = ar.value("min_interval_ms",      600000);
+    out.scheduled_interval_s = ar.value("scheduled_interval_s", 0);
+
+    if (ar.contains("elog") && ar["elog"].is_object()) {
+        const auto &el = ar["elog"];
+        out.elog_url     = el.value("url",     std::string());
+        out.elog_logbook = el.value("logbook", std::string());
+        out.elog_author  = el.value("author",  std::string());
+        out.elog_cert    = el.value("cert",    std::string());
+        out.elog_key     = el.value("key",     std::string());
+        if (el.contains("tags") && el["tags"].is_array()) {
+            for (const auto &t : el["tags"])
+                if (t.is_string()) out.elog_tags.push_back(t.get<std::string>());
+        }
+    }
+    return out;
+}
+
+
 // ── Load voltage limits ──────────────────────────────────────────────────────
 static void loadVoltageLimits(const std::string &path)
 {
@@ -541,6 +580,10 @@ int main(int argc, char *argv[])
     WsServer server(wsPort, store, cmdq, resourceDir,
                     moduleFile, guiConfigFile,
                     userPass, expertPass, &opLogger, &aggregator);
+    // Apply auto-report config BEFORE server.run() — the timer + HTTP
+    // handlers run on asio's single thread once run() blocks, so writing
+    // auto_report_cfg_ here is race-free.
+    server.setAutoReportConfig(loadAutoReportConfig(guiConfigFile));
     g_server = &server;
 
     server.run();   // blocks until stop() is called

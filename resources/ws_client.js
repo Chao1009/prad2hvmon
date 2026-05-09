@@ -75,6 +75,15 @@ class DaemonClient {
         this._ws.onopen = () => {
             console.log('Daemon connected:', this._url);
             this._connected = true;
+            // Advertise auto-report capability so the daemon can pick this
+            // tab as the on-demand reporter.  Pre-update tabs that don't
+            // ship report.js never send this and stay out of the pool.
+            try {
+                this._ws.send(JSON.stringify({
+                    type: 'client_hello',
+                    capabilities: ['auto_report'],
+                }));
+            } catch (e) { /* ignore — the next reconnect re-tries */ }
             this._listeners.onConnect.forEach(fn => fn());
         };
 
@@ -111,6 +120,11 @@ class DaemonClient {
             // Flush any pending readAll / getModuleGeometry / etc. callbacks
             for (const cb of this._pendingInit) cb(msg);
             this._pendingInit = [];
+            // Hand the auto_report block to report.js if it was loaded.
+            // Sending the full init lets initReport read either the
+            // top-level "auto_report" field or any future config the
+            // daemon adds without re-plumbing this dispatch.
+            if (typeof initReport === 'function') initReport(msg);
             break;
 
         case 'hv_snapshot':
@@ -161,6 +175,29 @@ class DaemonClient {
 
         case 'auth_result':
             this._listeners.onAuthResult.forEach(fn => fn(msg));
+            break;
+
+        case 'server_hello':
+            // Reply to our client_hello; nothing to do beyond confirming
+            // the daemon understood our capability advertisement.
+            break;
+
+        case 'capture_request':
+            // The daemon picked us as the on-demand reporter.  Hand off
+            // to report.js, which screenshots every tab and POSTs the
+            // elog XML to /api/elog/post with auto:true.
+            if (typeof handleCaptureRequest === 'function')
+                handleCaptureRequest(msg);
+            else
+                console.warn('capture_request received but report.js not loaded');
+            break;
+
+        case 'auto_capture_done':
+            // Authoritative end-of-flow signal — every connected tab
+            // clears its reporter badge.  report.js writes a one-line
+            // outcome into the auto-status footer.
+            if (typeof handleAutoCaptureDone === 'function')
+                handleAutoCaptureDone(msg);
             break;
 
         case 'error':

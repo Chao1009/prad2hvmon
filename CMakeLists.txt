@@ -247,6 +247,7 @@ set(_PRAD2HV_PY_WRAPPERS
     "json2table:json2table.py"
     "caenhv_reset:caenhv_reset.py"
     "vmon_reader:vmon_reader.py"
+    "prad2hv_post_elog:post_elog.py"
 )
 foreach(_entry ${_PRAD2HV_PY_WRAPPERS})
     string(REPLACE ":" ";" _parts "${_entry}")
